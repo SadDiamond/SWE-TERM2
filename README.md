@@ -2,8 +2,8 @@
 
 ## Week 3 (B Week) - Focus: Preliminary Planning and Research
 
-4-5-2026
-6-5-2026
+4-5-2026 - 6-5-2026
+- Did the beginning of the documentation (defining the game and how it would work), also started doing some designs on the overall structure of the game (how the game would be navigated through)
 8-5-2026
 
 ## Week 4 (A Week) - Focus: Identification of Classes, Objects, System Diagramming
