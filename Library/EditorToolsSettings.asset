@@ -76,6 +76,39 @@ MonoBehaviour:
   - groupType: UnityEngine.LightProbeGroup, UnityEngine.CoreModule, Version=0.0.0.0,
       Culture=neutral, PublicKeyToken=null
     collapsed: 0
+  - groupType: UnityEditor.EditorTools.NullTargetKey, UnityEditor.CoreModule, Version=0.0.0.0,
+      Culture=neutral, PublicKeyToken=null
+    collapsed: 0
+  - groupType: UnityEngine.Splines.ISplineContainer, Unity.Splines, Version=0.0.0.0,
+      Culture=neutral, PublicKeyToken=null
+    collapsed: 0
+  - groupType: Unity.Cinemachine.CinemachineCamera, Unity.Cinemachine, Version=0.0.0.0,
+      Culture=neutral, PublicKeyToken=null
+    collapsed: 0
+  - groupType: Unity.Cinemachine.CinemachinePositionComposer, Unity.Cinemachine,
+      Version=0.0.0.0, Culture=neutral, PublicKeyToken=null
+    collapsed: 0
+  - groupType: Unity.Cinemachine.CinemachineSplineDollyLookAtTargets, Unity.Cinemachine,
+      Version=0.0.0.0, Culture=neutral, PublicKeyToken=null
+    collapsed: 0
+  - groupType: Unity.Cinemachine.CinemachineFollow, Unity.Cinemachine, Version=0.0.0.0,
+      Culture=neutral, PublicKeyToken=null
+    collapsed: 0
+  - groupType: Unity.Cinemachine.CinemachineThirdPersonFollow, Unity.Cinemachine,
+      Version=0.0.0.0, Culture=neutral, PublicKeyToken=null
+    collapsed: 0
+  - groupType: Unity.Cinemachine.CinemachineRotationComposer, Unity.Cinemachine,
+      Version=0.0.0.0, Culture=neutral, PublicKeyToken=null
+    collapsed: 0
+  - groupType: Unity.Cinemachine.CinemachineSplineRoll, Unity.Cinemachine, Version=0.0.0.0,
+      Culture=neutral, PublicKeyToken=null
+    collapsed: 0
+  - groupType: Unity.Cinemachine.CinemachineOrbitalFollow, Unity.Cinemachine, Version=0.0.0.0,
+      Culture=neutral, PublicKeyToken=null
+    collapsed: 0
+  - groupType: Unity.Cinemachine.CinemachineHardLookAt, Unity.Cinemachine, Version=0.0.0.0,
+      Culture=neutral, PublicKeyToken=null
+    collapsed: 0
   m_LastPivotModeTypeString: UnityEditor.CenterPivotMode, UnityEditor.CoreModule,
     Version=0.0.0.0, Culture=neutral, PublicKeyToken=null
   m_LastPivotRotationTypeString: UnityEditor.LocalPivotRotation, UnityEditor.CoreModule,

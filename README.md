@@ -5,6 +5,7 @@
 4-5-2026 - 6-5-2026
 - Did the beginning of the documentation (defining the game and how it would work), also started doing some designs on the overall structure of the game (how the game would be navigated through)
 8-5-2026
+- I made player controller and interactable scripts and made a playground for testing
 
 ## Week 4 (A Week) - Focus: Identification of Classes, Objects, System Diagramming
 
