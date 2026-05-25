@@ -10,6 +10,11 @@ public class WFCGenerator : MonoBehaviour
     public int length = 10;
     public float tileSize = 4f; // How far apart to spawn the prefabs
 
+    [Header("Arena Bounds Options")]
+    public bool generateOuterWalls = true;
+    public GameObject outerWallPrefab;
+    public GameObject outerFloorPrefab; // Spawns under everything as a safety net
+
     [Header("Tile Set")]
     public WFCTile[] availableTiles;
 
@@ -116,8 +121,26 @@ public class WFCGenerator : MonoBehaviour
     {
         Cell cell = grid[x, z];
         
-        // Pick exactly 1 random tile from the list of possible valid tiles
-        WFCTile chosenTile = cell.possibleTiles[Random.Range(0, cell.possibleTiles.Count)];
+        // Weighted random selection
+        int totalWeight = 0;
+        foreach (WFCTile tile in cell.possibleTiles)
+        {
+            totalWeight += tile.weight;
+        }
+
+        int randomValue = Random.Range(0, totalWeight);
+        int currentWeight = 0;
+        WFCTile chosenTile = cell.possibleTiles[0]; // fallback
+
+        foreach (WFCTile tile in cell.possibleTiles)
+        {
+            currentWeight += tile.weight;
+            if (randomValue < currentWeight)
+            {
+                chosenTile = tile;
+                break;
+            }
+        }
         
         cell.possibleTiles.Clear();
         cell.possibleTiles.Add(chosenTile);
@@ -167,11 +190,16 @@ public class WFCGenerator : MonoBehaviour
         HashSet<string> validNeighborSockets = new HashSet<string>();
         foreach (WFCTile possibleNeighborTile in neighbor.possibleTiles)
         {
-            validNeighborSockets.Add(possibleNeighborTile.GetSocket(oppositeEdgeToCheck));
+            string neighborSocket = possibleNeighborTile.GetSocket(oppositeEdgeToCheck).Trim().ToLower();
+            validNeighborSockets.Add(neighborSocket);
         }
 
         // Remove any of our possible tiles that don't match the neighbor's exposed sockets
-        current.possibleTiles.RemoveAll(tile => !validNeighborSockets.Contains(tile.GetSocket(edgeToCheck)));
+        current.possibleTiles.RemoveAll(tile => 
+        {
+            string mySocket = tile.GetSocket(edgeToCheck).Trim().ToLower();
+            return !validNeighborSockets.Contains(mySocket);
+        });
     }
 
     private void SpawnPrefabs()
@@ -184,12 +212,58 @@ public class WFCGenerator : MonoBehaviour
                 if (tileInfo != null && tileInfo.prefab != null)
                 {
                     Vector3 position = new Vector3(x * tileSize, 0, z * tileSize) + transform.position;
-                    GameObject newTile = Instantiate(tileInfo.prefab, position, Quaternion.identity);
+                    Quaternion rotation = Quaternion.Euler(tileInfo.spawnRotation);
+                    GameObject newTile = Instantiate(tileInfo.prefab, position, rotation);
                     newTile.transform.SetParent(this.transform);
                     spawnedObjects.Add(newTile);
                 }
             }
         }
+
+        if (generateOuterWalls)
+        {
+            GenerateArenaBounds();
+        }
+
         Debug.Log("[WFC] Level Generation Complete!");
+    }
+
+    private void GenerateArenaBounds()
+    {
+        // Spawns a physical rim of walls around the generated WFC map so the player can't fall out.
+        // Also spawns a giant floor plane underneath just in case.
+
+        if (outerFloorPrefab != null)
+        {
+            GameObject floor = Instantiate(outerFloorPrefab, transform.position + new Vector3((width * tileSize) / 2f - (tileSize / 2f), -1f, (length * tileSize) / 2f - (tileSize / 2f)), Quaternion.identity);
+            floor.transform.localScale = new Vector3(width * tileSize / 10f, 1f, length * tileSize / 10f); // Assuming default Unity Plane (10x10) or scale it to fit.
+            floor.transform.SetParent(this.transform);
+            spawnedObjects.Add(floor);
+        }
+
+        if (outerWallPrefab != null)
+        {
+            for (int x = -1; x <= width; x++)
+            {
+                for (int z = -1; z <= length; z++)
+                {
+                    // Only spawn on the perimeter
+                    if (x == -1 || x == width || z == -1 || z == length)
+                    {
+                        Vector3 position = new Vector3(x * tileSize, 0, z * tileSize) + transform.position;
+                        // Orient the wall based on which edge it is on
+                        Quaternion rot = Quaternion.identity;
+                        if (x == -1) rot = Quaternion.Euler(0, 90, 0);
+                        if (x == width) rot = Quaternion.Euler(0, -90, 0);
+                        if (z == -1) rot = Quaternion.Euler(0, 0, 0);
+                        if (z == length) rot = Quaternion.Euler(0, 180, 0);
+
+                        GameObject wall = Instantiate(outerWallPrefab, position, rot);
+                        wall.transform.SetParent(this.transform);
+                        spawnedObjects.Add(wall);
+                    }
+                }
+            }
+        }
     }
 }
