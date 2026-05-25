@@ -13,14 +13,10 @@ public class Keycard : CollectibleItem
 
     public override void OnInteract(PlayerController player)
     {
-        if (!isCollected)
-        {
-            isCollected = true;
-            player.PickUp(this);
-            Debug.Log($"[Keycard] Picked up {itemName} with Access Level {accessLevel}");
-            
-            // Turn off the object so it disappears from the world
-            gameObject.SetActive(false);
-        }
+        if (isCollected) return;
+
+        isCollected = true;
+        player.PickUp(this);
+        gameObject.SetActive(false);
     }
 }

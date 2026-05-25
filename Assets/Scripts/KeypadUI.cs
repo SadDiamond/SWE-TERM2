@@ -4,6 +4,10 @@ using TMPro; // Standard for text in Unity now
 
 public class KeypadUI : MonoBehaviour
 {
+    private static readonly Color SuccessColor = new Color(0.290f, 0.871f, 0.502f); // #4ADE80
+    private static readonly Color DangerColor = new Color(0.937f, 0.267f, 0.267f);  // #EF4444
+    private static readonly Color DefaultTextColor = new Color(0.910f, 0.910f, 0.910f); // #E8E8E8
+
     [Header("UI Elements")]
     public TMP_Text displayScreen;
 
@@ -59,31 +63,28 @@ public class KeypadUI : MonoBehaviour
     // Call this from a "Submit" or "Enter" button
     public void SubmitCode()
     {
-        if (activeTerminal != null)
+        if (activeTerminal == null) return;
+
+        bool success = activeTerminal.SubmitPasscode(currentInput, interactingPlayer);
+
+        if (success)
         {
-            bool success = activeTerminal.SubmitPasscode(currentInput, interactingPlayer);
-            
-            if (success)
-            {
-                displayScreen.color = Color.green;
-                displayScreen.text = "ACCEPTED";
-                // Close automatically after 1 second
-                Invoke(nameof(CloseKeypad), 1f); 
-            }
-            else
-            {
-                displayScreen.color = Color.red;
-                displayScreen.text = "DENIED";
-                currentInput = "";
-                // Reset color back to white after 1 sec
-                Invoke(nameof(UpdateScreen), 1f); 
-            }
+            displayScreen.color = SuccessColor;
+            displayScreen.text = "ACCEPTED";
+            Invoke(nameof(CloseKeypad), 1f);
+        }
+        else
+        {
+            displayScreen.color = DangerColor;
+            displayScreen.text = "DENIED";
+            currentInput = "";
+            Invoke(nameof(UpdateScreen), 1f);
         }
     }
 
     private void UpdateScreen()
     {
-        displayScreen.color = Color.white;
+        displayScreen.color = DefaultTextColor;
         displayScreen.text = currentInput == "" ? "ENTER CODE" : currentInput;
     }
 }

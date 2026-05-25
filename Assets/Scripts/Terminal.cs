@@ -9,26 +9,21 @@ public class Terminal : Interactable
 
     [Header("Connected Systems")]
     public Door connectedDoor; // The door this terminal will unlock
-    
+    public bool autoOpenConnectedDoor = true; // If false, only unlocks — player still has to open it
+
     // UnityEvents allow you to drag-and-drop anything in the Inspector
     // Example: turning off lights, playing sounds, etc.
-    public UnityEvent onPuzzleSolved; 
+    public UnityEvent onPuzzleSolved;
 
     protected override void Start()
     {
-        base.Start(); // Let the base class set up the outline generator
+        base.Start();
         UpdatePrompt();
     }
 
     public override void OnInteract(PlayerController player)
     {
-        if (isSolved)
-        {
-            Debug.Log("[Terminal] System already overriden.");
-            return;
-        }
-
-        Debug.Log("[Terminal] Accessing mainframe...");
+        if (isSolved) return;
         TriggerPuzzle(player);
     }
 
@@ -36,7 +31,6 @@ public class Terminal : Interactable
     public virtual void TriggerPuzzle(PlayerController player)
     {
         // Base terminal behaviour: instantly solves if no puzzle is defined.
-        Debug.Log("[Terminal] No specific puzzle set. Instantly bypassing security.");
         SolvePuzzle(player);
     }
 
@@ -45,20 +39,13 @@ public class Terminal : Interactable
     {
         isSolved = true;
         UpdatePrompt();
-        Debug.Log("[Terminal] Hack successful. Override accepted.");
 
-        // 1. Unlock the connected door remotely
         if (connectedDoor != null)
         {
             connectedDoor.isLocked = false;
-            if (!connectedDoor.isOpen)
-            {
-                connectedDoor.isOpen = true; // Auto-open it for dramatic effect
-            }
-            Debug.Log($"[Terminal] Unlocking remote door: {connectedDoor.gameObject.name}");
+            if (autoOpenConnectedDoor) connectedDoor.isOpen = true;
         }
 
-        // 2. Fire off any extra custom events we set in the Unity Inspector
         onPuzzleSolved?.Invoke();
     }
 

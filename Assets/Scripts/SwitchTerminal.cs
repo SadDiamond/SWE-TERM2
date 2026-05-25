@@ -7,35 +7,38 @@ public class SwitchTerminal : Terminal
     public bool[] targetSwitchStates = new bool[3] { true, false, true };
     private bool[] currentSwitchStates = new bool[3] { false, false, false };
 
+    public SwitchUI switchUIManager;
+
+    public int SwitchCount => currentSwitchStates.Length;
+    public bool IsSwitchOn(int index) => currentSwitchStates[index];
+
     public override void TriggerPuzzle(PlayerController player)
     {
-        Debug.Log("[SwitchTerminal] UI Opened. Player must configure power routing switches.");
+        if (switchUIManager == null)
+        {
+            Debug.LogError("[SwitchTerminal] Switch UI Manager is not assigned in the Inspector!");
+            return;
+        }
+
+        switchUIManager.OpenSwitchPanel(this, player);
     }
 
     // Called by UI switch buttons
     public void ToggleSwitch(int switchIndex, PlayerController player)
     {
-        if (switchIndex >= 0 && switchIndex < currentSwitchStates.Length)
-        {
-            currentSwitchStates[switchIndex] = !currentSwitchStates[switchIndex];
-            Debug.Log($"[SwitchTerminal] Switch {switchIndex} toggled to {currentSwitchStates[switchIndex]}");
-            
-            CheckWinCondition(player);
-        }
+        if (switchIndex < 0 || switchIndex >= currentSwitchStates.Length) return;
+
+        currentSwitchStates[switchIndex] = !currentSwitchStates[switchIndex];
+        CheckWinCondition(player);
     }
 
     private void CheckWinCondition(PlayerController player)
     {
         for (int i = 0; i < targetSwitchStates.Length; i++)
         {
-            if (currentSwitchStates[i] != targetSwitchStates[i])
-            {
-                return; // At least one switch is wrong, abort check
-            }
+            if (currentSwitchStates[i] != targetSwitchStates[i]) return;
         }
 
-        // If loop completes, all switches match!
-        Debug.Log("[SwitchTerminal] Power rerouted successfully!");
-        SolvePuzzle(player); // Uses parent method
+        SolvePuzzle(player);
     }
 }

@@ -11,31 +11,21 @@ public class KeypadTerminal : Terminal
 
     public override void TriggerPuzzle(PlayerController player)
     {
-        Debug.Log($"[KeypadTerminal] UI Opened. Waiting for player to enter code.");
-        
-        if (keypadUIManager != null)
-        {
-            keypadUIManager.OpenKeypad(this, player);
-        }
-        else
+        if (keypadUIManager == null)
         {
             Debug.LogError("[KeypadTerminal] Keypad UI Manager is not assigned in the Inspector!");
+            return;
         }
+
+        keypadUIManager.OpenKeypad(this, player);
     }
 
     // Called by the KeypadUI when the player hits "SUBMIT"
     public bool SubmitPasscode(string inputCode, PlayerController player)
     {
-        if (inputCode == passcode)
-        {
-            Debug.Log("[KeypadTerminal] Passcode Accepted!");
-            SolvePuzzle(player); // Use the parent class's solve method
-            return true;
-        }
-        else
-        {
-            Debug.Log("[KeypadTerminal] Passcode Denied!");
-            return false;
-        }
+        if (inputCode != passcode) return false;
+
+        SolvePuzzle(player);
+        return true;
     }
 }

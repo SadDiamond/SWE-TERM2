@@ -14,7 +14,6 @@ public class PlayerController : MonoBehaviour
     [Header("Look")]
     public float mouseSensitivity = 100f;
     public Transform cameraTransform;
-    public float mouseSmoothTime = 0.03f; // Added for buttery smooth mouse
 
     [Header("Inventory")]
     public System.Collections.Generic.List<CollectibleItem> inventory = new System.Collections.Generic.List<CollectibleItem>();
@@ -22,10 +21,6 @@ public class PlayerController : MonoBehaviour
     private CharacterController controller;
     private Vector3 velocity;
     private float xRotation = 0f;
-    
-    // Variables for mouse smoothing
-    private Vector2 currentMouseDelta;
-    private Vector2 mouseDeltaVelocity;
 
     private Interactable currentInteractable;
     public float interactionDistance = 3f;
@@ -89,67 +84,52 @@ public class PlayerController : MonoBehaviour
         return false; // Player doesn't have a keycard with that level
     }
 
-void HandleInteraction()
-{
-    // Cast a ray from the camera forward
-    Ray ray = new Ray(cameraTransform.position, cameraTransform.forward);
-    RaycastHit hit;
-
-    if (Physics.Raycast(ray, out hit, interactionDistance, interactableLayer))
+    void HandleInteraction()
     {
-        Interactable interactable = hit.collider.GetComponent<Interactable>();
+        Ray ray = new Ray(cameraTransform.position, cameraTransform.forward);
+        Interactable interactable = null;
 
-        if (interactable != null)
+        if (Physics.Raycast(ray, out RaycastHit hit, interactionDistance, interactableLayer))
         {
-            // Looking at something interactable
-            if (currentInteractable != interactable)
-            {
-                if (currentInteractable != null)
-                    currentInteractable.OnLoseFocus();
-
-                currentInteractable = interactable;
-                currentInteractable.OnFocus();
-
-                if (interactionPromptText != null)
-                {
-                    interactionPromptText.text = currentInteractable.promptMessage;
-                    interactionPromptText.gameObject.SetActive(true);
-                }
-            }
-
-            // Press E to interact
-            if (UnityEngine.InputSystem.Keyboard.current.eKey.wasPressedThisFrame)
-            {
-                currentInteractable.OnInteract(this);
-                
-                // Update the text in case interacting changed it (e.g. "Terminal Offline" instead of "Press E")
-                if (interactionPromptText != null)
-                {
-                    interactionPromptText.text = currentInteractable.promptMessage;
-                }
-            }
+            interactable = hit.collider.GetComponent<Interactable>();
         }
-        else
+
+        if (interactable == null)
         {
-            // Not looking at anything interactable
-            if (currentInteractable != null)
-            {
-                currentInteractable.OnLoseFocus();
-                currentInteractable = null;
-                if (interactionPromptText != null) interactionPromptText.gameObject.SetActive(false);
-            }
+            ClearFocus();
+            return;
+        }
+
+        if (currentInteractable != interactable)
+        {
+            if (currentInteractable != null) currentInteractable.OnLoseFocus();
+            currentInteractable = interactable;
+            currentInteractable.OnFocus();
+            ShowPrompt(currentInteractable.promptMessage);
+        }
+
+        if (UnityEngine.InputSystem.Keyboard.current.eKey.wasPressedThisFrame)
+        {
+            currentInteractable.OnInteract(this);
+            // Refresh prompt — interacting may have changed it (e.g. "Terminal Offline")
+            if (currentInteractable != null) ShowPrompt(currentInteractable.promptMessage);
         }
     }
-    else
+
+    void ClearFocus()
     {
-        if (currentInteractable != null)
-        {
-            currentInteractable.OnLoseFocus();
-            currentInteractable = null;
-            if (interactionPromptText != null) interactionPromptText.gameObject.SetActive(false);
-        }
+        if (currentInteractable == null) return;
+        currentInteractable.OnLoseFocus();
+        currentInteractable = null;
+        if (interactionPromptText != null) interactionPromptText.gameObject.SetActive(false);
     }
-}
+
+    void ShowPrompt(string message)
+    {
+        if (interactionPromptText == null) return;
+        interactionPromptText.text = message;
+        interactionPromptText.gameObject.SetActive(true);
+    }
 
     void HandleMovement()
     {

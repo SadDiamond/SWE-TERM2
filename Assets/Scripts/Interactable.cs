@@ -37,19 +37,17 @@ public abstract class Interactable : MonoBehaviour
     // Called when player looks at the object
     public virtual void OnFocus()
     {
-        Debug.Log($"[Interactable] OnFocus on {gameObject.name}");
         if (highlightRenderer != null && outlineMaterial != null)
         {
-            highlightRenderer.materials = hoverMaterials; // Append the outline shader
+            highlightRenderer.materials = hoverMaterials;
         }
     }
 
     public virtual void OnLoseFocus()
     {
-        Debug.Log($"[Interactable] OnLoseFocus on {gameObject.name}");
         if (highlightRenderer != null && outlineMaterial != null)
         {
-            highlightRenderer.materials = originalMaterials; // Remove the outline shader
+            highlightRenderer.materials = originalMaterials;
         }
     }
 }
