@@ -1,0 +1,24 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f7aabfe9405cc49f385f06064680d745, type: 3}
+  m_Name: RampNORTH
+  m_EditorClassIdentifier: Assembly-CSharp::WFCTile3D
+  prefab: {fileID: 2640970425007444175, guid: 282786eb7fd4f4edf9a2c2436d805e06, type: 3}
+  weight: 15
+  spawnRotation: {x: 0, y: 0, z: 0}
+  rotatable: 1
+  topSocket: j_air
+  bottomSocket: j_gnd|j_block
+  northSocket: j_wall_face
+  eastSocket: j_wall_face
+  southSocket: j_air_side
+  westSocket: j_wall_face

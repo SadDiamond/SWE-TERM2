@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 983710476ea774e48b020ee35d3ef3ec, type: 3}
   m_Name: Jumppad
   m_EditorClassIdentifier: Assembly-CSharp::WFCTile
-  prefab: {fileID: 2831833282263026225, guid: de78e9f56581843fab8f9d3dc638fad1, type: 3}
+  prefab: {fileID: 3893174957540252131, guid: de78e9f56581843fab8f9d3dc638fad1, type: 3}
   spawnRotation: {x: 0, y: 0, z: 0}
   weight: 5
   sockets:

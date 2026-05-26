@@ -58,6 +58,7 @@ public class PlayerController : MonoBehaviour
     private bool isSlamming;
     private Vector3 momentum;
     private float lastFrameVelocityY;
+    private float disableGroundCheckTimer = 0f;
 
     private Interactable currentInteractable;
     public float interactionDistance = 3f;
@@ -112,19 +113,29 @@ public class PlayerController : MonoBehaviour
     // --- External Physics Methods ---
     public void LaunchPlayer(Vector3 launchVelocity)
     {
+        Debug.Log($"[PlayerController] LaunchPlayer called with velocity: {launchVelocity}");
+        
+        // Force the player to be airborne for a split second so friction/gravity doesn't instantly cancel the jump pad
+        disableGroundCheckTimer = 0.2f;
+        
+        // Disable CharacterController snapping by physically pushing the player off the ground first
+        controller.Move(Vector3.up * 0.1f);
+
         // Cancel downward gravity immediately
         if (velocity.y < 0) velocity.y = 0;
         
         // Add vertical height
-        velocity.y += launchVelocity.y;
+        velocity.y = launchVelocity.y; // Override rather than add so double-jumping pads don't compound infinitely
         
         // Add forward/horizontal momentum
         momentum += new Vector3(launchVelocity.x, 0, launchVelocity.z);
         
-        // Put player in falling state so they aren't stuck sliding etc
-        isGrounded = false;
+        // Put player in falling state so they aren't stuck sliding
         isSliding = false;
         controller.height = defaultHeight;
+
+        // Force ground state false immediately so unity's CharacterController doesn't snap us back
+        lastFrameVelocityY = velocity.y;
     }
 
     // --- Inventory System Methods ---
@@ -194,7 +205,16 @@ public class PlayerController : MonoBehaviour
 
     void HandleMovement()
     {
-        isGrounded = controller.isGrounded;
+        if (disableGroundCheckTimer > 0)
+        {
+            disableGroundCheckTimer -= Time.deltaTime;
+            isGrounded = false;
+        }
+        else
+        {
+            isGrounded = controller.isGrounded;
+        }
+        
         float fallSpeed = lastFrameVelocityY; // Capture before we reset it
 
         if (isGrounded && velocity.y < 0)
