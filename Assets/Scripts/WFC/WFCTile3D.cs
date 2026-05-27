@@ -3,6 +3,19 @@ using UnityEngine;
 [CreateAssetMenu(fileName = "New 3D WFC Tile", menuName = "WFC/3D Tile")]
 public class WFCTile3D : ScriptableObject
 {
+    public enum MacroTileRole
+    {
+        Unknown,
+        Floor,
+        Wall,
+        Structural,
+        Decoration,
+        Marker
+    }
+
+    [Header("Macro Role (used by macro pass)")]
+    public MacroTileRole macroRole = MacroTileRole.Unknown;
+
     public GameObject prefab;
     public int weight = 10;
     public Vector3 spawnRotation = Vector3.zero;

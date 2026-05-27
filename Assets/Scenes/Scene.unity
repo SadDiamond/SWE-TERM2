@@ -412,6 +412,53 @@ PrefabInstance:
     m_AddedGameObjects: []
     m_AddedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: aa07a9d6ce8a4476791169b6c1ee788b, type: 3}
+--- !u!1 &399326040
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 399326042}
+  - component: {fileID: 399326041}
+  m_Layer: 0
+  m_Name: PlayerSpawner
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &399326041
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 399326040}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a1045a49eb9f64d3bbf32d2621558a26, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::PlayerSpawner
+  wfcGenerator: {fileID: 1833600092}
+  playerTransform: {fileID: 1799279993}
+  heightAboveSpawn: 2
+--- !u!4 &399326042
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 399326040}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: -9, y: -0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &604712593
 GameObject:
   m_ObjectHideFlags: 0
@@ -452,21 +499,25 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 0}
     m_Modifications:
+    - target: {fileID: 310192510025744624, guid: 16f69749757e8440fad6d08c9e04509f, type: 3}
+      propertyPath: m_Radius
+      value: 0.4
+      objectReference: {fileID: 0}
     - target: {fileID: 1699022211330068610, guid: 16f69749757e8440fad6d08c9e04509f, type: 3}
       propertyPath: m_Name
       value: Player
       objectReference: {fileID: 0}
     - target: {fileID: 2427131302796508565, guid: 16f69749757e8440fad6d08c9e04509f, type: 3}
       propertyPath: m_LocalPosition.x
-      value: 0
+      value: 8
       objectReference: {fileID: 0}
     - target: {fileID: 2427131302796508565, guid: 16f69749757e8440fad6d08c9e04509f, type: 3}
       propertyPath: m_LocalPosition.y
-      value: 20
+      value: 15
       objectReference: {fileID: 0}
     - target: {fileID: 2427131302796508565, guid: 16f69749757e8440fad6d08c9e04509f, type: 3}
       propertyPath: m_LocalPosition.z
-      value: 15
+      value: 8
       objectReference: {fileID: 0}
     - target: {fileID: 2427131302796508565, guid: 16f69749757e8440fad6d08c9e04509f, type: 3}
       propertyPath: m_LocalRotation.w
@@ -501,6 +552,11 @@ PrefabInstance:
     m_AddedGameObjects: []
     m_AddedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: 16f69749757e8440fad6d08c9e04509f, type: 3}
+--- !u!4 &1799279993 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: 2427131302796508565, guid: 16f69749757e8440fad6d08c9e04509f, type: 3}
+  m_PrefabInstance: {fileID: 1169071327}
+  m_PrefabAsset: {fileID: 0}
 --- !u!1 &1833600089
 GameObject:
   m_ObjectHideFlags: 0
@@ -511,8 +567,12 @@ GameObject:
   m_Component:
   - component: {fileID: 1833600091}
   - component: {fileID: 1833600092}
+  - component: {fileID: 1833600095}
   - component: {fileID: 1833600094}
   - component: {fileID: 1833600093}
+  - component: {fileID: 1833600096}
+  - component: {fileID: 1833600098}
+  - component: {fileID: 1833600097}
   m_Layer: 0
   m_Name: GeneratorCore
   m_TagString: Untagged
@@ -547,11 +607,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 95d9e6e4c5c244fa887e8049e0a664b6, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::WFCGenerator3D
-  width: 25
-  height: 20
-  length: 25
-  tileSizeXZ: 4
-  tileSizeY: 4
+  width: 40
+  height: 8
+  length: 40
+  tileSizeXZ: 1
+  tileSizeY: 1
   availableTiles:
   - {fileID: 11400000, guid: 72ab5b7a50de94dfca41c277fff0ab7a, type: 2}
   - {fileID: 11400000, guid: e2c13761fdfeb424ba8da8933449d02c, type: 2}
@@ -573,17 +633,33 @@ MonoBehaviour:
   floorDecorationDensity: 0.2
   generateGoldenPath: 0
   goldenPathTile: {fileID: 0}
-  macroGenerator: {fileID: 1833600094}
+  macroGenerator: {fileID: 1833600098}
   postProcessors:
   - {fileID: 1833600093}
+  - {fileID: 1833600096}
+  - {fileID: 1833600097}
   seed: 0
   wallMassTile: {fileID: 11400000, guid: c94b8812b469d467395c1837f7f96e10, type: 2}
   wallCapTile: {fileID: 11400000, guid: 72ab5b7a50de94dfca41c277fff0ab7a, type: 2}
   spawnMarkerTile: {fileID: 11400000, guid: 602167e2fbbe64cd0830c4105c082806, type: 2}
   goalMarkerTile: {fileID: 11400000, guid: d0d576edcd7e14dd9809bf154d3ec22d, type: 2}
   airTile: {fileID: 11400000, guid: e2c13761fdfeb424ba8da8933449d02c, type: 2}
+  platformTile: {fileID: 11400000, guid: 7754d48159f0645a185af6e51e09b117, type: 2}
+  mezzanineTile: {fileID: 11400000, guid: 679dd6c89001248419e796b0b41e4808, type: 2}
+  pitTile: {fileID: 11400000, guid: d05d09d5c3bb74f4c9d8944f8c8c588a, type: 2}
+  highCoverTile: {fileID: 11400000, guid: af56e0dcb3d954dd88b0d00bdf46a252, type: 2}
+  lowCoverTile: {fileID: 11400000, guid: 8e28ef3756292449c9a5cccb1bb6aa79, type: 2}
+  hazardTile: {fileID: 11400000, guid: f5f1351fbc94846da9ac10ebc1ef9e28, type: 2}
+  terrainTile: {fileID: 11400000, guid: 0a5e1f161e5a5432ca7e5d3d95c7296e, type: 2}
+  hillTile: {fileID: 11400000, guid: a14e3411f3dca434986c0877f8827fe1, type: 2}
+  microDetailTile: {fileID: 11400000, guid: 56ae98ec9a2ce47158e6c0c4c3d08d6f, type: 2}
+  microCrateTile: {fileID: 11400000, guid: 9d27b8bdc6fc4440996351a3feaadbfc, type: 2}
+  debugMacroRegions: 1
   animateSpawning: 0
   timeBetweenSpawns: 0.001
+  autoSpawnPlayer: 1
+  playerToSpawn: {fileID: 0}
+  playerSpawnHeightOffset: 2
 --- !u!114 &1833600093
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -607,13 +683,96 @@ MonoBehaviour:
   m_GameObject: {fileID: 1833600089}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 843d63a45684c43bf9bb232a07755193, type: 3}
+  m_Script: {fileID: 11500000, guid: dca4f8116bc494621b4f803028a6bef8, type: 3}
   m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::RoomsAndCorridorsMacro
-  minRoomSize: 3
-  maxRoomSize: 6
-  maxRooms: 5
-  maxPlacementAttempts: 30
+  m_EditorClassIdentifier: Assembly-CSharp::RoomProgressionManager
+  wfcGenerator: {fileID: 1833600092}
+  hangarGenerator: {fileID: 1833600098}
+  currentRoomIndex: 0
+  roomsPerTheme: 5
+--- !u!114 &1833600095
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1833600089}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d902028f260384dc7bf6646e2f8f780b, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::SequentialRoomMacro
+  roomType: 0
+  minPlatformSize: 2
+  maxPlatformSize: 4
+  platformCount: 3
+  minimumInfrastructureScore: 0.869
+  generationRetries: 8
+  wallThickness: 2
+  mainHallWidth: 5
+  baySpacing: 7
+  bayDepth: 4
+  supportColumnSpacing: 6
+  exitPitRadius: 1
+  roomNumber: 1
+--- !u!114 &1833600096
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1833600089}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 715408675ad2c4ac39a99c89ff0bc2ca, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::MicroPopulator
+  floorVariantProbability: 0.03
+  centerClearRadius: 0.32
+  protectExitPit: 1
+--- !u!114 &1833600097
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1833600089}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 5cfec0269591f48af9fa4ac7da0ad39c, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::BossRoomPreset
+  platformTile: {fileID: 0}
+  pillarTile: {fileID: 0}
+  forceInAllRooms: 0
+--- !u!114 &1833600098
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1833600089}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d95569b2ab2394f73a1da86b5f54d18b, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::HangarGenerator
+  roomType: 0
+  generationRetries: 10
+  minAcceptableScore: 0.75
+  wallThickness: 2
+  ribSpacing: 6
+  alcoveDepth: 3
+  exitPitRadius: 1
+  targetWallRatio: 0.43
+  targetStructuralCoverage: 0.1
+  platformChance: 0.2
+  mezzanineChance: 0.35
+  pillarDensity: 0.05
+  pitDensity: 0.05
+  terrainFrequency: 0.12
+  hillThreshold: 0.72
+  bumpThreshold: 0.58
 --- !u!1001 &1996579834
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -883,3 +1042,4 @@ SceneRoots:
   - {fileID: 1169071327}
   - {fileID: 315906176}
   - {fileID: 1833600091}
+  - {fileID: 399326042}

@@ -39,6 +39,16 @@
       "source": "registry",
       "testable": false
     },
+    "com.unity.ai.assistant@2.9.0-pre.2": {
+      "name": "com.unity.ai.assistant",
+      "displayName": "Assistant",
+      "resolvedPath": "/Users/gordonzhao/Documents/CPT/SWE-TERM2/Library/PackageCache/com.unity.ai.assistant@bde8e124bc72",
+      "fingerprint": "bde8e124bc72d38920ef7066a87869c404b95013",
+      "editorCompatibility": "6000.0.60f1",
+      "version": "2.9.0-pre.2",
+      "source": "registry",
+      "testable": false
+    },
     "com.unity.ai.navigation@2.0.12": {
       "name": "com.unity.ai.navigation",
       "displayName": "AI Navigation",
@@ -165,6 +175,16 @@
       "editorCompatibility": "6000.4.0a1",
       "version": "17.4.0",
       "source": "builtin",
+      "testable": false
+    },
+    "com.unity.services.authentication@3.6.1": {
+      "name": "com.unity.services.authentication",
+      "displayName": "Authentication",
+      "resolvedPath": "/Users/gordonzhao/Documents/CPT/SWE-TERM2/Library/PackageCache/com.unity.services.authentication@1cdc3224fb13",
+      "fingerprint": "1cdc3224fb13e5a49ee5c22cb26bcf8a87799c50",
+      "editorCompatibility": "2021.3.0a1",
+      "version": "3.6.1",
+      "source": "registry",
       "testable": false
     },
     "com.unity.test-framework@1.6.0": {
@@ -515,6 +535,26 @@
       "source": "builtin",
       "testable": false
     },
+    "com.unity.services.core@1.16.0": {
+      "name": "com.unity.services.core",
+      "displayName": "Services Core",
+      "resolvedPath": "/Users/gordonzhao/Documents/CPT/SWE-TERM2/Library/PackageCache/com.unity.services.core@8ba50f624741",
+      "fingerprint": "8ba50f62474188022a50a78f721a5d30dfba0c3e",
+      "editorCompatibility": "2022.3.0a1",
+      "version": "1.16.0",
+      "source": "registry",
+      "testable": false
+    },
+    "com.unity.nuget.newtonsoft-json@3.2.2": {
+      "name": "com.unity.nuget.newtonsoft-json",
+      "displayName": "Newtonsoft Json",
+      "resolvedPath": "/Users/gordonzhao/Documents/CPT/SWE-TERM2/Library/PackageCache/com.unity.nuget.newtonsoft-json@4dfd81071c64",
+      "fingerprint": "4dfd81071c6475bb9c114f920bfb4e3fc5e28c6a",
+      "editorCompatibility": "2018.4.0a1",
+      "version": "3.2.2",
+      "source": "registry",
+      "testable": false
+    },
     "com.unity.render-pipelines.core@17.4.0": {
       "name": "com.unity.render-pipelines.core",
       "displayName": "Scriptable Render Pipeline Core",
@@ -543,16 +583,6 @@
       "editorCompatibility": "6000.4.0a1",
       "version": "17.4.0",
       "source": "builtin",
-      "testable": false
-    },
-    "com.unity.services.core@1.16.0": {
-      "name": "com.unity.services.core",
-      "displayName": "Services Core",
-      "resolvedPath": "/Users/gordonzhao/Documents/CPT/SWE-TERM2/Library/PackageCache/com.unity.services.core@8ba50f624741",
-      "fingerprint": "8ba50f62474188022a50a78f721a5d30dfba0c3e",
-      "editorCompatibility": "2022.3.0a1",
-      "version": "1.16.0",
-      "source": "registry",
       "testable": false
     },
     "com.unity.settings-manager@2.1.1": {
@@ -635,6 +665,26 @@
       "source": "registry",
       "testable": false
     },
+    "com.unity.mathematics@1.3.3": {
+      "name": "com.unity.mathematics",
+      "displayName": "Mathematics",
+      "resolvedPath": "/Users/gordonzhao/Documents/CPT/SWE-TERM2/Library/PackageCache/com.unity.mathematics@19a9377c4ffa",
+      "fingerprint": "19a9377c4ffa59370edad3e6a34e4445529badde",
+      "editorCompatibility": "2021.3.0a1",
+      "version": "1.3.3",
+      "source": "registry",
+      "testable": false
+    },
+    "com.unity.cloud.gltfast@6.14.1": {
+      "name": "com.unity.cloud.gltfast",
+      "displayName": "Unity glTFast",
+      "resolvedPath": "/Users/gordonzhao/Documents/CPT/SWE-TERM2/Library/PackageCache/com.unity.cloud.gltfast@0847aee0f6da",
+      "fingerprint": "0847aee0f6da9f7f63ea95a8a3ea4906dba73079",
+      "editorCompatibility": "2021.3.46f1",
+      "version": "6.14.1",
+      "source": "registry",
+      "testable": false
+    },
     "com.unity.searcher@4.9.4": {
       "name": "com.unity.searcher",
       "displayName": "Searcher",
@@ -655,16 +705,6 @@
       "source": "registry",
       "testable": false
     },
-    "com.unity.mathematics@1.3.3": {
-      "name": "com.unity.mathematics",
-      "displayName": "Mathematics",
-      "resolvedPath": "/Users/gordonzhao/Documents/CPT/SWE-TERM2/Library/PackageCache/com.unity.mathematics@19a9377c4ffa",
-      "fingerprint": "19a9377c4ffa59370edad3e6a34e4445529badde",
-      "editorCompatibility": "2021.3.0a1",
-      "version": "1.3.3",
-      "source": "registry",
-      "testable": false
-    },
     "com.unity.collections@6.4.0": {
       "name": "com.unity.collections",
       "displayName": "Collections",
@@ -673,16 +713,6 @@
       "editorCompatibility": "6000.4.0a1",
       "version": "6.4.0",
       "source": "builtin",
-      "testable": false
-    },
-    "com.unity.nuget.newtonsoft-json@3.2.2": {
-      "name": "com.unity.nuget.newtonsoft-json",
-      "displayName": "Newtonsoft Json",
-      "resolvedPath": "/Users/gordonzhao/Documents/CPT/SWE-TERM2/Library/PackageCache/com.unity.nuget.newtonsoft-json@4dfd81071c64",
-      "fingerprint": "4dfd81071c6475bb9c114f920bfb4e3fc5e28c6a",
-      "editorCompatibility": "2018.4.0a1",
-      "version": "3.2.2",
-      "source": "registry",
       "testable": false
     },
     "com.autodesk.fbx@5.1.3": {

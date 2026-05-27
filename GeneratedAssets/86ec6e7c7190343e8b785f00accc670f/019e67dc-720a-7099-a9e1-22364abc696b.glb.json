@@ -1,0 +1,23 @@
+{
+    "asset": "86ec6e7c7190343e8b785f00accc670f",
+    "fileName": "019e67dc-720a-7099-a9e1-22364abc696b.glb",
+    "prompt": "low poly sci-fi computer terminal console, simple geometry, flat shaded, matching reference style",
+    "negativePrompt": "",
+    "model": "model3d-tripo-p1",
+    "modelName": "Tripo P1",
+    "customSeed": -1,
+    "w3CTraceId": "",
+    "feedback": 0,
+    "refinementMode": "Generation",
+    "promptImageReferenceGuid": "637cc46bd67a74ab1937cc8a88686298",
+    "modelReferenceGuid": "",
+    "multiviewFrontGuid": "",
+    "multiviewBackGuid": "",
+    "multiviewLeftGuid": "",
+    "multiviewRightGuid": "",
+    "multiviewTopGuid": "",
+    "multiviewBottomGuid": "",
+    "multiviewLeftFrontGuid": "",
+    "multiviewRightFrontGuid": "",
+    "faceLimit": -1
+}

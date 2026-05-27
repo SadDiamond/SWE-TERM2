@@ -12,10 +12,12 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: f7aabfe9405cc49f385f06064680d745, type: 3}
   m_Name: RampNORTH
   m_EditorClassIdentifier: Assembly-CSharp::WFCTile3D
+  macroRole: 4
   prefab: {fileID: 2640970425007444175, guid: 282786eb7fd4f4edf9a2c2436d805e06, type: 3}
   weight: 15
   spawnRotation: {x: 0, y: 0, z: 0}
   rotatable: 1
+  maxJitter: {x: 0, y: 0, z: 0}
   topSocket: j_air
   bottomSocket: j_gnd|j_block
   northSocket: j_wall_face

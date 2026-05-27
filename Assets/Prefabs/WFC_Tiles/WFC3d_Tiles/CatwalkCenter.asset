@@ -12,9 +12,12 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: f7aabfe9405cc49f385f06064680d745, type: 3}
   m_Name: CatwalkCenter
   m_EditorClassIdentifier: Assembly-CSharp::WFCTile3D
+  macroRole: 4
   prefab: {fileID: 6299320958882718836, guid: 61282640f209c4305bfc936dcc953002, type: 3}
   weight: 5
   spawnRotation: {x: 0, y: 0, z: 0}
+  rotatable: 0
+  maxJitter: {x: 0, y: 0, z: 0}
   topSocket: air
   bottomSocket: air
   northSocket: catwalk_edge

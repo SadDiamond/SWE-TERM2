@@ -12,10 +12,12 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: f7aabfe9405cc49f385f06064680d745, type: 3}
   m_Name: Pit
   m_EditorClassIdentifier: Assembly-CSharp::WFCTile3D
+  macroRole: 5
   prefab: {fileID: 6320911804539059529, guid: bc4866c5f64604a538a304ac2019f038, type: 3}
   weight: 10
   spawnRotation: {x: 0, y: 0, z: 0}
   rotatable: 0
+  maxJitter: {x: 0, y: 0, z: 0}
   topSocket: j_air|j_block
   bottomSocket: j_base
   northSocket: j_floor_side|j_wall_face

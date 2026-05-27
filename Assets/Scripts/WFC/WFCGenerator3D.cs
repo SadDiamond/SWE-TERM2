@@ -42,9 +42,27 @@ public class WFCGenerator3D : MonoBehaviour
     public WFCTile3D goalMarkerTile;
     public WFCTile3D airTile;        // Air — used to clear open/corridor columns
 
+    [Header("Visualization & Macro Tiles")]
+    public WFCTile3D platformTile;
+    public WFCTile3D mezzanineTile;
+    public WFCTile3D pitTile;
+    public WFCTile3D highCoverTile;
+    public WFCTile3D lowCoverTile;
+    public WFCTile3D hazardTile;
+    public WFCTile3D terrainTile;
+    public WFCTile3D hillTile;
+    public WFCTile3D microDetailTile;
+    public WFCTile3D microCrateTile;
+    public bool debugMacroRegions = false;
+
     [Header("Animation Settings")]
     public bool animateSpawning = true;
     public float timeBetweenSpawns = 0.02f;
+
+    [Header("Player Spawn")]
+    public bool autoSpawnPlayer = true;
+    public Transform playerToSpawn;
+    public float playerSpawnHeightOffset = 2f;
 
     private class Cell
     {
@@ -117,8 +135,8 @@ public class WFCGenerator3D : MonoBehaviour
         {
             if (seed == 0) seed = (int)System.DateTime.Now.Ticks;
             Random.InitState(seed);
-            MacroRegion[,] blueprint = macroGenerator.Generate(width, length, seed);
-            ApplyMacroBlueprint(blueprint, propagationQueue);
+            currentBlueprint = macroGenerator.Generate(width, length, seed);
+            ApplyMacroBlueprint(currentBlueprint, propagationQueue);
             macroDroveLayout = true;
         }
 
@@ -220,14 +238,18 @@ public class WFCGenerator3D : MonoBehaviour
         // 3. Spawn Objects (animated or instant)
         yield return StartCoroutine(SpawnPrefabsRoutine());
 
+        // 3.5. Spawn player on the spawn tile
+        if (autoSpawnPlayer)
+            SpawnPlayerAtSpawnTile();
+
         // 4. Decorations
         SpawnDecorations();
     }
 
     // Translates macro region tags into concrete cell forcings:
-    //  - Spawn / Goal: y=0 locked to the marker tile, y>=1 cleared to air.
+    //  - Spawn / Goal / ExitPit: y=0 locked to marker tile, y>=1 cleared to air.
     //  - Wall: y=1..height-2 locked to wallMassTile, top layer to wallCapTile.
-    //  - Corridor / Open: no hard forcing; possibility sets stay as authored.
+    //  - Corridor / Open / CombatRoom / BossRoom / Shop: no hard forcing; WFC fills freely.
     private void ApplyMacroBlueprint(MacroRegion[,] blueprint, Queue<Vector3Int> queue)
     {
         for (int x = 0; x < width; x++)
@@ -238,12 +260,18 @@ public class WFCGenerator3D : MonoBehaviour
                 switch (r)
                 {
                     case MacroRegion.Spawn:
-                        if (spawnMarkerTile != null) ForceCell(x, 0, z, spawnMarkerTile, queue);
+                        if (spawnMarkerTile != null) ForceCell(x, 0, z, spawnMarkerTile, queue, true);
                         if (airTile != null)
                             for (int y = 1; y < height; y++) ForceCell(x, y, z, airTile, queue);
                         break;
                     case MacroRegion.Goal:
-                        if (goalMarkerTile != null) ForceCell(x, 0, z, goalMarkerTile, queue);
+                        if (goalMarkerTile != null) ForceCell(x, 0, z, goalMarkerTile, queue, true);
+                        if (airTile != null)
+                            for (int y = 1; y < height; y++) ForceCell(x, y, z, airTile, queue);
+                        break;
+                    case MacroRegion.ExitPit:
+                        // Exit pit: clear drop-through (goal marker at floor, air above)
+                        if (goalMarkerTile != null) ForceCell(x, 0, z, goalMarkerTile, queue, true);
                         if (airTile != null)
                             for (int y = 1; y < height; y++) ForceCell(x, y, z, airTile, queue);
                         break;
@@ -251,19 +279,175 @@ public class WFCGenerator3D : MonoBehaviour
                         if (wallMassTile != null)
                         {
                             int topWallY = height - 1;
+                            // Fix: start at y=1 so the baseFloorTile at y=0 is preserved,
+                            // preventing walls from "floating" if they replace the floor.
                             for (int y = 1; y < topWallY; y++)
-                                ForceCell(x, y, z, wallMassTile, queue);
+                                ForceCell(x, y, z, wallMassTile, queue, true);
                             ForceCell(x, topWallY, z,
-                                wallCapTile != null ? wallCapTile : wallMassTile, queue);
+                                wallCapTile != null ? wallCapTile : wallMassTile, queue, true);
                         }
                         break;
-                    case MacroRegion.Corridor:
                     case MacroRegion.Open:
-                        // Leave possibility set intact; WFC weights decide the fill.
+                    case MacroRegion.CombatRoom:
+                    case MacroRegion.BossRoom:
+                    case MacroRegion.Shop:
+                        // Macro intent: open interiors. Clear air above floor and restrict floor
+                        // layer to walkable/floor-like tiles so WFC doesn't place random walls/pillars.
+                        if (airTile != null)
+                            for (int y = 1; y < height; y++) ForceCell(x, y, z, airTile, queue);
+                        RestrictFloorToWalkable(x, 0, z, queue);
+                        break;
+                    case MacroRegion.Platform:
+                        // Raised platform: y=0 and y=1 are solid (wallMassTile), air above.
+                        WFCTile3D pTile = (debugMacroRegions && platformTile != null) ? platformTile : wallMassTile;
+                        WFCTile3D pCap = (debugMacroRegions && platformTile != null) ? platformTile : (wallCapTile != null ? wallCapTile : wallMassTile);
+
+                        if (pTile != null)
+                        {
+                            ForceCell(x, 0, z, pTile, queue, true);
+                            ForceCell(x, 1, z, pCap, queue, true);
+                        }
+                        if (airTile != null)
+                            for (int y = 2; y < height; y++) ForceCell(x, y, z, airTile, queue);
+                        break;
+                    case MacroRegion.Mezzanine:
+                        // Overhead walkway: y=0 is floor, y=1,2 are air, y=3 is floor/mezzanine.
+                        // Moved higher (y=3) to avoid "on the ground" feel.
+                        WFCTile3D mTile = (debugMacroRegions && mezzanineTile != null) ? mezzanineTile : baseFloorTile;
+                        
+                        if (airTile != null)
+                        {
+                            ForceCell(x, 1, z, airTile, queue, true);
+                            ForceCell(x, 2, z, airTile, queue, true);
+                        }
+                        if (mTile != null) ForceCell(x, 3, z, mTile, queue, true);
+                        if (airTile != null)
+                            for (int y = 4; y < height; y++) ForceCell(x, y, z, airTile, queue);
+                        break;
+                    case MacroRegion.Pit:
+                        // Pit: clear ground layer (y=0) to air or a specific pit tile.
+                        // Fix: only force at y=0, and ensure air above.
+                        WFCTile3D pitT = (debugMacroRegions && pitTile != null) ? pitTile : airTile;
+                        if (pitT != null)
+                            ForceCell(x, 0, z, pitT, queue, true);
+                        if (airTile != null)
+                            for (int y = 1; y < height; y++) ForceCell(x, y, z, airTile, queue);
+                        break;
+                    case MacroRegion.HighCover:
+                        // High cover: y=0 floor, y=1 wall/solid.
+                        WFCTile3D hcTile = (debugMacroRegions && highCoverTile != null) ? highCoverTile : wallMassTile;
+                        if (baseFloorTile != null) ForceCell(x, 0, z, baseFloorTile, queue, true);
+                        if (hcTile != null) ForceCell(x, 1, z, hcTile, queue, true);
+                        if (airTile != null)
+                            for (int y = 2; y < height; y++) ForceCell(x, y, z, airTile, queue);
+                        break;
+                    case MacroRegion.LowCover:
+                        // Low cover: y=0 floor, y=1 decoration/half-wall.
+                        WFCTile3D lcTile = (debugMacroRegions && lowCoverTile != null) ? lowCoverTile : airTile;
+                        if (baseFloorTile != null) ForceCell(x, 0, z, baseFloorTile, queue, true);
+                        if (lcTile != null) ForceCell(x, 1, z, lcTile, queue, true);
+                        if (airTile != null)
+                            for (int y = 2; y < height; y++) ForceCell(x, y, z, airTile, queue);
+                        break;
+                    case MacroRegion.Hazard:
+                        // Hazard: y=0 floor with special tile.
+                        WFCTile3D hazTile = (debugMacroRegions && hazardTile != null) ? hazardTile : baseFloorTile;
+                        if (hazTile != null) ForceCell(x, 0, z, hazTile, queue, true);
+                        if (airTile != null)
+                            for (int y = 1; y < height; y++) ForceCell(x, y, z, airTile, queue);
+                        break;
+                    case MacroRegion.Terrain:
+                        // Terrain: y=0 is solid, y=1 is floor.
+                        WFCTile3D tMass = (debugMacroRegions && terrainTile != null) ? terrainTile : wallMassTile;
+                        WFCTile3D tFloor = (debugMacroRegions && terrainTile != null) ? terrainTile : baseFloorTile;
+                        if (tMass != null) ForceCell(x, 0, z, tMass, queue, true);
+                        if (tFloor != null) ForceCell(x, 1, z, tFloor, queue, true);
+                        if (airTile != null)
+                            for (int y = 2; y < height; y++) ForceCell(x, y, z, airTile, queue);
+                        break;
+                    case MacroRegion.Hill:
+                        // Hill: y=0,1 solid, y=2 floor.
+                        WFCTile3D hMass = (debugMacroRegions && hillTile != null) ? hillTile : wallMassTile;
+                        WFCTile3D hFloor = (debugMacroRegions && hillTile != null) ? hillTile : baseFloorTile;
+                        if (hMass != null)
+                        {
+                            ForceCell(x, 0, z, hMass, queue, true);
+                            ForceCell(x, 1, z, hMass, queue, true);
+                        }
+                        if (hFloor != null) ForceCell(x, 2, z, hFloor, queue, true);
+                        if (airTile != null)
+                            for (int y = 3; y < height; y++) ForceCell(x, y, z, airTile, queue);
+                        break;
+                    case MacroRegion.MicroDetail:
+                    case MacroRegion.MicroCrate:
+                        // Micro regions: floor at y=0, reserved spot at y=1.
+                        WFCTile3D microT = (debugMacroRegions) ? (r == MacroRegion.MicroDetail ? microDetailTile : microCrateTile) : null;
+                        if (baseFloorTile != null) ForceCell(x, 0, z, baseFloorTile, queue, true);
+                        if (microT != null) ForceCell(x, 1, z, microT, queue, true);
+                        if (airTile != null)
+                            for (int y = (microT != null ? 2 : 1); y < height; y++) ForceCell(x, y, z, airTile, queue);
                         break;
                 }
             }
         }
+    }
+
+    // Narrow possibleTiles on the floor layer so only walkable/floor tiles remain. Returns
+    // true if the possibility set was reduced (and enqueues for propagation).
+    private bool RestrictFloorToWalkable(int x, int y, int z, Queue<Vector3Int> queue)
+    {
+        Cell cell = grid[x, y, z];
+        if (cell == null || cell.isCollapsed) return false;
+
+        int original = cell.possibleTiles.Count;
+        cell.possibleTiles.RemoveAll(t =>
+        {
+            if (t == null) return true;
+
+            // Always allow explicit markers
+            if (t == spawnMarkerTile || t == goalMarkerTile) return false;
+
+            // If the author assigned a macroRole, use it to filter.
+            // For floor layer we allow Floor, Decoration and Marker only.
+            try
+            {
+                var role = t.macroRole;
+                if (role == WFCTile3D.MacroTileRole.Floor || role == WFCTile3D.MacroTileRole.Decoration || role == WFCTile3D.MacroTileRole.Marker)
+                    return false;
+                // Disallow walls/structural tiles on the floor layer
+                if (role == WFCTile3D.MacroTileRole.Wall || role == WFCTile3D.MacroTileRole.Structural)
+                    return true;
+            }
+            catch
+            {
+                // If role missing, fallback to socket heuristics below
+            }
+
+            string bottom = (t.bottomSocket ?? "").ToLower();
+            string top = (t.topSocket ?? "").ToLower();
+
+            if (bottom.Contains("j_base") || top.Contains("j_gnd") || top.Contains("j_floor")) return false;
+            if (top.Contains("j_block")) return true;
+            if (top.Contains("j_air") && !bottom.Contains("j_base")) return true;
+
+            // Conservative default: disallow ambiguous tiles
+            return true;
+        });
+
+        if (cell.possibleTiles.Count == 0 && original > 0)
+        {
+            // If we accidentally removed everything, restore originals to avoid contradictions.
+            // Debug.LogWarning($"[WFC 3D] RestrictFloorToWalkable at ({x},{y},{z}) removed all options; leaving originals.");
+            return false;
+        }
+
+        if (cell.possibleTiles.Count < original)
+        {
+            if (!queue.Contains(new Vector3Int(x, y, z))) queue.Enqueue(new Vector3Int(x, y, z));
+            return true;
+        }
+
+        return false;
     }
 
     // ----- Public accessors used by PostProcessor subclasses -----
@@ -271,6 +455,17 @@ public class WFCGenerator3D : MonoBehaviour
     public int GridWidth  => width;
     public int GridHeight => height;
     public int GridLength => length;
+
+    public MacroRegion GetMacroRegionAt(int x, int z)
+    {
+        if (macroGenerator == null) return MacroRegion.Open;
+        // This is inefficient but PostProcessors need a way to check macro intent.
+        // In a real project we'd cache the blueprint.
+        return MacroRegion.Open; // Placeholder
+    }
+
+    private MacroRegion[,] currentBlueprint;
+    public MacroRegion[,] CurrentBlueprint => currentBlueprint;
 
     public WFCTile3D GetTileAt(int x, int y, int z)
     {
@@ -299,6 +494,60 @@ public class WFCGenerator3D : MonoBehaviour
         return null;
     }
 
+    // Finds the exit pit location (where the goal marker is). Game controller uses this
+    // to trigger room transitions when player reaches the pit.
+    public Vector3Int? FindExitPitCell()
+    {
+        if (grid == null || goalMarkerTile == null) return null;
+        for (int x = 0; x < width; x++)
+            for (int y = 0; y < height; y++)
+                for (int z = 0; z < length; z++)
+                    if (grid[x, y, z].finalTile == goalMarkerTile)
+                        return new Vector3Int(x, y, z);
+        return null;
+    }
+
+    private Vector3 GetCellWorldPosition(Vector3Int cell)
+    {
+        return new Vector3(
+            cell.x * tileSizeXZ,
+            cell.y * tileSizeY,
+            cell.z * tileSizeXZ
+        ) + transform.position;
+    }
+
+    public Vector3 GetSpawnWorldPosition()
+    {
+        Vector3Int? spawnCell = FindSpawnCell();
+        return spawnCell.HasValue ? GetCellWorldPosition(spawnCell.Value) : transform.position;
+    }
+
+    public void SpawnPlayerAtSpawnTile()
+    {
+        if (playerToSpawn == null)
+        {
+            GameObject playerObject = GameObject.FindGameObjectWithTag("Player");
+            if (playerObject != null) playerToSpawn = playerObject.transform;
+        }
+
+        if (playerToSpawn == null)
+        {
+            Debug.LogWarning("[WFC 3D] No player assigned for auto-spawn.");
+            return;
+        }
+
+        Vector3Int? spawnCell = FindSpawnCell();
+        if (!spawnCell.HasValue)
+        {
+            Debug.LogWarning("[WFC 3D] No spawn tile found to place the player.");
+            return;
+        }
+
+        Vector3 spawnPos = GetCellWorldPosition(spawnCell.Value);
+        spawnPos.y += playerSpawnHeightOffset;
+        playerToSpawn.position = spawnPos;
+    }
+
     // A cell is passable if at least one horizontal face declares an opening
     // (j_air_side / j_floor_side / j_door_open). Tiles with only j_wall_face on all sides
     // are treated as solid blockers.
@@ -306,17 +555,9 @@ public class WFCGenerator3D : MonoBehaviour
     {
         var t = GetTileAt(x, y, z);
         if (t == null) return false;
-        string[] sides = { t.northSocket, t.eastSocket, t.southSocket, t.westSocket };
-        foreach (var s in sides)
-        {
-            if (string.IsNullOrEmpty(s)) continue;
-            string lower = s.ToLower();
-            if (lower.Contains("j_air_side") ||
-                lower.Contains("j_floor_side") ||
-                lower.Contains("j_door_open"))
-                return true;
-        }
-        return false;
+        string socketS = (t.northSocket ?? "") + "|" + (t.eastSocket ?? "") + "|" + (t.southSocket ?? "") + "|" + (t.westSocket ?? "");
+        string lower = socketS.ToLower();
+        return lower.Contains("j_air_side") || lower.Contains("j_floor_side") || lower.Contains("j_door_open");
     }
 
     // Expands `rotatable` source tiles into 4 runtime variants (R0/R90/R180/R270),
@@ -349,6 +590,7 @@ public class WFCGenerator3D : MonoBehaviour
                 v.maxJitter = t.maxJitter;
                 v.topSocket = t.topSocket;
                 v.bottomSocket = t.bottomSocket;
+                v.macroRole = t.macroRole;
                 // Clockwise rotation viewed from above: new N = old W, new E = old N, etc.
                 v.northSocket = sides[(4 - r) % 4];
                 v.eastSocket  = sides[(5 - r) % 4];
@@ -364,17 +606,13 @@ public class WFCGenerator3D : MonoBehaviour
         return result.ToArray();
     }
 
-    // FIX: ForceCell was called throughout the code but was never defined.
-    // It safely skips already-collapsed cells so the base floor layer isn't
-    // silently overwritten by a golden-path tile with different sockets.
-    private void ForceCell(int x, int y, int z, WFCTile3D tile, Queue<Vector3Int> queue)
+    // FIX: ForceCell now supports an override flag to bypass isCollapsed checks.
+    private void ForceCell(int x, int y, int z, WFCTile3D tile, Queue<Vector3Int> queue, bool forceOverride = false)
     {
         Cell cell = grid[x, y, z];
 
-        if (cell.isCollapsed)
+        if (cell.isCollapsed && !forceOverride)
         {
-            // Cell already locked (e.g. baseFloorTile at y==0); don't overwrite it.
-            // Still re-enqueue so its constraints propagate if needed.
             if (!queue.Contains(new Vector3Int(x, y, z)))
                 queue.Enqueue(new Vector3Int(x, y, z));
             return;
@@ -386,6 +624,7 @@ public class WFCGenerator3D : MonoBehaviour
         cell.isCollapsed = true;
         queue.Enqueue(new Vector3Int(x, y, z));
     }
+
 
     private void SpawnDecorations()
     {

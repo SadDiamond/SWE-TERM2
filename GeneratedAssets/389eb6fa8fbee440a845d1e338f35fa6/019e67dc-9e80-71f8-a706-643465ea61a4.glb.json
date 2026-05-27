@@ -1,0 +1,23 @@
+{
+    "asset": "389eb6fa8fbee440a845d1e338f35fa6",
+    "fileName": "019e67dc-9e80-71f8-a706-643465ea61a4.glb",
+    "prompt": "low poly industrial cargo crate, simple cube shape, flat shaded, matching reference style",
+    "negativePrompt": "",
+    "model": "model3d-tripo-p1",
+    "modelName": "Tripo P1",
+    "customSeed": -1,
+    "w3CTraceId": "",
+    "feedback": 0,
+    "refinementMode": "Generation",
+    "promptImageReferenceGuid": "041f10dc23a134224a717a9a5e2fe85c",
+    "modelReferenceGuid": "",
+    "multiviewFrontGuid": "",
+    "multiviewBackGuid": "",
+    "multiviewLeftGuid": "",
+    "multiviewRightGuid": "",
+    "multiviewTopGuid": "",
+    "multiviewBottomGuid": "",
+    "multiviewLeftFrontGuid": "",
+    "multiviewRightFrontGuid": "",
+    "faceLimit": -1
+}

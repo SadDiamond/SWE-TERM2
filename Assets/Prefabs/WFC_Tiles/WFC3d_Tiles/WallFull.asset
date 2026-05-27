@@ -12,10 +12,12 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: f7aabfe9405cc49f385f06064680d745, type: 3}
   m_Name: WallFull
   m_EditorClassIdentifier: Assembly-CSharp::WFCTile3D
+  macroRole: 2
   prefab: {fileID: 2988597238089053408, guid: a534241a196574527879005e3c6392cb, type: 3}
   weight: 10
   spawnRotation: {x: 0, y: 0, z: 0}
   rotatable: 0
+  maxJitter: {x: 0, y: 0, z: 0}
   topSocket: j_block
   bottomSocket: j_gnd|j_block
   northSocket: j_wall_face
