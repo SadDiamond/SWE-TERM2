@@ -191,7 +191,7 @@ public class MicroStructureSpawner : PostProcessor
 
             if (reservedMicro && (footprintX != 1 || footprintZ != 1)) continue;
 
-            if (!CanPlace(generator, picked, x, z, surfaceY, footprintX, footprintZ, width, height, length, occupied, spawn, exit)) continue;
+            if (!CanPlace(generator, picked, x, z, footprintX, footprintZ, surfaceY, width, height, length, occupied, spawn, exit)) continue;
 
             PlaceStructure(generator, container, picked, x, z, surfaceY, yawQuarter);
             MarkOccupied(occupied, x, z, footprintX, footprintZ);
@@ -254,7 +254,7 @@ public class MicroStructureSpawner : PostProcessor
                 int footprintX = ((yawQuarter & 1) == 1) ? picked.footprintZ : picked.footprintX;
                 int footprintZ = ((yawQuarter & 1) == 1) ? picked.footprintX : picked.footprintZ;
 
-                if (!CanPlace(generator, picked, x, z, surfaceY, footprintX, footprintZ, width, height, length, occupied, spawn, exit)) continue;
+                if (!CanPlace(generator, picked, x, z, footprintX, footprintZ, surfaceY, width, height, length, occupied, spawn, exit)) continue;
 
                 PlaceStructure(generator, container, picked, x, z, surfaceY, yawQuarter);
                 MarkOccupied(occupied, x, z, footprintX, footprintZ);
@@ -341,7 +341,7 @@ public class MicroStructureSpawner : PostProcessor
                 if (picked == null) continue;
                 
                 int yaw = rng.Next(0, 4);
-                if (!CanPlace(generator, picked, cell.x, cell.y, surfaceY, 1, 1, width, height, length, occupied, spawn, exit)) continue;
+                if (!CanPlace(generator, picked, cell.x, cell.y, 1, 1, surfaceY, width, height, length, occupied, spawn, exit)) continue;
                 
                 PlaceStructure(generator, container, picked, cell.x, cell.y, surfaceY, yaw);
                 MarkOccupied(occupied, cell.x, cell.y, 1, 1);

@@ -24,8 +24,10 @@ public class PlayerController : MonoBehaviour
     public float slideBaseSpeed = 16f; // Just a bit faster than running (12)
     public float slideFriction = 2.5f; // How fast you slow down while sliding
     public float fallSpeedToSlideBoost = 0.5f; // Hitting the ground hard speeds up your slide
+    public float maxSlideJumpCarrySpeed = 22f;
     public float slideHeight = 1f;
     public float slamSpeed = 40f; // How fast you plummet downwards
+    public float postSlamSlideLockout = 0.35f;
     private float defaultHeight;
 
     [Header("Movement (Limits)")]
@@ -34,10 +36,16 @@ public class PlayerController : MonoBehaviour
     [Header("FX & Polish")]
     public Camera playerCamera;
     public ParticleSystem slideDust; // Drag a particle system here!
+    public ParticleSystem speedLines;
     public float maxSpeedFOV = 100f; // Zoom out FOV when going fast!
     public float slideCameraDrop = 0.5f; // Dip the camera down when sliding
+    public float overdriveSpeedThreshold = 24f;
+    public float fallRespawnY = -18f;
     private float baseFOV;
     private Vector3 baseCameraLocalPos;
+    private Vector3 lastSafePosition;
+    private float safePositionTimer;
+    private float slideLockoutTimer;
 
     [Header("Look")]
     public float mouseSensitivity = 100f;
@@ -77,6 +85,8 @@ public class PlayerController : MonoBehaviour
         if (playerCamera == null && cameraTransform != null) playerCamera = cameraTransform.GetComponent<Camera>();
         if (playerCamera != null) baseFOV = playerCamera.fieldOfView;
         if (cameraTransform != null) baseCameraLocalPos = cameraTransform.localPosition;
+        lastSafePosition = transform.position;
+        EnsureSpeedLines();
 
         if (interactionPromptText != null)
         {
@@ -165,6 +175,10 @@ public class PlayerController : MonoBehaviour
         {
             interactable = hit.collider.GetComponent<Interactable>();
         }
+        else if (Physics.Raycast(ray, out hit, interactionDistance))
+        {
+            interactable = hit.collider.GetComponent<Interactable>();
+        }
 
         if (interactable == null)
         {
@@ -225,6 +239,14 @@ public class PlayerController : MonoBehaviour
         }
 
         if (dashCooldownTimer > 0) dashCooldownTimer -= Time.deltaTime;
+        if (slideLockoutTimer > 0f) slideLockoutTimer -= Time.deltaTime;
+        TrackSafePosition();
+
+        if (transform.position.y < fallRespawnY)
+        {
+            RespawnAtLastSafePosition();
+            return;
+        }
 
         // Wasd Input
         Vector2 input = new Vector2(
@@ -258,19 +280,27 @@ public class PlayerController : MonoBehaviour
             velocity.y = -slamSpeed; // Plunge straight down
         }
 
-        if (wantsToSlide && isGrounded && !isSliding)
+        if (wantsToSlide && isGrounded && !isSliding && slideLockoutTimer <= 0f)
         {
             isSliding = true;
             controller.height = slideHeight;
 
             // If we fell from a great height (or slammed), turn that fall speed into forward slide speed!
             float fallBoost = 0f;
-            if (fallSpeed < -10f || isSlamming) 
+            if (fallSpeed < -10f && !isSlamming)
             {
                 // Multiplier makes massive slams give crazy slide speed
                 fallBoost = Mathf.Abs(fallSpeed) * fallSpeedToSlideBoost;
             }
-            isSlamming = false; // Reset slam state when hitting the ground
+            if (isSlamming)
+            {
+                slideLockoutTimer = postSlamSlideLockout;
+                isSlamming = false;
+                isSliding = false;
+                controller.height = defaultHeight;
+                momentum *= 0.65f;
+                return;
+            }
 
             float currentSpeed = momentum.magnitude;
             float newSpeed = Mathf.Max(slideBaseSpeed, currentSpeed + fallBoost); 
@@ -323,6 +353,7 @@ public class PlayerController : MonoBehaviour
                 // Slide jump! Stand up, but momentum is automatically preserved by the low airAcceleration!
                 isSliding = false; 
                 controller.height = defaultHeight;
+                momentum = Vector3.ClampMagnitude(momentum, maxSlideJumpCarrySpeed);
             }
         }
 
@@ -357,6 +388,8 @@ public class PlayerController : MonoBehaviour
             );
         }
 
+        UpdateSpeedLines();
+
         if (slideDust != null)
         {
             // Play dust particles if sliding and actually moving, otherwise stop
@@ -386,6 +419,95 @@ public class PlayerController : MonoBehaviour
                 if (slideDust.isPlaying) slideDust.Stop();
             }
         }
+    }
+
+    private void TrackSafePosition()
+    {
+        if (!isGrounded || controller == null) return;
+        safePositionTimer += Time.deltaTime;
+        if (safePositionTimer < 0.15f) return;
+        safePositionTimer = 0f;
+
+        if (Physics.Raycast(transform.position + Vector3.up * 0.2f, Vector3.down, out RaycastHit hit, 3f))
+        {
+            if (!hit.collider.isTrigger)
+                lastSafePosition = transform.position;
+        }
+    }
+
+    private void RespawnAtLastSafePosition()
+    {
+        controller.enabled = false;
+        transform.position = lastSafePosition + Vector3.up * 1.0f;
+        controller.enabled = true;
+        velocity = Vector3.zero;
+        momentum = Vector3.zero;
+        isSliding = false;
+        isSlamming = false;
+        controller.height = defaultHeight;
+    }
+
+    private void EnsureSpeedLines()
+    {
+        if (speedLines != null || cameraTransform == null) return;
+
+        GameObject go = new GameObject("SpeedLines");
+        go.transform.SetParent(cameraTransform, false);
+        go.transform.localPosition = Vector3.zero;
+        go.transform.localRotation = Quaternion.identity;
+
+        speedLines = go.AddComponent<ParticleSystem>();
+        var main = speedLines.main;
+        main.loop = true;
+        main.startLifetime = 0.18f;
+        main.startSpeed = 13f;
+        main.startSize = 0.018f;
+        main.maxParticles = 140;
+        main.simulationSpace = ParticleSystemSimulationSpace.Local;
+        main.startColor = new Color(0.45f, 0.75f, 0.85f, 0.18f);
+
+        var emission = speedLines.emission;
+        emission.rateOverTime = 0f;
+
+        var shape = speedLines.shape;
+        shape.shapeType = ParticleSystemShapeType.Cone;
+        shape.angle = 38f;
+        shape.radius = 0.9f;
+        shape.position = new Vector3(0f, 0f, 0.55f);
+
+        var renderer = speedLines.GetComponent<ParticleSystemRenderer>();
+        renderer.renderMode = ParticleSystemRenderMode.Stretch;
+        renderer.lengthScale = 4.0f;
+        renderer.velocityScale = 0.08f;
+        renderer.material = CreateSpeedLineMaterial();
+    }
+
+    private Material CreateSpeedLineMaterial()
+    {
+        Shader shader = Shader.Find("Universal Render Pipeline/Unlit");
+        if (shader == null) shader = Shader.Find("Sprites/Default");
+
+        Material material = new Material(shader) { name = "SpeedLines_URP_Unlit" };
+        if (material.HasProperty("_BaseColor"))
+            material.SetColor("_BaseColor", new Color(0.45f, 0.75f, 0.85f, 0.18f));
+        if (material.HasProperty("_Color"))
+            material.SetColor("_Color", new Color(0.45f, 0.75f, 0.85f, 0.18f));
+        return material;
+    }
+
+    private void UpdateSpeedLines()
+    {
+        if (speedLines == null || controller == null) return;
+
+        Vector3 groundVelocity = new Vector3(controller.velocity.x, 0f, controller.velocity.z);
+        float speed01 = Mathf.InverseLerp(overdriveSpeedThreshold, maxSpeedLimit, groundVelocity.magnitude);
+        var emission = speedLines.emission;
+        emission.rateOverTime = Mathf.Lerp(0f, 120f, speed01);
+
+        if (speed01 > 0.05f && !speedLines.isPlaying)
+            speedLines.Play();
+        else if (speed01 <= 0.01f && speedLines.isPlaying)
+            speedLines.Stop();
     }
 
     void HandleLook()

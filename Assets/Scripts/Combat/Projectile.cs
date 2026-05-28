@@ -9,8 +9,25 @@ public class Projectile : MonoBehaviour
     [Header("Impact FX")]
     public GameObject impactEffectPrefab; // Drag a particle system prefab here
 
+    public void Initialize(GameObject projectileOwner, float projectileDamage)
+    {
+        owner = projectileOwner;
+        damage = projectileDamage;
+        IgnoreOwnerColliders();
+
+        Rigidbody rb = GetComponent<Rigidbody>();
+        if (rb != null)
+            rb.useGravity = false;
+    }
+
     void Start()
     {
+        IgnoreOwnerColliders();
+
+        Rigidbody rb = GetComponent<Rigidbody>();
+        if (rb != null)
+            rb.useGravity = false;
+
         // Automatically destroy bullet after a few seconds so it doesn't clutter the game
         Destroy(gameObject, lifetime);
     }
@@ -18,7 +35,7 @@ public class Projectile : MonoBehaviour
     void OnCollisionEnter(Collision collision)
     {
         // Don't hit the person who shot this!
-        if (owner != null && collision.gameObject == owner) return;
+        if (IsOwnerCollision(collision.collider)) return;
 
         // Check if what we hit can take damage
         IDamageable damageable = collision.collider.GetComponent<IDamageable>();
@@ -43,5 +60,26 @@ public class Projectile : MonoBehaviour
 
         // Destroy the bullet immediately after hitting anything
         Destroy(gameObject);
+    }
+
+    private void IgnoreOwnerColliders()
+    {
+        if (owner == null) return;
+
+        Collider ownCollider = GetComponent<Collider>();
+        if (ownCollider == null) return;
+
+        Collider[] ownerColliders = owner.GetComponentsInChildren<Collider>(true);
+        for (int i = 0; i < ownerColliders.Length; i++)
+        {
+            if (ownerColliders[i] != null)
+                Physics.IgnoreCollision(ownCollider, ownerColliders[i], true);
+        }
+    }
+
+    private bool IsOwnerCollision(Collider other)
+    {
+        if (owner == null || other == null) return false;
+        return other.gameObject == owner || other.transform.IsChildOf(owner.transform);
     }
 }

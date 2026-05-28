@@ -20,7 +20,9 @@ public class BulletTrail : MonoBehaviour
         // Use a default material if none is assigned (prevents magenta squares)
         if (trail.material == null)
         {
-            trail.material = new Material(Shader.Find("Sprites/Default"));
+            Shader shader = Shader.Find("Universal Render Pipeline/Unlit");
+            if (shader == null) shader = Shader.Find("Sprites/Default");
+            trail.material = new Material(shader);
         }
         
         // Glowing yellow/white gradient

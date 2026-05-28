@@ -28,6 +28,9 @@ public class SequentialRoomMacro : MacroGenerator
     public int minPlatformSize = 2;
     public int maxPlatformSize = 4;
     public int platformCount = 3;  // How many platform features to add
+    [Range(0f, 1f)] public float pitChance = 0.18f;
+    [Range(0f, 1f)] public float hazardChance = 0.10f;
+    [Range(0f, 1f)] public float microDetailChance = 0.20f;
 
     [Header("Megastructure Quality")]
     [Range(0f, 1f)] public float minimumInfrastructureScore = 0.68f;
@@ -99,61 +102,129 @@ public class SequentialRoomMacro : MacroGenerator
         int right = width - wallThickness - 1;
         int bottom = wallThickness;
         int top = length - wallThickness - 1;
+        int centerX = width / 2;
+        int centerZ = length / 2;
 
-        // The old version made too many internal wall bands, which turned the room into
-        // a skyline. This version keeps a large open hangar volume and pushes structure
-        // to the perimeter with only a few shallow side alcoves.
-        CarveRect(map, left + 1, bottom + 1, right - 1, top - 1, MacroRegion.Open);
+        // Cybergrind-like read: a clean combat floor inside a hard border, with the
+        // interesting geometry coming from raised bridges, side platforms and gaps.
+        CarveRect(map, left, bottom, right, top, MacroRegion.Open);
 
-        // Perimeter ribs on the long edges only. These create a hangar feel without
-        // breaking the center into lots of tiny blocks.
-        int ribCount = Mathf.Clamp((right - left) / Mathf.Max(4, baySpacing), 2, 4);
-        for (int i = 0; i < ribCount; i++)
+        int platformRadius = Mathf.Clamp((minPlatformSize + maxPlatformSize) / 2, 2, 4);
+        CarveRect(map, centerX - platformRadius, centerZ - platformRadius, centerX + platformRadius, centerZ + platformRadius, MacroRegion.Platform);
+
+        int bridgeHalfWidth = Mathf.Clamp(mainHallWidth / 2, 1, 3);
+        CarveRect(map, centerX - bridgeHalfWidth, bottom + 1, centerX + bridgeHalfWidth, top - 1, MacroRegion.Bridge);
+        CarveRect(map, left + 1, centerZ - bridgeHalfWidth, right - 1, centerZ + bridgeHalfWidth, MacroRegion.Bridge);
+
+        int cornerSize = Mathf.Clamp(platformCount + 1, 3, 5);
+        CarveRect(map, left + 1, bottom + 1, left + cornerSize, bottom + cornerSize, MacroRegion.Platform);
+        CarveRect(map, right - cornerSize, bottom + 1, right - 1, bottom + cornerSize, MacroRegion.Platform);
+        CarveRect(map, left + 1, top - cornerSize, left + cornerSize, top - 1, MacroRegion.Platform);
+        CarveRect(map, right - cornerSize, top - cornerSize, right - 1, top - 1, MacroRegion.Platform);
+
+        StampArenaDetails(map, width, length, rng, left, right, bottom, top, centerX, centerZ, spawn, exit);
+        StampPerimeterInfrastructure(map, rng, left, right, bottom, top);
+        ReserveMicroSlots(map, rng, left, right, bottom, top);
+
+        // Keep progression cells and their local approach lanes readable.
+        CarveRect(map, spawn.x - 1, spawn.y - 1, spawn.x + 2, spawn.y + 2, MacroRegion.Open);
+        CarveRect(map, exit.x - 2, exit.y - 2, exit.x + 1, exit.y + 1, MacroRegion.Open);
+        map[spawn.x, spawn.y] = MacroRegion.Spawn;
+        CarveExitPit(map, exit.x, exit.y, exitPitRadius);
+    }
+
+    private void StampArenaDetails(
+        MacroRegion[,] map,
+        int width,
+        int length,
+        System.Random rng,
+        int left,
+        int right,
+        int bottom,
+        int top,
+        int centerX,
+        int centerZ,
+        Vector2Int spawn,
+        Vector2Int exit)
+    {
+        int avoidRadius = Mathf.Max(3, mainHallWidth);
+        for (int x = left + 2; x <= right - 2; x++)
         {
-            int rx = Mathf.RoundToInt(Mathf.Lerp(left + 2, right - 2, (i + 1f) / (ribCount + 1f)));
-            map[rx, bottom] = MacroRegion.Wall;
-            map[rx, top] = MacroRegion.Wall;
-        }
-
-        // Very shallow side alcoves near the far ends only.
-        int alcoveDepth = Mathf.Max(2, bayDepth - 1);
-        int alcoveWidth = Mathf.Clamp(width / 5, 3, 6);
-        int leftAlcoveX = left + 1;
-        int rightAlcoveX = Mathf.Max(left + 1, right - alcoveWidth);
-
-        CarveRect(map, leftAlcoveX, bottom + 1, leftAlcoveX + alcoveWidth, Mathf.Min(bottom + alcoveDepth, top - 1), MacroRegion.CombatRoom);
-        CarveRect(map, rightAlcoveX, top - alcoveDepth, rightAlcoveX + alcoveWidth, top - 1, MacroRegion.CombatRoom);
-
-        // --- NEW: Internal Infrastructure ---
-        // Add a few internal support pillars or small "island" structures in the large open volume
-        // to provide cover and break up the space.
-        for (int x = left + 4; x < right - 4; x += supportColumnSpacing)
-        {
-            for (int z = bottom + 4; z < top - 4; z += supportColumnSpacing)
+            for (int z = bottom + 2; z <= top - 2; z++)
             {
-                // Jitter the column slightly or skip some to avoid a perfect grid
+                if (IsNear(x, z, spawn, 4) || IsNear(x, z, exit, 4)) continue;
+                if (Mathf.Abs(x - centerX) <= avoidRadius || Mathf.Abs(z - centerZ) <= avoidRadius) continue;
+                if (((x + z) & 1) == 1) continue;
+
                 double roll = rng.NextDouble();
-                if (roll < 0.2)
-                    map[x, z] = MacroRegion.Platform;
-                else if (roll < 0.5)
-                    map[x, z] = MacroRegion.Wall;
+                if (roll < pitChance)
+                    map[x, z] = MacroRegion.Pit;
+                else if (roll < pitChance + hazardChance)
+                    map[x, z] = MacroRegion.Hazard;
             }
         }
 
-        // Add edge bridges occasionally
-        if (rng.NextDouble() < 0.3)
+        int ringInset = Mathf.Max(3, wallThickness + 2);
+        for (int x = left + ringInset; x <= right - ringInset; x += Mathf.Max(4, supportColumnSpacing))
         {
-            int side = rng.Next(4);
-            if (side == 0) CarveRect(map, left + 1, bottom + 1, left + 2, top - 1, MacroRegion.Bridge);
-            else if (side == 1) CarveRect(map, right - 2, bottom + 1, right - 1, top - 1, MacroRegion.Bridge);
+            StampCoverPair(map, x, centerZ - avoidRadius - 1, centerZ + avoidRadius + 1, bottom, top, rng);
+        }
+    }
+
+    private void StampCoverPair(MacroRegion[,] map, int x, int zA, int zB, int bottom, int top, System.Random rng)
+    {
+        if (zA > bottom && zA < top)
+            map[x, zA] = rng.NextDouble() < 0.55 ? MacroRegion.LowCover : MacroRegion.HighCover;
+        if (zB > bottom && zB < top)
+            map[x, zB] = rng.NextDouble() < 0.55 ? MacroRegion.LowCover : MacroRegion.HighCover;
+    }
+
+    private void StampPerimeterInfrastructure(MacroRegion[,] map, System.Random rng, int left, int right, int bottom, int top)
+    {
+        int step = Mathf.Max(4, baySpacing);
+        for (int x = left + 2; x <= right - 2; x += step)
+        {
+            map[x, bottom] = MacroRegion.Wall;
+            map[x, top] = MacroRegion.Wall;
+            if (rng.NextDouble() < 0.5)
+            {
+                map[x, bottom + 1] = MacroRegion.MicroDetail;
+                map[x, top - 1] = MacroRegion.MicroDetail;
+            }
         }
 
-        // Small anchor blocks near the entry only so the spawn area still has a readable
-        // threshold, but avoid placing a chain of supports through the room.
-        CarveRect(map, 1, 1, Mathf.Min(4, right - 1), Mathf.Min(4, top - 1), MacroRegion.Open);
-        CarveExitPit(map, exit.x, exit.y, exitPitRadius);
+        for (int z = bottom + 2; z <= top - 2; z += step)
+        {
+            map[left, z] = MacroRegion.Wall;
+            map[right, z] = MacroRegion.Wall;
+            if (rng.NextDouble() < 0.5)
+            {
+                map[left + 1, z] = MacroRegion.MicroCrate;
+                map[right - 1, z] = MacroRegion.MicroCrate;
+            }
+        }
+    }
 
-        map[spawn.x, spawn.y] = MacroRegion.Spawn;
+    private void ReserveMicroSlots(MacroRegion[,] map, System.Random rng, int left, int right, int bottom, int top)
+    {
+        for (int x = left + 2; x <= right - 2; x++)
+        {
+            for (int z = bottom + 2; z <= top - 2; z++)
+            {
+                if (map[x, z] != MacroRegion.Open) continue;
+                if (rng.NextDouble() > microDetailChance) continue;
+
+                bool edgeBiased = x - left <= 3 || right - x <= 3 || z - bottom <= 3 || top - z <= 3;
+                if (!edgeBiased && rng.NextDouble() > 0.25) continue;
+
+                map[x, z] = rng.NextDouble() < 0.55 ? MacroRegion.MicroDetail : MacroRegion.MicroCrate;
+            }
+        }
+    }
+
+    private bool IsNear(int x, int z, Vector2Int point, int radius)
+    {
+        return Mathf.Abs(x - point.x) + Mathf.Abs(z - point.y) <= radius;
     }
 
     private void GenerateBossRoom(MacroRegion[,] map, int width, int length, Vector2Int spawn, Vector2Int exit)
