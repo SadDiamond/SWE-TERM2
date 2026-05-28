@@ -573,6 +573,7 @@ GameObject:
   - component: {fileID: 1833600096}
   - component: {fileID: 1833600098}
   - component: {fileID: 1833600097}
+  - component: {fileID: 1833600099}
   m_Layer: 0
   m_Name: GeneratorCore
   m_TagString: Untagged
@@ -638,6 +639,7 @@ MonoBehaviour:
   - {fileID: 1833600093}
   - {fileID: 1833600096}
   - {fileID: 1833600097}
+  - {fileID: 1833600099}
   seed: 0
   wallMassTile: {fileID: 11400000, guid: c94b8812b469d467395c1837f7f96e10, type: 2}
   wallCapTile: {fileID: 11400000, guid: 72ab5b7a50de94dfca41c277fff0ab7a, type: 2}
@@ -654,7 +656,7 @@ MonoBehaviour:
   hillTile: {fileID: 11400000, guid: a14e3411f3dca434986c0877f8827fe1, type: 2}
   microDetailTile: {fileID: 11400000, guid: 56ae98ec9a2ce47158e6c0c4c3d08d6f, type: 2}
   microCrateTile: {fileID: 11400000, guid: 9d27b8bdc6fc4440996351a3feaadbfc, type: 2}
-  debugMacroRegions: 1
+  debugMacroRegions: 0
   animateSpawning: 0
   timeBetweenSpawns: 0.001
   autoSpawnPlayer: 1
@@ -714,7 +716,7 @@ MonoBehaviour:
   bayDepth: 4
   supportColumnSpacing: 6
   exitPitRadius: 1
-  roomNumber: 1
+  roomNumber: 5
 --- !u!114 &1833600096
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -770,9 +772,204 @@ MonoBehaviour:
   mezzanineChance: 0.35
   pillarDensity: 0.05
   pitDensity: 0.05
+  minimumReservedMicroCells: 8
   terrainFrequency: 0.12
   hillThreshold: 0.72
   bumpThreshold: 0.58
+--- !u!114 &1833600099
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1833600089}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 644afce6fa56d4a0faff866a28a96e73, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::MicroStructureSpawner
+  structures:
+  - id: S_Arch_2x1_A
+    prefab: {fileID: 5875384432801659433, guid: adf13f5bd1aa34df4bc01a1a3592c402, type: 3}
+    weight: 5
+    footprintX: 2
+    footprintZ: 1
+    minSpacingCells: 2
+    minDistanceFromSpawn: 3
+    minDistanceFromExit: 4
+    yOffset: 0
+    randomYaw: 1
+    allowedRegions: 7
+  - id: S_Bridge_2x1_A
+    prefab: {fileID: 6453448086866871927, guid: 3ee0ad30c802f4977818b970a4dd1f54, type: 3}
+    weight: 4
+    footprintX: 2
+    footprintZ: 1
+    minSpacingCells: 2
+    minDistanceFromSpawn: 3
+    minDistanceFromExit: 4
+    yOffset: 0
+    randomYaw: 1
+    allowedRegions: 23
+  - id: S_Bridge_2x2_A
+    prefab: {fileID: 176741657123457371, guid: a265408c0c551458b8b781208affda03, type: 3}
+    weight: 4
+    footprintX: 2
+    footprintZ: 2
+    minSpacingCells: 3
+    minDistanceFromSpawn: 4
+    minDistanceFromExit: 5
+    yOffset: 0
+    randomYaw: 1
+    allowedRegions: 86
+  - id: S_Gantry_2x2_A
+    prefab: {fileID: 2442174614794383106, guid: d90da0b45612e4d2b8f2faade0fdee56, type: 3}
+    weight: 4
+    footprintX: 2
+    footprintZ: 2
+    minSpacingCells: 3
+    minDistanceFromSpawn: 4
+    minDistanceFromExit: 5
+    yOffset: 0
+    randomYaw: 1
+    allowedRegions: 22
+  - id: S_Walkway_1x1_A
+    prefab: {fileID: 5709755718211253332, guid: 8810021008b99417d98e34ed138c3adf, type: 3}
+    weight: 3
+    footprintX: 1
+    footprintZ: 1
+    minSpacingCells: 1
+    minDistanceFromSpawn: 2
+    minDistanceFromExit: 3
+    yOffset: 0
+    randomYaw: 1
+    allowedRegions: 83
+  - id: S_DecorativeWall_1x1_A
+    prefab: {fileID: 7851044460820585448, guid: 2c9c420eda846461d87814be4d5b3da4, type: 3}
+    weight: 3
+    footprintX: 1
+    footprintZ: 1
+    minSpacingCells: 1
+    minDistanceFromSpawn: 2
+    minDistanceFromExit: 3
+    yOffset: 0
+    randomYaw: 1
+    allowedRegions: 515
+  - id: S_PuzzlePedestal_1x1_A
+    prefab: {fileID: 8909855881996432685, guid: 41d4d2bad031d47f6a1a19082063a994, type: 3}
+    weight: 2
+    footprintX: 1
+    footprintZ: 1
+    minSpacingCells: 1
+    minDistanceFromSpawn: 2
+    minDistanceFromExit: 3
+    yOffset: 0
+    randomYaw: 1
+    allowedRegions: 518
+  - id: S_Pillar_1x1_A
+    prefab: {fileID: 9150582663094223323, guid: 11f9abaf54939485d8da06b00b4018ff, type: 3}
+    weight: 2
+    footprintX: 1
+    footprintZ: 1
+    minSpacingCells: 1
+    minDistanceFromSpawn: 2
+    minDistanceFromExit: 3
+    yOffset: 0
+    randomYaw: 1
+    allowedRegions: 1538
+  - id: S_Pillar_1x1_B
+    prefab: {fileID: 7022138416859416977, guid: bcd4310b9de9a4943aa2598ad3711df8, type: 3}
+    weight: 1
+    footprintX: 1
+    footprintZ: 1
+    minSpacingCells: 1
+    minDistanceFromSpawn: 2
+    minDistanceFromExit: 3
+    yOffset: 0
+    randomYaw: 1
+    allowedRegions: 1540
+  - id: S_LowCover_1x1_A
+    prefab: {fileID: 1082398002151400202, guid: b5a06b2babb3e4ff6b578fde57a7751d, type: 3}
+    weight: 2
+    footprintX: 1
+    footprintZ: 1
+    minSpacingCells: 1
+    minDistanceFromSpawn: 2
+    minDistanceFromExit: 3
+    yOffset: 0
+    randomYaw: 1
+    allowedRegions: 523
+  - id: S_HighCover_1x1_A
+    prefab: {fileID: 2845914521547710866, guid: 514846a12d58b4354b682b2f915a5634, type: 3}
+    weight: 1
+    footprintX: 1
+    footprintZ: 1
+    minSpacingCells: 1
+    minDistanceFromSpawn: 2
+    minDistanceFromExit: 3
+    yOffset: 0
+    randomYaw: 1
+    allowedRegions: 518
+  - id: S_Console_1x1_A
+    prefab: {fileID: 4395488391999690427, guid: f9258ee1f0fd0440ebb30bd6ecf63d8d, type: 3}
+    weight: 2
+    footprintX: 1
+    footprintZ: 1
+    minSpacingCells: 1
+    minDistanceFromSpawn: 2
+    minDistanceFromExit: 3
+    yOffset: 0
+    randomYaw: 1
+    allowedRegions: 1545
+  - id: S_MachineOrCrate_1x1_A
+    prefab: {fileID: 5343455040219259485, guid: ba0be0aa776c84003b856914265a22d5, type: 3}
+    weight: 3
+    footprintX: 1
+    footprintZ: 1
+    minSpacingCells: 1
+    minDistanceFromSpawn: 2
+    minDistanceFromExit: 3
+    yOffset: 0
+    randomYaw: 1
+    allowedRegions: 1544
+  - id: S_Support_1x1_A
+    prefab: {fileID: 181664459423870034, guid: 900c267b032df4624b9c7288f4e0dfe7, type: 3}
+    weight: 1
+    footprintX: 1
+    footprintZ: 1
+    minSpacingCells: 1
+    minDistanceFromSpawn: 2
+    minDistanceFromExit: 3
+    yOffset: 0
+    randomYaw: 1
+    allowedRegions: 720
+  - id: S_SupportCross_1x1_A
+    prefab: {fileID: 7440388619237241085, guid: 4866dd3bb1a4943219a6bd771a3acfc8, type: 3}
+    weight: 1
+    footprintX: 1
+    footprintZ: 1
+    minSpacingCells: 1
+    minDistanceFromSpawn: 2
+    minDistanceFromExit: 3
+    yOffset: 0
+    randomYaw: 1
+    allowedRegions: 208
+  baseSpawnChancePerCell: 0.08
+  centerClearRadius: 0.3
+  edgeBiasMultiplier: 2.2
+  maxStructures: 64
+  requireAirAbove: 1
+  requiredAirHeight: 1
+  strictFootprintValidation: 1
+  snapToFloorSurface: 1
+  preferReservedMicroRegions: 1
+  autoNormalizeLegacyEntries: 1
+  minStructuresToSpawn: 10
+  physicsResolveAfterSpawn: 1
+  resolveFrames: 20
+  resolveRayStartHeight: 64
+  resolveRayDistance: 256
+  containerName: _MicroStructures
 --- !u!1001 &1996579834
 PrefabInstance:
   m_ObjectHideFlags: 0

@@ -14,7 +14,7 @@ public enum MacroRegion
     BossRoom,       // preset boss arena (handled specially)
     Shop,           // shop/rest area
     Platform,       // raised central platform (y=0 and y=1 are solid)
-    Mezzanine,      // overhead walkway (y=0 is floor, y=2 is floor, y=1 is air)
+    Bridge,         // elevated bridge/path with supports below (y=0 is air, y=1 is floor)
     Pit,            // floor is air/missing (y=0 is air)
     HighCover,      // Tall cover (y=0 floor, y=1 solid)
     LowCover,       // Half cover (y=0 floor, y=1 decoration)

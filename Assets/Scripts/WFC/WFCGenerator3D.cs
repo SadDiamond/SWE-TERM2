@@ -298,31 +298,31 @@ public class WFCGenerator3D : MonoBehaviour
                         RestrictFloorToWalkable(x, 0, z, queue);
                         break;
                     case MacroRegion.Platform:
-                        // Raised platform: y=0 and y=1 are solid (wallMassTile), air above.
-                        WFCTile3D pTile = (debugMacroRegions && platformTile != null) ? platformTile : wallMassTile;
-                        WFCTile3D pCap = (debugMacroRegions && platformTile != null) ? platformTile : (wallCapTile != null ? wallCapTile : wallMassTile);
-
-                        if (pTile != null)
+                        // Raised platform: y=0 and y=1 are solid, air above.
+                        WFCTile3D pBase = (debugMacroRegions && platformTile != null) ? platformTile : wallMassTile;
+                        WFCTile3D pTop = (debugMacroRegions && platformTile != null) ? platformTile : (wallCapTile != null ? wallCapTile : wallMassTile);
+                        
+                        // Always generate platform structure
+                        if (pBase != null)
                         {
-                            ForceCell(x, 0, z, pTile, queue, true);
-                            ForceCell(x, 1, z, pCap, queue, true);
+                            ForceCell(x, 0, z, pBase, queue, true);
+                            if (height > 1) ForceCell(x, 1, z, pTop, queue, true);
                         }
+                        if (airTile != null)
+                            for (int y = Mathf.Min(2, height); y < height; y++) ForceCell(x, y, z, airTile, queue);
+                        break;
+                    case MacroRegion.Bridge:
+                        // Bridge: elevated path one level above floor. y=0 is air (for supports),
+                        // y=1 is the walking surface, above is air.
+                        WFCTile3D bFloor = (debugMacroRegions && platformTile != null) ? platformTile : (baseFloorTile != null ? baseFloorTile : wallMassTile);
+                        
+                        // Always generate bridge structure
+                        if (airTile != null)
+                            ForceCell(x, 0, z, airTile, queue, true);
+                        if (bFloor != null && height > 1)
+                            ForceCell(x, 1, z, bFloor, queue, true);
                         if (airTile != null)
                             for (int y = 2; y < height; y++) ForceCell(x, y, z, airTile, queue);
-                        break;
-                    case MacroRegion.Mezzanine:
-                        // Overhead walkway: y=0 is floor, y=1,2 are air, y=3 is floor/mezzanine.
-                        // Moved higher (y=3) to avoid "on the ground" feel.
-                        WFCTile3D mTile = (debugMacroRegions && mezzanineTile != null) ? mezzanineTile : baseFloorTile;
-                        
-                        if (airTile != null)
-                        {
-                            ForceCell(x, 1, z, airTile, queue, true);
-                            ForceCell(x, 2, z, airTile, queue, true);
-                        }
-                        if (mTile != null) ForceCell(x, 3, z, mTile, queue, true);
-                        if (airTile != null)
-                            for (int y = 4; y < height; y++) ForceCell(x, y, z, airTile, queue);
                         break;
                     case MacroRegion.Pit:
                         // Pit: clear ground layer (y=0) to air or a specific pit tile.
@@ -357,35 +357,41 @@ public class WFCGenerator3D : MonoBehaviour
                             for (int y = 1; y < height; y++) ForceCell(x, y, z, airTile, queue);
                         break;
                     case MacroRegion.Terrain:
-                        // Terrain: y=0 is solid, y=1 is floor.
+                        // Terrain: solid mound with y=0 mass, y=1 floor, air above.
                         WFCTile3D tMass = (debugMacroRegions && terrainTile != null) ? terrainTile : wallMassTile;
                         WFCTile3D tFloor = (debugMacroRegions && terrainTile != null) ? terrainTile : baseFloorTile;
+                        
+                        // Always generate terrain structure
                         if (tMass != null) ForceCell(x, 0, z, tMass, queue, true);
-                        if (tFloor != null) ForceCell(x, 1, z, tFloor, queue, true);
+                        if (tFloor != null && height > 1) ForceCell(x, 1, z, tFloor, queue, true);
                         if (airTile != null)
-                            for (int y = 2; y < height; y++) ForceCell(x, y, z, airTile, queue);
+                            for (int y = Mathf.Min(2, height); y < height; y++) ForceCell(x, y, z, airTile, queue);
                         break;
                     case MacroRegion.Hill:
-                        // Hill: y=0,1 solid, y=2 floor.
+                        // Hill: stepped elevation with y=0,1 mass and y=2 floor.
                         WFCTile3D hMass = (debugMacroRegions && hillTile != null) ? hillTile : wallMassTile;
                         WFCTile3D hFloor = (debugMacroRegions && hillTile != null) ? hillTile : baseFloorTile;
+                        
+                        // Always generate hill structure
                         if (hMass != null)
                         {
                             ForceCell(x, 0, z, hMass, queue, true);
-                            ForceCell(x, 1, z, hMass, queue, true);
+                            if (height > 1) ForceCell(x, 1, z, hMass, queue, true);
                         }
-                        if (hFloor != null) ForceCell(x, 2, z, hFloor, queue, true);
+                        if (hFloor != null && height > 2) ForceCell(x, 2, z, hFloor, queue, true);
                         if (airTile != null)
-                            for (int y = 3; y < height; y++) ForceCell(x, y, z, airTile, queue);
+                            for (int y = Mathf.Min(3, height); y < height; y++) ForceCell(x, y, z, airTile, queue);
                         break;
                     case MacroRegion.MicroDetail:
                     case MacroRegion.MicroCrate:
-                        // Micro regions: floor at y=0, reserved spot at y=1.
-                        WFCTile3D microT = (debugMacroRegions) ? (r == MacroRegion.MicroDetail ? microDetailTile : microCrateTile) : null;
+                        // Micro regions: floor at y=0, air above for structure placement.
+                        // Visualization shows detail/crate tiles if debugMacroRegions is on.
+                        WFCTile3D microViz = (debugMacroRegions) ? (r == MacroRegion.MicroDetail ? microDetailTile : microCrateTile) : null;
                         if (baseFloorTile != null) ForceCell(x, 0, z, baseFloorTile, queue, true);
-                        if (microT != null) ForceCell(x, 1, z, microT, queue, true);
+                        // Only force visualization tile if debug is on; otherwise leave for micro generation
+                        if (microViz != null && debugMacroRegions) ForceCell(x, 1, z, microViz, queue, true);
                         if (airTile != null)
-                            for (int y = (microT != null ? 2 : 1); y < height; y++) ForceCell(x, y, z, airTile, queue);
+                            for (int y = 1; y < height; y++) ForceCell(x, y, z, airTile, queue);
                         break;
                 }
             }
@@ -458,10 +464,10 @@ public class WFCGenerator3D : MonoBehaviour
 
     public MacroRegion GetMacroRegionAt(int x, int z)
     {
-        if (macroGenerator == null) return MacroRegion.Open;
-        // This is inefficient but PostProcessors need a way to check macro intent.
-        // In a real project we'd cache the blueprint.
-        return MacroRegion.Open; // Placeholder
+        if (currentBlueprint == null) return MacroRegion.Open;
+        if (x < 0 || z < 0 || x >= currentBlueprint.GetLength(0) || z >= currentBlueprint.GetLength(1))
+            return MacroRegion.Open;
+        return currentBlueprint[x, z];
     }
 
     private MacroRegion[,] currentBlueprint;

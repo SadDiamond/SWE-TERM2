@@ -140,12 +140,12 @@ public class SequentialRoomMacro : MacroGenerator
             }
         }
 
-        // Add edge mezzanines occasionally
+        // Add edge bridges occasionally
         if (rng.NextDouble() < 0.3)
         {
             int side = rng.Next(4);
-            if (side == 0) CarveRect(map, left + 1, bottom + 1, left + 2, top - 1, MacroRegion.Mezzanine);
-            else if (side == 1) CarveRect(map, right - 2, bottom + 1, right - 1, top - 1, MacroRegion.Mezzanine);
+            if (side == 0) CarveRect(map, left + 1, bottom + 1, left + 2, top - 1, MacroRegion.Bridge);
+            else if (side == 1) CarveRect(map, right - 2, bottom + 1, right - 1, top - 1, MacroRegion.Bridge);
         }
 
         // Small anchor blocks near the entry only so the spawn area still has a readable

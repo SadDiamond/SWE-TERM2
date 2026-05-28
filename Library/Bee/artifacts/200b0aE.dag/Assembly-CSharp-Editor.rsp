@@ -551,6 +551,9 @@
 -analyzer:"/Applications/Unity/Hub/Editor/6000.4.3f1/Unity.app/Contents/Resources/BuildPipeline/Unity.SourceGenerators/Unity.SourceGenerators.dll"
 -analyzer:"/Applications/Unity/Hub/Editor/6000.4.3f1/Unity.app/Contents/Resources/BuildPipeline/Unity.SourceGenerators/Unity.UIToolkit.SourceGenerator.dll"
 "Assets/Editor/WFC/AssignMacroRoles.cs"
+"Assets/Editor/WFC/GenerateStructurePrefabKit.cs"
+"Assets/Editor/WFC/GenerationFixTools.cs"
+"Assets/Editor/WFC/SetupMicroStructureSpawner.cs"
 "Assets/TutorialInfo/Scripts/Editor/ReadmeEditor.cs"
 -langversion:9.0
 /deterministic
