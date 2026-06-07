@@ -1,11 +1,28 @@
-using UnityEngine;
 using TMPro;
+using UnityEngine;
+using UnityEngine.UI;
 
-public class PlayerController : MonoBehaviour
+public class PlayerController : MonoBehaviour, IDamageable
 {
     [Header("UI")]
     public GameObject crosshair;
     public TMP_Text interactionPromptText;
+    public TMP_Text healthText;
+    public TMP_Text currencyText;
+    public Color crosshairBaseColor = new Color(0.72f, 0.9f, 1f, 0.9f);
+    public Color crosshairFocusColor = new Color(0.64f, 1f, 0.9f, 1f);
+    public Color crosshairHostileColor = new Color(1f, 0.68f, 0.48f, 0.98f);
+    public Color crosshairHitColor = new Color(1f, 0.88f, 0.64f, 1f);
+    public Color crosshairKillColor = new Color(1f, 0.72f, 0.4f, 1f);
+
+    [Header("Vitals")]
+    public float maxHealth = 100f;
+    public float damageInvulnerabilityTime = 0.2f;
+    [Range(0.1f, 1f)] public float respawnHealthPercent = 0.75f;
+
+    public float currentHealth { get; private set; }
+    public int currency { get; private set; }
+    private float damageInvulnerabilityTimer;
 
     [Header("Movement (Core)")]
     public float moveSpeed = 12f;
@@ -26,6 +43,7 @@ public class PlayerController : MonoBehaviour
     public float fallSpeedToSlideBoost = 0.5f; // Hitting the ground hard speeds up your slide
     public float maxSlideJumpCarrySpeed = 22f;
     public float slideHeight = 1f;
+    public float slideCooldown = 0.45f;
     public float slamSpeed = 40f; // How fast you plummet downwards
     public float postSlamSlideLockout = 0.35f;
     private float defaultHeight;
@@ -41,11 +59,24 @@ public class PlayerController : MonoBehaviour
     public float slideCameraDrop = 0.5f; // Dip the camera down when sliding
     public float overdriveSpeedThreshold = 24f;
     public float fallRespawnY = -18f;
+    public float abyssRecoveryY = -8f;
+    public bool enableAbyssRecovery = true;
     private float baseFOV;
     private Vector3 baseCameraLocalPos;
     private Vector3 lastSafePosition;
     private float safePositionTimer;
     private float slideLockoutTimer;
+    private float slideCooldownTimer;
+    private float moveSpeedBonus;
+    private float dashForceBonus;
+    private float jumpHeightBonus;
+    private float maxHealthBonus;
+
+    [Header("Damage Feedback")]
+    public Color damageFlashColor = new Color(0.9f, 0.12f, 0.08f, 0.22f);
+    public float damageFlashDuration = 0.26f;
+    public float damageLookKick = 2.8f;
+    public float damageFovKick = 3.5f;
 
     [Header("Look")]
     public float mouseSensitivity = 100f;
@@ -67,36 +98,96 @@ public class PlayerController : MonoBehaviour
     private Vector3 momentum;
     private float lastFrameVelocityY;
     private float disableGroundCheckTimer = 0f;
+    private bool abyssRecoveredThisAirborneState;
+    private bool transitionLocked;
+    private float damageFlashTimer;
+    private float damageKickTimer;
+    private Image damageFlashOverlay;
+    private RectTransform crosshairRect;
+    private readonly RectTransform[] crosshairSegmentRects = new RectTransform[4];
+    private readonly Image[] crosshairSegmentImages = new Image[4];
+    private float crosshairHitTimer;
+    private float crosshairKillTimer;
+    private Color crosshairPulseColor;
+
+    private float CurrentMoveSpeed => moveSpeed + moveSpeedBonus;
+    private float CurrentDashForce => dashForce + dashForceBonus;
+    private float CurrentJumpHeight => jumpHeight + jumpHeightBonus;
+    private float CurrentMaxHealth => maxHealth + maxHealthBonus;
+    public float EffectiveMaxHealth => CurrentMaxHealth;
+    public float Health01 => CurrentMaxHealth <= 0.01f ? 0f : Mathf.Clamp01(currentHealth / CurrentMaxHealth);
+
+    private const string MouseSensitivityPrefKey = "project_structure.mouse_sensitivity";
+    private const string BaseFovPrefKey = "project_structure.base_fov";
+    private const string MasterVolumePrefKey = "project_structure.master_volume";
 
     private Interactable currentInteractable;
     public float interactionDistance = 3f;
     public LayerMask interactableLayer;
+    private string transientPromptText;
+    private float transientPromptTimer;
 
     [Header("State")]
     public bool isUIActive = false; // True when a puzzle or terminal screen is open
+    public bool respawnOnDeath = false;
+    public bool isDead = false;
 
     void Start()
     {
         controller = GetComponent<CharacterController>();
         defaultHeight = controller.height;
         Cursor.lockState = CursorLockMode.Locked;
+        currentHealth = CurrentMaxHealth;
+        currency = 0;
 
         // Auto-assign camera if we forgot, and log its starting positions for FX
         if (playerCamera == null && cameraTransform != null) playerCamera = cameraTransform.GetComponent<Camera>();
         if (playerCamera != null) baseFOV = playerCamera.fieldOfView;
         if (cameraTransform != null) baseCameraLocalPos = cameraTransform.localPosition;
         lastSafePosition = transform.position;
+        EnsureCrosshair();
         EnsureSpeedLines();
+        EnsureDamageOverlay();
+        LoadSettings();
 
         if (interactionPromptText != null)
         {
             interactionPromptText.gameObject.SetActive(false); // Hide text at start
         }
+
+        RefreshVitalsUI();
     }
 
     void Update()
     {
+        if (damageInvulnerabilityTimer > 0f)
+            damageInvulnerabilityTimer -= Time.deltaTime;
+
+        if (transientPromptTimer > 0f)
+        {
+            transientPromptTimer -= Time.deltaTime;
+            if (transientPromptTimer <= 0f)
+            {
+                transientPromptText = string.Empty;
+                if (currentInteractable != null)
+                    ShowPrompt(currentInteractable.promptMessage);
+                else if (interactionPromptText != null)
+                    interactionPromptText.gameObject.SetActive(false);
+            }
+        }
+
+        UpdateDamageFeedback();
+        UpdateCrosshairVisual();
+
+        if (isDead) return;
+
         if (isUIActive) return; // Don't move or interact if a puzzle is open
+
+        if (transitionLocked)
+        {
+            HandleLook();
+            return;
+        }
 
         HandleMovement();
         HandleLook();
@@ -116,8 +207,22 @@ public class PlayerController : MonoBehaviour
         {
             Cursor.lockState = CursorLockMode.Locked;
             Cursor.visible = false;
+            EnsureCrosshair();
             if (crosshair != null) crosshair.SetActive(true);
         }
+    }
+
+    public void SetTransitionLock(bool locked)
+    {
+        transitionLocked = locked;
+        if (!locked) return;
+
+        isSliding = false;
+        isSlamming = false;
+        momentum = Vector3.zero;
+        velocity = Vector3.zero;
+        if (controller != null)
+            controller.height = defaultHeight;
     }
 
     // --- External Physics Methods ---
@@ -166,19 +271,50 @@ public class PlayerController : MonoBehaviour
         return false; // Player doesn't have a keycard with that level
     }
 
+    public void TakeDamage(float amount)
+    {
+        if (amount <= 0f) return;
+        if (damageInvulnerabilityTimer > 0f) return;
+        if (isDead) return;
+
+        currentHealth = Mathf.Max(0f, currentHealth - amount);
+        damageInvulnerabilityTimer = damageInvulnerabilityTime;
+        CybergrindRunState.GetOrCreate().RegisterDamageTaken(amount);
+        TriggerDamageFeedback();
+        RefreshVitalsUI();
+
+        if (currentHealth <= 0f)
+            HandleDeath();
+    }
+
+    public void Heal(float amount)
+    {
+        if (amount <= 0f) return;
+        currentHealth = Mathf.Min(CurrentMaxHealth, currentHealth + amount);
+        RefreshVitalsUI();
+    }
+
+    public void AddCurrency(int amount)
+    {
+        if (amount <= 0) return;
+        currency += amount;
+        RefreshVitalsUI();
+    }
+
+    public bool TrySpendCurrency(int amount)
+    {
+        if (amount <= 0) return true;
+        if (currency < amount) return false;
+
+        currency -= amount;
+        RefreshVitalsUI();
+        return true;
+    }
+
     void HandleInteraction()
     {
         Ray ray = new Ray(cameraTransform.position, cameraTransform.forward);
-        Interactable interactable = null;
-
-        if (Physics.Raycast(ray, out RaycastHit hit, interactionDistance, interactableLayer))
-        {
-            interactable = hit.collider.GetComponent<Interactable>();
-        }
-        else if (Physics.Raycast(ray, out hit, interactionDistance))
-        {
-            interactable = hit.collider.GetComponent<Interactable>();
-        }
+        Interactable interactable = FindBestInteractable(ray);
 
         if (interactable == null)
         {
@@ -202,9 +338,37 @@ public class PlayerController : MonoBehaviour
         }
     }
 
+    private Interactable FindBestInteractable(Ray ray)
+    {
+        RaycastHit[] hits = Physics.RaycastAll(ray, interactionDistance, interactableLayer);
+        Interactable interactable = FindInteractableInHits(hits);
+        if (interactable != null) return interactable;
+
+        hits = Physics.RaycastAll(ray, interactionDistance);
+        return FindInteractableInHits(hits);
+    }
+
+    private Interactable FindInteractableInHits(RaycastHit[] hits)
+    {
+        if (hits == null || hits.Length == 0) return null;
+
+        System.Array.Sort(hits, (a, b) => a.distance.CompareTo(b.distance));
+        for (int i = 0; i < hits.Length; i++)
+        {
+            Collider collider = hits[i].collider;
+            if (collider == null) continue;
+
+            Interactable interactable = collider.GetComponentInParent<Interactable>();
+            if (interactable != null) return interactable;
+        }
+
+        return null;
+    }
+
     void ClearFocus()
     {
-        if (interactionPromptText != null) interactionPromptText.gameObject.SetActive(false);
+        if (interactionPromptText != null && transientPromptTimer <= 0f)
+            interactionPromptText.gameObject.SetActive(false);
         if (currentInteractable == null) return;
         currentInteractable.OnLoseFocus();
         currentInteractable = null;
@@ -213,8 +377,117 @@ public class PlayerController : MonoBehaviour
     void ShowPrompt(string message)
     {
         if (interactionPromptText == null) return;
-        interactionPromptText.text = message;
+        if (transientPromptTimer > 0f) return;
+        string formatted = BuildInteractionPrompt(message);
+        interactionPromptText.text = formatted;
+        interactionPromptText.gameObject.SetActive(!string.IsNullOrEmpty(formatted));
+    }
+
+    public void ShowTransientStatus(string message, float duration = 1.2f)
+    {
+        if (interactionPromptText == null || string.IsNullOrWhiteSpace(message)) return;
+
+        transientPromptText = message.Trim();
+        transientPromptTimer = Mathf.Max(0.1f, duration);
+        interactionPromptText.text = DecorateStatusPrompt(transientPromptText, true);
         interactionPromptText.gameObject.SetActive(true);
+    }
+
+    private string BuildInteractionPrompt(string message)
+    {
+        if (string.IsNullOrWhiteSpace(message))
+            return string.Empty;
+
+        string trimmed = message.Trim();
+        const string pressEPrefix = "Press E to ";
+        if (trimmed.StartsWith(pressEPrefix, System.StringComparison.OrdinalIgnoreCase))
+        {
+            string action = trimmed.Substring(pressEPrefix.Length).Trim();
+            return $"<color=#9BEFFF><b>[E]</b></color> <color=#EAFBFF>{action}</color>";
+        }
+
+        if (trimmed.StartsWith("Press E ", System.StringComparison.OrdinalIgnoreCase))
+        {
+            string action = trimmed.Substring("Press E ".Length).Trim();
+            return $"<color=#9BEFFF><b>[E]</b></color> <color=#EAFBFF>{action}</color>";
+        }
+
+        if (ShouldShowInteractionKey(trimmed))
+            return $"<color=#9BEFFF><b>[E]</b></color> <color=#EAFBFF>{trimmed}</color>";
+
+        return DecorateStatusPrompt(trimmed, false);
+    }
+
+    private bool ShouldShowInteractionKey(string message)
+    {
+        if (string.IsNullOrEmpty(message))
+            return false;
+
+        if (message.Equals("DEAD", System.StringComparison.OrdinalIgnoreCase) ||
+            message.Equals("HULL BREACH", System.StringComparison.OrdinalIgnoreCase))
+            return false;
+        if (message.StartsWith("Need ", System.StringComparison.OrdinalIgnoreCase))
+            return false;
+        if (message.IndexOf("claimed", System.StringComparison.OrdinalIgnoreCase) >= 0)
+            return false;
+        if (message.IndexOf("linked", System.StringComparison.OrdinalIgnoreCase) >= 0)
+            return false;
+        if (message.IndexOf("spent", System.StringComparison.OrdinalIgnoreCase) >= 0)
+            return false;
+        if (message.IndexOf("drained", System.StringComparison.OrdinalIgnoreCase) >= 0)
+            return false;
+        if (message.IndexOf("offline", System.StringComparison.OrdinalIgnoreCase) >= 0)
+            return false;
+        if (message.IndexOf("sealed", System.StringComparison.OrdinalIgnoreCase) >= 0)
+            return false;
+        if (message.IndexOf("live", System.StringComparison.OrdinalIgnoreCase) >= 0)
+            return false;
+
+        return true;
+    }
+
+    private string DecorateStatusPrompt(string message, bool emphasize = false)
+    {
+        if (string.IsNullOrWhiteSpace(message))
+            return string.Empty;
+
+        string trimmed = message.Trim();
+        if (trimmed.Equals("HULL BREACH", System.StringComparison.OrdinalIgnoreCase))
+            return "<color=#FF7668><b>HULL BREACH</b></color>";
+        if (trimmed.StartsWith("Need ", System.StringComparison.OrdinalIgnoreCase))
+            return emphasize
+                ? $"<color=#FFC766><b>{trimmed}</b></color>"
+                : $"<color=#FFC766>{trimmed}</color>";
+        if (trimmed.IndexOf("core variant", System.StringComparison.OrdinalIgnoreCase) >= 0 ||
+            trimmed.IndexOf("route punched deeper", System.StringComparison.OrdinalIgnoreCase) >= 0)
+            return emphasize
+                ? $"<color=#FFD7A2><b>{trimmed}</b></color>"
+                : $"<color=#FFD7A2>{trimmed}</color>";
+        if (trimmed.IndexOf("claimed", System.StringComparison.OrdinalIgnoreCase) >= 0 ||
+            trimmed.IndexOf("linked", System.StringComparison.OrdinalIgnoreCase) >= 0 ||
+            trimmed.IndexOf("repaired", System.StringComparison.OrdinalIgnoreCase) >= 0 ||
+            trimmed.IndexOf("tuned", System.StringComparison.OrdinalIgnoreCase) >= 0 ||
+            trimmed.IndexOf("patch", System.StringComparison.OrdinalIgnoreCase) >= 0)
+            return emphasize
+                ? $"<color=#8EFFE2><b>{trimmed}</b></color>"
+                : $"<color=#8EFFE2>{trimmed}</color>";
+        if (trimmed.IndexOf("spent", System.StringComparison.OrdinalIgnoreCase) >= 0 ||
+            trimmed.IndexOf("drained", System.StringComparison.OrdinalIgnoreCase) >= 0 ||
+            trimmed.IndexOf("sealed", System.StringComparison.OrdinalIgnoreCase) >= 0 ||
+            trimmed.IndexOf("offline", System.StringComparison.OrdinalIgnoreCase) >= 0)
+            return $"<color=#AAB6C4>{trimmed}</color>";
+        if (trimmed.IndexOf("live", System.StringComparison.OrdinalIgnoreCase) >= 0 ||
+            trimmed.IndexOf("open", System.StringComparison.OrdinalIgnoreCase) >= 0 ||
+            trimmed.IndexOf("clear", System.StringComparison.OrdinalIgnoreCase) >= 0)
+            return emphasize
+                ? $"<color=#9BEFFF><b>{trimmed}</b></color>"
+                : $"<color=#9BEFFF>{trimmed}</color>";
+        if (trimmed.IndexOf("coin", System.StringComparison.OrdinalIgnoreCase) >= 0)
+            return emphasize
+                ? $"<color=#FFD95E><b>{trimmed}</b></color>"
+                : $"<color=#FFD95E>{trimmed}</color>";
+
+        return trimmed;
     }
 
     void HandleMovement()
@@ -236,11 +509,19 @@ public class PlayerController : MonoBehaviour
             velocity.y = -2f;
             jumpsRemaining = maxJumps;
             isSlamming = false; // FIX: Always reset slam state when touching the ground!
+            abyssRecoveredThisAirborneState = false;
         }
 
         if (dashCooldownTimer > 0) dashCooldownTimer -= Time.deltaTime;
         if (slideLockoutTimer > 0f) slideLockoutTimer -= Time.deltaTime;
+        if (slideCooldownTimer > 0f) slideCooldownTimer -= Time.deltaTime;
         TrackSafePosition();
+
+        if (enableAbyssRecovery && transform.position.y < abyssRecoveryY && !abyssRecoveredThisAirborneState)
+        {
+            RecoverFromAbyss();
+            return;
+        }
 
         if (transform.position.y < fallRespawnY)
         {
@@ -266,7 +547,7 @@ public class PlayerController : MonoBehaviour
             Vector3 dashDir = inputDir.magnitude > 0.1f ? inputDir : transform.forward;
             
             // Add momentum (retaining previous velocity)
-            momentum += dashDir * dashForce; 
+            momentum += dashDir * CurrentDashForce;
             velocity.y = 0f; // Brief hover effect
         }
 
@@ -280,7 +561,7 @@ public class PlayerController : MonoBehaviour
             velocity.y = -slamSpeed; // Plunge straight down
         }
 
-        if (wantsToSlide && isGrounded && !isSliding && slideLockoutTimer <= 0f)
+        if (wantsToSlide && isGrounded && !isSliding && slideLockoutTimer <= 0f && slideCooldownTimer <= 0f)
         {
             isSliding = true;
             controller.height = slideHeight;
@@ -299,6 +580,7 @@ public class PlayerController : MonoBehaviour
                 isSliding = false;
                 controller.height = defaultHeight;
                 momentum *= 0.65f;
+                slideCooldownTimer = Mathf.Max(slideCooldownTimer, postSlamSlideLockout);
                 return;
             }
 
@@ -316,6 +598,7 @@ public class PlayerController : MonoBehaviour
             {
                 isSliding = false;
                 controller.height = defaultHeight;
+                slideCooldownTimer = slideCooldown;
             }
         }
 
@@ -330,7 +613,7 @@ public class PlayerController : MonoBehaviour
             else
             {
                 // Normal running (snaps quickly to target speed)
-                Vector3 targetVel = inputDir * moveSpeed;
+                Vector3 targetVel = inputDir * CurrentMoveSpeed;
                 float accel = (inputDir.magnitude > 0) ? groundAcceleration : groundDeceleration;
                 momentum = Vector3.Lerp(momentum, targetVel, accel * Time.deltaTime);
             }
@@ -338,14 +621,14 @@ public class PlayerController : MonoBehaviour
         else
         {
             // Air control (Decays smoothly, retains high speeds from dashes/slides)
-            Vector3 targetVel = inputDir * moveSpeed;
+            Vector3 targetVel = inputDir * CurrentMoveSpeed;
             momentum = Vector3.Lerp(momentum, targetVel, airAcceleration * Time.deltaTime);
         }
 
         // --- JUMP LOGIC ---
         if (UnityEngine.InputSystem.Keyboard.current.spaceKey.wasPressedThisFrame && jumpsRemaining > 0)
         {
-            velocity.y = Mathf.Sqrt(jumpHeight * -2f * gravity);
+            velocity.y = Mathf.Sqrt(CurrentJumpHeight * -2f * gravity);
             jumpsRemaining--;
 
             if (isSliding)
@@ -354,6 +637,7 @@ public class PlayerController : MonoBehaviour
                 isSliding = false; 
                 controller.height = defaultHeight;
                 momentum = Vector3.ClampMagnitude(momentum, maxSlideJumpCarrySpeed);
+                slideCooldownTimer = slideCooldown;
             }
         }
 
@@ -447,6 +731,206 @@ public class PlayerController : MonoBehaviour
         controller.height = defaultHeight;
     }
 
+    private void RecoverFromAbyss()
+    {
+        abyssRecoveredThisAirborneState = true;
+        Vector3 targetPosition = lastSafePosition + Vector3.up * 1.2f;
+        CybergrindArenaGenerator generator = FindAnyObjectByType<CybergrindArenaGenerator>();
+        if (generator != null && generator.TryGetRecoveryPosition(transform.position, out Vector3 recoveryPosition))
+            targetPosition = recoveryPosition;
+
+        controller.enabled = false;
+        transform.position = targetPosition;
+        controller.enabled = true;
+        velocity = new Vector3(0f, Mathf.Sqrt((CurrentJumpHeight + 1.4f) * -2f * gravity), 0f);
+        momentum *= 0.55f;
+    }
+
+    private void HandleDefeatAndRespawn()
+    {
+        HandleDeath();
+    }
+
+    private void HandleDeath()
+    {
+        if (isDead) return;
+
+        if (respawnOnDeath)
+        {
+            RespawnAtLastSafePosition();
+            float targetHealth = Mathf.Clamp(CurrentMaxHealth * respawnHealthPercent, 1f, CurrentMaxHealth);
+            currentHealth = targetHealth;
+            damageInvulnerabilityTimer = damageInvulnerabilityTime;
+            RefreshVitalsUI();
+            return;
+        }
+
+        isDead = true;
+        currentHealth = 0f;
+        RefreshVitalsUI();
+        Cursor.lockState = CursorLockMode.None;
+        Cursor.visible = true;
+        if (crosshair != null) crosshair.SetActive(false);
+        if (interactionPromptText != null)
+        {
+            interactionPromptText.text = "HULL BREACH";
+            interactionPromptText.gameObject.SetActive(true);
+        }
+        if (controller != null) controller.enabled = false;
+    }
+
+    public void PrepareForRunReset()
+    {
+        isDead = false;
+        isUIActive = false;
+        transitionLocked = false;
+        damageInvulnerabilityTimer = 0f;
+        damageFlashTimer = 0f;
+        damageKickTimer = 0f;
+        velocity = Vector3.zero;
+        momentum = Vector3.zero;
+        isSliding = false;
+        isSlamming = false;
+        abyssRecoveredThisAirborneState = false;
+        if (controller != null)
+        {
+            controller.enabled = true;
+            controller.height = defaultHeight;
+        }
+
+        currentHealth = CurrentMaxHealth;
+        lastSafePosition = transform.position;
+        safePositionTimer = 0f;
+        RefreshVitalsUI();
+        ClearFocus();
+
+        Cursor.lockState = CursorLockMode.Locked;
+        Cursor.visible = false;
+        EnsureCrosshair();
+        if (crosshair != null) crosshair.SetActive(true);
+        if (interactionPromptText != null) interactionPromptText.gameObject.SetActive(false);
+        if (damageFlashOverlay != null)
+        {
+            damageFlashOverlay.enabled = false;
+            damageFlashOverlay.color = new Color(damageFlashColor.r, damageFlashColor.g, damageFlashColor.b, 0f);
+        }
+    }
+
+    public void NotifyWeaponHit(Color accentColor, bool kill)
+    {
+        EnsureCrosshair();
+        crosshairPulseColor = kill ? Color.Lerp(accentColor, crosshairKillColor, 0.55f) : Color.Lerp(accentColor, crosshairHitColor, 0.35f);
+        crosshairHitTimer = 0.11f;
+        if (kill)
+            crosshairKillTimer = 0.26f;
+    }
+
+    private void RefreshVitalsUI()
+    {
+        if (healthText != null)
+            healthText.text = $"HULL {Mathf.CeilToInt(currentHealth)}/{Mathf.CeilToInt(CurrentMaxHealth)}";
+
+        if (currencyText != null)
+            currencyText.text = $"COINS {currency}";
+    }
+
+    private void TriggerDamageFeedback()
+    {
+        damageFlashTimer = damageFlashDuration;
+        damageKickTimer = damageFlashDuration;
+        xRotation = Mathf.Clamp(xRotation - damageLookKick, -80f, 80f);
+    }
+
+    private void UpdateDamageFeedback()
+    {
+        if (playerCamera != null && damageKickTimer > 0f)
+        {
+            damageKickTimer -= Time.deltaTime;
+            float normalized = Mathf.Clamp01(damageKickTimer / Mathf.Max(0.01f, damageFlashDuration));
+            float target = baseFOV + damageFovKick * normalized;
+            playerCamera.fieldOfView = Mathf.Max(playerCamera.fieldOfView, target);
+        }
+
+        if (damageFlashOverlay == null) return;
+
+        if (damageFlashTimer > 0f)
+        {
+            damageFlashTimer -= Time.deltaTime;
+            float normalized = Mathf.Clamp01(damageFlashTimer / Mathf.Max(0.01f, damageFlashDuration));
+            Color color = damageFlashColor;
+            color.a *= normalized;
+            damageFlashOverlay.color = color;
+            damageFlashOverlay.enabled = color.a > 0.001f;
+            return;
+        }
+
+        if (!damageFlashOverlay.enabled) return;
+        damageFlashOverlay.color = new Color(damageFlashColor.r, damageFlashColor.g, damageFlashColor.b, 0f);
+        damageFlashOverlay.enabled = false;
+    }
+
+    private void EnsureDamageOverlay()
+    {
+        if (damageFlashOverlay != null) return;
+
+        Canvas canvas = ProjectStructureUIRoot.GetOrCreateCanvas();
+        if (canvas == null) return;
+
+        Transform existing = canvas.transform.Find("DamageFlashOverlay");
+        if (existing != null)
+        {
+            damageFlashOverlay = existing.GetComponent<Image>();
+            return;
+        }
+
+        GameObject overlay = new GameObject("DamageFlashOverlay");
+        overlay.transform.SetParent(canvas.transform, false);
+        RectTransform rect = overlay.AddComponent<RectTransform>();
+        rect.anchorMin = Vector2.zero;
+        rect.anchorMax = Vector2.one;
+        rect.offsetMin = Vector2.zero;
+        rect.offsetMax = Vector2.zero;
+
+        damageFlashOverlay = overlay.AddComponent<Image>();
+        damageFlashOverlay.color = new Color(damageFlashColor.r, damageFlashColor.g, damageFlashColor.b, 0f);
+        damageFlashOverlay.raycastTarget = false;
+        damageFlashOverlay.enabled = false;
+    }
+
+    public void ApplySettings(float sensitivity, float desiredBaseFov, float masterVolume, bool persist = true)
+    {
+        mouseSensitivity = Mathf.Clamp(sensitivity, 20f, 220f);
+        baseFOV = Mathf.Clamp(desiredBaseFov, 70f, 120f);
+        if (playerCamera != null)
+            playerCamera.fieldOfView = baseFOV;
+        AudioListener.volume = Mathf.Clamp01(masterVolume);
+
+        if (!persist) return;
+
+        PlayerPrefs.SetFloat(MouseSensitivityPrefKey, mouseSensitivity);
+        PlayerPrefs.SetFloat(BaseFovPrefKey, baseFOV);
+        PlayerPrefs.SetFloat(MasterVolumePrefKey, AudioListener.volume);
+        PlayerPrefs.Save();
+    }
+
+    public float GetBaseFov()
+    {
+        return baseFOV;
+    }
+
+    public float GetMasterVolume()
+    {
+        return AudioListener.volume;
+    }
+
+    private void LoadSettings()
+    {
+        float savedSensitivity = PlayerPrefs.GetFloat(MouseSensitivityPrefKey, mouseSensitivity);
+        float savedFov = PlayerPrefs.GetFloat(BaseFovPrefKey, baseFOV > 0f ? baseFOV : 90f);
+        float savedVolume = PlayerPrefs.GetFloat(MasterVolumePrefKey, AudioListener.volume <= 0f ? 1f : AudioListener.volume);
+        ApplySettings(savedSensitivity, savedFov, savedVolume, false);
+    }
+
     private void EnsureSpeedLines()
     {
         if (speedLines != null || cameraTransform == null) return;
@@ -508,6 +992,200 @@ public class PlayerController : MonoBehaviour
             speedLines.Play();
         else if (speed01 <= 0.01f && speedLines.isPlaying)
             speedLines.Stop();
+    }
+
+    private void EnsureCrosshair()
+    {
+        if (crosshair == null)
+        {
+            Canvas canvas = ProjectStructureUIRoot.GetOrCreateCanvas();
+            if (canvas == null) return;
+
+            crosshair = new GameObject("RuntimeCrosshair");
+            crosshair.transform.SetParent(canvas.transform, false);
+            crosshairRect = crosshair.AddComponent<RectTransform>();
+            crosshairRect.anchorMin = new Vector2(0.5f, 0.5f);
+            crosshairRect.anchorMax = new Vector2(0.5f, 0.5f);
+            crosshairRect.pivot = new Vector2(0.5f, 0.5f);
+            crosshairRect.sizeDelta = new Vector2(84f, 84f);
+
+            BuildCrosshairSegments(crosshair.transform);
+            return;
+        }
+
+        if (crosshairRect == null)
+            crosshairRect = crosshair.GetComponent<RectTransform>();
+
+        if (crosshairRect == null)
+            return;
+
+        bool needsSegments = false;
+        for (int i = 0; i < crosshairSegmentRects.Length; i++)
+        {
+            if (crosshairSegmentRects[i] == null || crosshairSegmentImages[i] == null)
+            {
+                needsSegments = true;
+                break;
+            }
+        }
+
+        if (!needsSegments) return;
+
+        Image[] images = crosshair.GetComponentsInChildren<Image>(true);
+        if (images.Length >= 4)
+        {
+            for (int i = 0; i < 4; i++)
+            {
+                crosshairSegmentImages[i] = images[i];
+                crosshairSegmentRects[i] = images[i].rectTransform;
+            }
+            return;
+        }
+
+        BuildCrosshairSegments(crosshair.transform);
+    }
+
+    private void BuildCrosshairSegments(Transform root)
+    {
+        Vector2[] positions =
+        {
+            new Vector2(0f, 14f),
+            new Vector2(14f, 0f),
+            new Vector2(0f, -14f),
+            new Vector2(-14f, 0f)
+        };
+
+        Vector2[] sizes =
+        {
+            new Vector2(3f, 13f),
+            new Vector2(13f, 3f),
+            new Vector2(3f, 13f),
+            new Vector2(13f, 3f)
+        };
+
+        for (int i = 0; i < 4; i++)
+        {
+            GameObject go = new GameObject("CrosshairSegment_" + i);
+            go.transform.SetParent(root, false);
+            RectTransform rect = go.AddComponent<RectTransform>();
+            rect.anchorMin = new Vector2(0.5f, 0.5f);
+            rect.anchorMax = new Vector2(0.5f, 0.5f);
+            rect.pivot = new Vector2(0.5f, 0.5f);
+            rect.anchoredPosition = positions[i];
+            rect.sizeDelta = sizes[i];
+            Image image = go.AddComponent<Image>();
+            image.color = crosshairBaseColor;
+            image.raycastTarget = false;
+            crosshairSegmentRects[i] = rect;
+            crosshairSegmentImages[i] = image;
+        }
+    }
+
+    private void UpdateCrosshairVisual()
+    {
+        EnsureCrosshair();
+        if (crosshairRect == null || crosshair == null || !crosshair.activeSelf) return;
+
+        if (crosshairHitTimer > 0f)
+            crosshairHitTimer -= Time.deltaTime;
+        if (crosshairKillTimer > 0f)
+            crosshairKillTimer -= Time.deltaTime;
+
+        float speed = controller != null ? new Vector3(controller.velocity.x, 0f, controller.velocity.z).magnitude : 0f;
+        float speed01 = Mathf.InverseLerp(0f, maxSpeedLimit, speed);
+        float hit01 = Mathf.Clamp01(crosshairHitTimer / 0.11f);
+        float kill01 = Mathf.Clamp01(crosshairKillTimer / 0.26f);
+        bool focused = currentInteractable != null && !isUIActive && !isDead;
+        bool hostile = IsAimingAtHostile();
+
+        Color targetColor = focused
+            ? crosshairFocusColor
+            : hostile ? crosshairHostileColor : crosshairBaseColor;
+        if (hit01 > 0.01f || kill01 > 0.01f)
+            targetColor = Color.Lerp(targetColor, crosshairPulseColor == default ? crosshairHitColor : crosshairPulseColor, Mathf.Max(hit01, kill01));
+
+        float gap = 12f + speed01 * 8f + hit01 * 5f + kill01 * 9f;
+        float length = 11f + speed01 * 3.5f + kill01 * 3f;
+        float thickness = 3f + hit01 * 1.2f + kill01 * 1.4f;
+        float scale = 1f + speed01 * 0.05f + hit01 * 0.08f + kill01 * 0.12f;
+        crosshairRect.localScale = Vector3.one * scale;
+
+        Vector2[] positions =
+        {
+            new Vector2(0f, gap),
+            new Vector2(gap, 0f),
+            new Vector2(0f, -gap),
+            new Vector2(-gap, 0f)
+        };
+
+        for (int i = 0; i < crosshairSegmentRects.Length; i++)
+        {
+            if (crosshairSegmentRects[i] == null || crosshairSegmentImages[i] == null) continue;
+            crosshairSegmentRects[i].anchoredPosition = positions[i];
+            crosshairSegmentRects[i].sizeDelta = i % 2 == 0
+                ? new Vector2(thickness, length)
+                : new Vector2(length, thickness);
+            crosshairSegmentImages[i].color = targetColor;
+        }
+    }
+
+    private bool IsAimingAtHostile()
+    {
+        if (cameraTransform == null || isUIActive || isDead)
+            return false;
+
+        Ray ray = new Ray(cameraTransform.position, cameraTransform.forward);
+        RaycastHit[] hits = Physics.RaycastAll(ray, 120f, ~0, QueryTriggerInteraction.Ignore);
+        if (hits == null || hits.Length == 0)
+            return false;
+
+        System.Array.Sort(hits, (a, b) => a.distance.CompareTo(b.distance));
+        for (int i = 0; i < hits.Length; i++)
+        {
+            Collider collider = hits[i].collider;
+            if (collider == null) continue;
+            if (collider.transform.IsChildOf(transform)) continue;
+
+            IDamageable damageable = collider.GetComponentInParent<IDamageable>();
+            if (damageable == null || damageable is PlayerController)
+            {
+                if (!collider.isTrigger) return false;
+                continue;
+            }
+
+            if (damageable is BasicEnemyAI enemy)
+                return !enemy.IsCombatResolved;
+
+            if (damageable is Target target)
+                return target != null && target.currentHealth > 0f;
+
+            return true;
+        }
+
+        return false;
+    }
+
+    public void ApplyMobilityUpgrade(float moveBonusAmount, float dashBonusAmount, float jumpBonusAmount)
+    {
+        moveSpeedBonus += Mathf.Max(0f, moveBonusAmount);
+        dashForceBonus += Mathf.Max(0f, dashBonusAmount);
+        jumpHeightBonus += Mathf.Max(0f, jumpBonusAmount);
+    }
+
+    public void ApplyHullUpgrade(float maxHealthAmount, float healAmount)
+    {
+        maxHealthBonus += Mathf.Max(0f, maxHealthAmount);
+        currentHealth = Mathf.Min(CurrentMaxHealth, currentHealth + Mathf.Max(0f, healAmount));
+        RefreshVitalsUI();
+    }
+
+    public void ResetRunModifiers()
+    {
+        moveSpeedBonus = 0f;
+        dashForceBonus = 0f;
+        jumpHeightBonus = 0f;
+        maxHealthBonus = 0f;
+        PrepareForRunReset();
     }
 
     void HandleLook()

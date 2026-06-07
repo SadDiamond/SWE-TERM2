@@ -5,7 +5,7 @@ using UnityEngine;
 /// Generates a single room layout for the Hermes Inc. procedural megastructure.
 /// Each call creates one room to be played sequentially.
 /// 
-/// Flow: Combat rooms 1-5 (same theme) → Boss room → Shop → repeat
+/// Flow: Combat rooms 1-5 (same theme) → Shop room → Boss room → next theme
 /// 
 /// Layout:
 /// - Spawn point: near entrance (x=1, z=1)
@@ -43,7 +43,7 @@ public class SequentialRoomMacro : MacroGenerator
     public int exitPitRadius = 1;
 
     [Header("Difficulty Scaling")]
-    [Range(1, 5)] public int roomNumber = 1;  // 1-5 = first tier, 6 = boss, 7 = shop, 8-12 = second tier, etc.
+    [Range(1, 5)] public int roomNumber = 1;  // 1-5 = combat tier, 6 = shop, 7 = boss, 8-12 = next tier, etc.
 
     public override MacroRegion[,] Generate(int width, int length, int seed)
     {

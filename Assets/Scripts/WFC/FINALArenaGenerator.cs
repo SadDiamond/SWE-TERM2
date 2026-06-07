@@ -1,5 +1,8 @@
+using System;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Rendering;
+using UnityEngine.Rendering.Universal;
 
 public class CybergrindArenaGenerator : MonoBehaviour
 {
@@ -9,6 +12,7 @@ public class CybergrindArenaGenerator : MonoBehaviour
         Floor,
         Bridge,
         Platform,
+        UpperPlatform,
         Hazard,
         CoverLow,
         CoverHigh,
@@ -29,6 +33,8 @@ public class CybergrindArenaGenerator : MonoBehaviour
     public bool generateOnStart = true;
     public bool clearBeforeGenerate = true;
     public ArenaMode arenaMode = ArenaMode.Combat;
+    [Min(0)] public int themeIndex = 0;
+    public bool useThemePaletteVariants = true;
 
     public enum ArenaMode
     {
@@ -37,9 +43,46 @@ public class CybergrindArenaGenerator : MonoBehaviour
         Boss
     }
 
+    public string GetThemeLabel()
+    {
+        return GetThemeLabel(themeIndex);
+    }
+
+    public static string GetThemeLabel(int index)
+    {
+        switch (Math.Abs(index) % 4)
+        {
+            case 0: return "Null Sector";
+            case 1: return "Blue Wake";
+            case 2: return "Ember Vault";
+            default: return "Verdant Static";
+        }
+    }
+
+    public string GetThemeDirectiveTitle()
+    {
+        return GetThemeDirectiveTitle(themeIndex);
+    }
+
+    public static string GetThemeDirectiveTitle(int index)
+    {
+        return ResolveThemeProfile(index).directiveTitle;
+    }
+
+    public string GetThemeDirectiveDetail()
+    {
+        return GetThemeDirectiveDetail(themeIndex);
+    }
+
+    public static string GetThemeDirectiveDetail(int index)
+    {
+        return ResolveThemeProfile(index).directiveDetail;
+    }
+
     [Header("Floating Layout")]
     [Range(1, 4)] public int bridgeLevel = 1;
-    [Range(1, 5)] public int platformLevel = 1;
+    [Range(2, 5)] public int platformLevel = 2;
+    [Range(3, 6)] public int crownLevel = 3;
     public float levelHeight = 5.4f;
     [Range(1, 3)] public int mainBridgeHalfWidth = 1;
     [Range(2, 6)] public int centralPlatformRadius = 4;
@@ -58,6 +101,15 @@ public class CybergrindArenaGenerator : MonoBehaviour
     public float playerSpawnHeight = 2.2f;
     public string generatedRootName = "_CybergrindArena";
 
+    [Header("Enemy Spawning")]
+    public GameObject enemyPrefab;
+    [Min(0)] public int combatEnemyMin = 4;
+    [Min(0)] public int combatEnemyMax = 8;
+    [Min(0)] public int bossEnemyMin = 10;
+    [Min(0)] public int bossEnemyMax = 14;
+    [Min(0)] public int minEnemyDistanceFromSpawn = 7;
+    public bool spawnBossChampion = true;
+
     [Header("Materials")]
     public Material floorMaterial;
     public Material darkMaterial;
@@ -69,6 +121,58 @@ public class CybergrindArenaGenerator : MonoBehaviour
     public Material puzzleMaterial;
 
     private readonly List<GameObject> spawned = new List<GameObject>();
+    private readonly List<Vector3> recoveryPoints = new List<Vector3>();
+
+    public Transform CurrentArenaRoot { get; private set; }
+    private CellKind[,] lastCells;
+    private Vector2Int lastSpawnCell;
+    private Vector2Int lastExitCell;
+    private Volume environmentVolume;
+    private Material skyboxMaterial;
+    [NonSerialized] public bool skipPlayerPlacementOnce;
+
+    private struct ThemePalette
+    {
+        public Color floor;
+        public Color dark;
+        public Color accent;
+        public Color accentEmission;
+        public Color hazard;
+        public Color hazardEmission;
+        public Color spawn;
+        public Color spawnEmission;
+        public Color exit;
+        public Color exitEmission;
+        public Color item;
+        public Color itemEmission;
+        public Color puzzle;
+        public Color puzzleEmission;
+    }
+
+    private struct ThemeProfile
+    {
+        public string directiveTitle;
+        public string directiveDetail;
+        public float outerGapMultiplier;
+        public float hazardMultiplier;
+        public float coverMultiplier;
+        public float itemMultiplier;
+        public int extraIslands;
+        public int extraJumpPads;
+        public int extraPylons;
+        public int terminalBonus;
+        public int shooterWeight;
+        public int gruntWeight;
+        public int tankWeight;
+        public int flyingWeight;
+        public Color fogColor;
+        public Color skyTint;
+        public Color bloomTint;
+        public Color colorFilter;
+        public Color dustColor;
+        public Color sparkColor;
+        public float ambientBoost;
+    }
 
     private static readonly int BaseColorId = Shader.PropertyToID("_BaseColor");
     private static readonly int ColorId = Shader.PropertyToID("_Color");
@@ -86,18 +190,26 @@ public class CybergrindArenaGenerator : MonoBehaviour
         if (clearBeforeGenerate)
             ClearArena();
 
+        bridgeLevel = Mathf.Clamp(bridgeLevel, 1, platformLevel - 1);
+        platformLevel = Mathf.Clamp(platformLevel, bridgeLevel + 1, crownLevel - 1);
+        crownLevel = Mathf.Max(platformLevel + 1, crownLevel);
+        recoveryPoints.Clear();
         EnsureMaterials();
 
         Transform root = new GameObject(generatedRootName).transform;
         root.SetParent(transform, false);
         spawned.Add(root.gameObject);
+        CurrentArenaRoot = root;
 
         int actualSeed = (randomizeSeedEachGeneration || seed == 0)
-            ? unchecked(System.Environment.TickCount ^ (int)(Time.realtimeSinceStartup * 100000f) ^ Random.Range(int.MinValue, int.MaxValue))
+            ? unchecked(System.Environment.TickCount ^ (int)(Time.realtimeSinceStartup * 100000f) ^ UnityEngine.Random.Range(int.MinValue, int.MaxValue))
             : seed;
         lastGeneratedSeed = actualSeed;
         var rng = new System.Random(actualSeed);
         CellKind[,] cells = BuildLayout(rng);
+        lastCells = cells;
+        lastSpawnCell = FindFirst(cells, CellKind.Spawn);
+        lastExitCell = FindFirst(cells, CellKind.Exit);
 
         for (int x = 0; x < width; x++)
         {
@@ -109,11 +221,17 @@ public class CybergrindArenaGenerator : MonoBehaviour
 
         SpawnBoundaryFrame(root);
         SpawnUndersidePillars(root, cells);
+        SpawnRecoveryDecks(root);
         SpawnFloatingTrim(root, cells);
         SpawnArchitecturalContent(root, cells, rng);
         SpawnGameplayContent(root, cells, rng);
         SpawnArenaLighting(root);
-        PlacePlayer(cells);
+        SpawnAtmosphereFX(root, rng);
+        ApplyEnvironmentFX();
+        if (!skipPlayerPlacementOnce)
+            PlacePlayer(cells);
+        else
+            skipPlayerPlacementOnce = false;
 
         Debug.Log($"[CybergrindArena] Generated {width}x{length} arena with seed {actualSeed}.");
     }
@@ -131,6 +249,8 @@ public class CybergrindArenaGenerator : MonoBehaviour
         }
 
         spawned.Clear();
+        recoveryPoints.Clear();
+        CurrentArenaRoot = null;
 
         Transform old = transform.Find(generatedRootName);
         if (old != null)
@@ -165,6 +285,9 @@ public class CybergrindArenaGenerator : MonoBehaviour
         CarveVoidMoat(cells);
         int centerRadius = Mathf.Clamp(centralPlatformRadius + rng.Next(-1, 2), 2, Mathf.Max(2, Mathf.Min(width, length) / 5));
         StampRect(cells, center.x - centerRadius, center.y - centerRadius, center.x + centerRadius, center.y + centerRadius, CellKind.Platform);
+        int crownRadius = Mathf.Clamp(centerRadius - 2, 2, 4);
+        StampRect(cells, center.x - crownRadius, center.y - 1, center.x + crownRadius, center.y + 1, CellKind.UpperPlatform);
+        StampRect(cells, center.x - 1, center.y - crownRadius, center.x + 1, center.y + crownRadius, CellKind.UpperPlatform);
 
         StampRect(cells, center.x - mainBridgeHalfWidth, 1, center.x + mainBridgeHalfWidth, length - 2, CellKind.Bridge);
         StampRect(cells, 1, center.y - mainBridgeHalfWidth, width - 2, center.y + mainBridgeHalfWidth, CellKind.Bridge);
@@ -188,6 +311,10 @@ public class CybergrindArenaGenerator : MonoBehaviour
         StampRect(cells, width - 2 - s, 2, width - 3, 1 + s, CellKind.Platform);
         StampRect(cells, 2, length - 2 - s, 1 + s, length - 3, CellKind.Platform);
         StampRect(cells, width - 2 - s, length - 2 - s, width - 3, length - 3, CellKind.Platform);
+        StampRect(cells, 3, 3, 4, 4, CellKind.UpperPlatform);
+        StampRect(cells, width - 5, 3, width - 4, 4, CellKind.UpperPlatform);
+        StampRect(cells, 3, length - 5, 4, length - 4, CellKind.UpperPlatform);
+        StampRect(cells, width - 5, length - 5, width - 4, length - 4, CellKind.UpperPlatform);
 
         StampOuterDetail(cells, rng, center, spawn, exit);
         StampFloatingIslands(cells, rng, center, spawn, exit);
@@ -229,7 +356,8 @@ public class CybergrindArenaGenerator : MonoBehaviour
 
     private void StampFloatingIslands(CellKind[,] cells, System.Random rng, Vector2Int center, Vector2Int spawn, Vector2Int exit)
     {
-        int islandCount = Mathf.Clamp((width * length) / 130, 3, 12);
+        ThemeProfile profile = ResolveThemeProfile(themeIndex);
+        int islandCount = Mathf.Clamp((width * length) / 130, 3, 12) + profile.extraIslands;
         for (int i = 0; i < islandCount; i++)
         {
             int x = rng.Next(4, width - 4);
@@ -263,6 +391,11 @@ public class CybergrindArenaGenerator : MonoBehaviour
 
     private void StampOuterDetail(CellKind[,] cells, System.Random rng, Vector2Int center, Vector2Int spawn, Vector2Int exit)
     {
+        ThemeProfile profile = ResolveThemeProfile(themeIndex);
+        float adjustedOuterGapChance = Mathf.Clamp01(outerGapChance * profile.outerGapMultiplier);
+        float adjustedHazardChance = Mathf.Clamp01(hazardChance * profile.hazardMultiplier);
+        float adjustedCoverChance = Mathf.Clamp01(coverChance * profile.coverMultiplier);
+
         for (int x = 2; x < width - 2; x++)
         {
             for (int z = 2; z < length - 2; z++)
@@ -274,15 +407,15 @@ public class CybergrindArenaGenerator : MonoBehaviour
                 if (Mathf.Abs(z - center.y) <= centralPlatformRadius + 2) continue;
 
                 double roll = rng.NextDouble();
-                if (roll < outerGapChance)
+                if (roll < adjustedOuterGapChance)
                 {
                     cells[x, z] = CellKind.Void;
                 }
-                else if (roll < outerGapChance + hazardChance)
+                else if (roll < adjustedOuterGapChance + adjustedHazardChance)
                 {
                     cells[x, z] = CellKind.Hazard;
                 }
-                else if (roll < outerGapChance + hazardChance + coverChance)
+                else if (roll < adjustedOuterGapChance + adjustedHazardChance + adjustedCoverChance)
                 {
                     cells[x, z] = rng.NextDouble() < 0.65 ? CellKind.CoverLow : CellKind.CoverHigh;
                 }
@@ -352,7 +485,7 @@ public class CybergrindArenaGenerator : MonoBehaviour
 
     private void SpawnBoundaryFrame(Transform root)
     {
-        float y = levelHeight * bridgeLevel + 0.15f;
+        float y = levelHeight * crownLevel + 0.15f;
         Vector3 center = new Vector3((width - 1) * tileSize * 0.5f, y, (length - 1) * tileSize * 0.5f);
         CreateCube(root, "NorthFloatingFrame", center + new Vector3(0f, 0f, (length * tileSize) * 0.5f), new Vector3(width * tileSize, 0.35f, 0.35f), darkMaterial);
         CreateCube(root, "SouthFloatingFrame", center + new Vector3(0f, 0f, -(length * tileSize) * 0.5f), new Vector3(width * tileSize, 0.35f, 0.35f), darkMaterial);
@@ -382,26 +515,112 @@ public class CybergrindArenaGenerator : MonoBehaviour
 
     private void SpawnArenaLighting(Transform root)
     {
-        RenderSettings.ambientLight = new Color(0.035f, 0.04f, 0.048f);
+        ThemeProfile profile = ResolveThemeProfile(themeIndex);
+        RenderSettings.ambientLight = new Color(0.035f, 0.04f, 0.048f) + Color.white * profile.ambientBoost;
+        RenderSettings.ambientMode = AmbientMode.Trilight;
+        RenderSettings.ambientSkyColor = profile.skyTint * 0.68f;
+        RenderSettings.ambientEquatorColor = profile.skyTint * 0.38f;
+        RenderSettings.ambientGroundColor = profile.fogColor * 0.95f;
         RenderSettings.fog = true;
         RenderSettings.fogMode = FogMode.ExponentialSquared;
-        RenderSettings.fogColor = new Color(0.015f, 0.018f, 0.022f);
-        RenderSettings.fogDensity = 0.022f;
+        RenderSettings.fogColor = profile.fogColor;
+        RenderSettings.fogDensity = themeIndex % 4 == 1 ? 0.024f : themeIndex % 4 == 2 ? 0.02f : 0.022f;
 
         GameObject key = new GameObject("ArenaKeyLight");
         key.transform.SetParent(root, false);
         key.transform.position = new Vector3(width * tileSize * 0.5f, 18f, length * tileSize * 0.5f);
         Light light = key.AddComponent<Light>();
         light.type = LightType.Directional;
-        light.color = new Color(0.72f, 0.82f, 1f);
-        light.intensity = 0.95f;
+        light.color = Color.Lerp(new Color(0.72f, 0.82f, 1f), profile.skyTint, 0.45f);
+        light.intensity = 0.95f + profile.ambientBoost * 4f;
         key.transform.rotation = Quaternion.Euler(55f, -35f, 0f);
 
         CreateCube(root, "AbyssFogPlane", new Vector3((width - 1) * tileSize * 0.5f, killPlaneY - 8f, (length - 1) * tileSize * 0.5f), new Vector3(width * tileSize * 2.2f, 1f, length * tileSize * 2.2f), darkMaterial, false);
     }
 
+    private void ApplyEnvironmentFX()
+    {
+        EnsureSkybox();
+        EnsureVolume();
+    }
+
+    private void EnsureSkybox()
+    {
+        ThemeProfile profile = ResolveThemeProfile(themeIndex);
+        if (skyboxMaterial == null)
+        {
+            Shader shader = Shader.Find("Skybox/Procedural");
+            if (shader == null) shader = Shader.Find("Skybox/6 Sided");
+            if (shader == null) shader = Shader.Find("Standard");
+            skyboxMaterial = new Material(shader);
+        }
+
+        if (skyboxMaterial == null) return;
+
+        if (skyboxMaterial.HasProperty("_SkyTint"))
+            skyboxMaterial.SetColor("_SkyTint", profile.skyTint);
+        if (skyboxMaterial.HasProperty("_GroundColor"))
+            skyboxMaterial.SetColor("_GroundColor", profile.fogColor * 0.85f);
+        if (skyboxMaterial.HasProperty("_Exposure"))
+            skyboxMaterial.SetFloat("_Exposure", 1.1f + profile.ambientBoost * 2.5f);
+        RenderSettings.skybox = skyboxMaterial;
+    }
+
+    private void EnsureVolume()
+    {
+        ThemeProfile themeProfile = ResolveThemeProfile(themeIndex);
+        if (environmentVolume == null)
+        {
+            GameObject volumeObject = new GameObject("ArenaEnvironmentVolume");
+            volumeObject.transform.SetParent(transform, false);
+            environmentVolume = volumeObject.AddComponent<Volume>();
+            environmentVolume.isGlobal = true;
+            environmentVolume.priority = 20f;
+            environmentVolume.profile = ScriptableObject.CreateInstance<VolumeProfile>();
+        }
+
+        if (environmentVolume == null || environmentVolume.profile == null) return;
+
+        VolumeProfile volProfile = environmentVolume.profile;
+        if (!volProfile.TryGet(out Bloom bloom))
+            bloom = volProfile.Add<Bloom>(true);
+        bloom.active = true;
+        bloom.intensity.Override(2.2f);
+        bloom.threshold.Override(0.78f);
+        bloom.scatter.Override(0.72f);
+        bloom.tint.Override(themeProfile.bloomTint);
+
+        if (!volProfile.TryGet(out Vignette vignette))
+            vignette = volProfile.Add<Vignette>(true);
+        vignette.active = true;
+        vignette.intensity.Override(0.28f);
+        vignette.smoothness.Override(0.62f);
+        vignette.color.Override(new Color(0.02f, 0.02f, 0.03f));
+
+        if (!volProfile.TryGet(out ColorAdjustments colorAdjustments))
+            colorAdjustments = volProfile.Add<ColorAdjustments>(true);
+        colorAdjustments.active = true;
+        colorAdjustments.postExposure.Override(0.35f);
+        colorAdjustments.contrast.Override(18f);
+        colorAdjustments.saturation.Override(12f);
+        colorAdjustments.colorFilter.Override(themeProfile.colorFilter);
+
+        if (!volProfile.TryGet(out FilmGrain filmGrain))
+            filmGrain = volProfile.Add<FilmGrain>(true);
+        filmGrain.active = true;
+        filmGrain.intensity.Override(0.18f);
+        filmGrain.type.Override(FilmGrainLookup.Thin1);
+
+        if (!volProfile.TryGet(out WhiteBalance whiteBalance))
+            whiteBalance = volProfile.Add<WhiteBalance>(true);
+        whiteBalance.active = true;
+        whiteBalance.temperature.Override(-5f);
+        whiteBalance.tint.Override(3f);
+    }
+
     private void SpawnGameplayContent(Transform root, CellKind[,] cells, System.Random rng)
     {
+        ThemeProfile profile = ResolveThemeProfile(themeIndex);
         Vector2Int spawn = FindFirst(cells, CellKind.Spawn);
         Vector2Int exit = FindFirst(cells, CellKind.Exit);
         List<Vector2Int> candidates = new List<Vector2Int>();
@@ -419,16 +638,24 @@ public class CybergrindArenaGenerator : MonoBehaviour
 
         Shuffle(candidates, rng);
 
-        int terminalCount = arenaMode == ArenaMode.Shop ? 1 : arenaMode == ArenaMode.Boss ? 3 : Mathf.Clamp((width * length) / 220, 2, 4);
+        int terminalCount = arenaMode == ArenaMode.Shop
+            ? 0
+            : arenaMode == ArenaMode.Boss
+                ? 0
+                : Mathf.Clamp(((width * length) / 220) + profile.terminalBonus, 2, 5);
         int placed = 0;
         for (int i = 0; i < candidates.Count && placed < terminalCount; i++)
         {
             Vector2Int cell = candidates[i];
-            SpawnPuzzleTerminal(root, cells, cell, placed);
+            SpawnPuzzleTerminal(root, cells, cell, placed, rng);
             placed++;
         }
 
-        int itemCount = arenaMode == ArenaMode.Shop ? 10 : Mathf.Clamp(Mathf.RoundToInt(width * length * itemChance), 6, 18);
+        int itemCount = arenaMode == ArenaMode.Shop
+            ? Mathf.Clamp(Mathf.RoundToInt(10 * profile.itemMultiplier), 8, 14)
+            : arenaMode == ArenaMode.Boss
+                ? Mathf.Clamp(Mathf.RoundToInt(4 * profile.itemMultiplier), 3, 8)
+                : Mathf.Clamp(Mathf.RoundToInt(width * length * itemChance * profile.itemMultiplier), 6, 20);
         for (int i = terminalCount; i < candidates.Count && itemCount > 0; i++)
         {
             Vector2Int cell = candidates[i];
@@ -441,11 +668,109 @@ public class CybergrindArenaGenerator : MonoBehaviour
             SpawnShopStalls(root, cells);
         else if (arenaMode == ArenaMode.Boss)
             SpawnBossArenaMarkers(root, cells);
+
+        SpawnEnemies(root, cells, rng, spawn, exit);
+    }
+
+    private void SpawnEnemies(Transform root, CellKind[,] cells, System.Random rng, Vector2Int spawn, Vector2Int exit)
+    {
+        if (arenaMode == ArenaMode.Shop) return;
+        if (enemyPrefab == null) return;
+
+        if (arenaMode == ArenaMode.Boss)
+        {
+            SpawnBossChampion(root, cells, rng);
+            return;
+        }
+
+        List<Vector2Int> enemyCells = new List<Vector2Int>();
+        for (int x = 2; x < width - 2; x++)
+        {
+            for (int z = 2; z < length - 2; z++)
+            {
+                if (!IsWalkableForContent(cells[x, z])) continue;
+                if (DistanceManhattan(x, z, spawn) < minEnemyDistanceFromSpawn) continue;
+                if (DistanceManhattan(x, z, exit) < safeRadiusAroundExit) continue;
+                enemyCells.Add(new Vector2Int(x, z));
+            }
+        }
+
+        Shuffle(enemyCells, rng);
+
+        int min = arenaMode == ArenaMode.Boss ? bossEnemyMin : combatEnemyMin;
+        int max = arenaMode == ArenaMode.Boss ? bossEnemyMax : combatEnemyMax;
+        int targetCount = Mathf.Clamp(rng.Next(Mathf.Min(min, max), Mathf.Max(min, max) + 1), 0, enemyCells.Count);
+
+        int startIndex = 0;
+        for (int i = startIndex; i < enemyCells.Count && i - startIndex < targetCount; i++)
+        {
+            Vector2Int cell = enemyCells[i];
+            float y = GetCellHeight(cells[cell.x, cell.y]);
+            Vector3 spawnPos = transform.position + CellCenter(cell.x, cell.y, y + 0.15f);
+
+            GameObject enemy = Instantiate(enemyPrefab, spawnPos, Quaternion.identity, root);
+            enemy.name = $"Enemy_{i + 1}";
+
+            BasicEnemyAI ai = enemy.GetComponent<BasicEnemyAI>();
+            if (ai != null)
+            {
+                ai.enemyType = RollEnemyType(rng, arenaMode);
+                ai.autoBuildTypeModel = true;
+            }
+        }
+    }
+
+    private void SpawnBossChampion(Transform root, CellKind[,] cells, System.Random rng)
+    {
+        if (enemyPrefab == null) return;
+
+        Vector2Int center = new Vector2Int(width / 2, length / 2);
+        float y = GetCellHeight(cells[center.x, center.y]);
+        Vector3 spawnPos = transform.position + CellCenter(center.x, center.y, y + 0.18f);
+
+        GameObject boss = Instantiate(enemyPrefab, spawnPos, Quaternion.identity, root);
+        boss.name = $"BossChampion_{GetThemeLabel(themeIndex).Replace(" ", string.Empty)}";
+
+        BasicEnemyAI ai = boss.GetComponent<BasicEnemyAI>();
+        if (ai == null) return;
+
+        int bossRoll = rng.Next(3);
+        ai.bossArchetype = (BasicEnemyAI.BossArchetype)(bossRoll + 1);
+        ai.enemyType = ai.bossArchetype == BasicEnemyAI.BossArchetype.Sentinel
+            ? BasicEnemyAI.EnemyType.Flying
+            : ai.bossArchetype == BasicEnemyAI.BossArchetype.Striker
+                ? BasicEnemyAI.EnemyType.Grunt
+                : BasicEnemyAI.EnemyType.Tank;
+        ai.isBoss = true;
+        string themeLabel = GetThemeLabel(themeIndex);
+        ai.displayName = ai.bossArchetype == BasicEnemyAI.BossArchetype.Sentinel
+            ? $"{themeLabel} Aerial Sentinel"
+            : ai.bossArchetype == BasicEnemyAI.BossArchetype.Striker
+                ? $"{themeLabel} Raze Striker"
+                : $"{themeLabel} Obelisk Warden";
+        ai.maxHealth = 140f + (themeIndex * 40f);
+        ai.fireRate = ai.bossArchetype == BasicEnemyAI.BossArchetype.Striker ? 1.2f : 0.9f;
+        ai.stoppingDistance = ai.bossArchetype == BasicEnemyAI.BossArchetype.Striker ? 6f : 14f;
+        ai.autoBuildTypeModel = true;
+    }
+
+    private BasicEnemyAI.EnemyType RollEnemyType(System.Random rng, ArenaMode mode)
+    {
+        ThemeProfile profile = ResolveThemeProfile(themeIndex);
+        int total = Mathf.Max(1, profile.shooterWeight + profile.gruntWeight + profile.tankWeight + profile.flyingWeight);
+        int roll = rng.Next(total);
+
+        if (roll < profile.shooterWeight) return BasicEnemyAI.EnemyType.Shooter;
+        roll -= profile.shooterWeight;
+        if (roll < profile.gruntWeight) return BasicEnemyAI.EnemyType.Grunt;
+        roll -= profile.gruntWeight;
+        if (roll < profile.tankWeight) return BasicEnemyAI.EnemyType.Tank;
+        return BasicEnemyAI.EnemyType.Flying;
     }
 
     private bool IsWalkableForContent(CellKind kind)
     {
-        return kind == CellKind.Floor || kind == CellKind.Bridge || kind == CellKind.Platform;
+        return kind == CellKind.Floor || kind == CellKind.Bridge || kind == CellKind.Platform || kind == CellKind.UpperPlatform;
     }
 
     private bool IsSafePuzzleCell(CellKind[,] cells, int x, int z)
@@ -459,16 +784,24 @@ public class CybergrindArenaGenerator : MonoBehaviour
         return solid >= 2;
     }
 
-    private void SpawnPuzzleTerminal(Transform root, CellKind[,] cells, Vector2Int cell, int index)
+    private void SpawnPuzzleTerminal(Transform root, CellKind[,] cells, Vector2Int cell, int index, System.Random rng)
     {
         float y = GetCellHeight(cells[cell.x, cell.y]);
-        Vector3 pos = CellCenter(cell.x, cell.y, y + 0.95f);
-        GameObject terminal = CreateCube(root, $"PuzzleTerminal_{index + 1}", pos, new Vector3(1.15f, 1.9f, 0.55f), puzzleMaterial);
+        Vector3 pos = CellCenter(cell.x, cell.y, y + 0.25f);
+        GameObject terminal = CreateCube(root, $"PuzzleTerminal_{index + 1}", pos, new Vector3(1.05f, 1.55f, 0.62f), puzzleMaterial);
         terminal.transform.rotation = Quaternion.Euler(0f, 180f, 0f);
 
         CybergrindPuzzleTerminal t = terminal.AddComponent<CybergrindPuzzleTerminal>();
+        t.terminalSeed = rng.Next();
+        t.challengeMode = (CybergrindPuzzleTerminal.ChallengeMode)(arenaMode == ArenaMode.Shop ? 0 : Mathf.Abs((t.terminalSeed + index * 11) % 10));
         t.sequenceIndex = index;
-        t.overridePrompt = $"Press E to solve node {index + 1}";
+        t.requiredPresses = Mathf.Clamp(2 + rng.Next(0, 5), 2, 7);
+        t.timingWindow = Mathf.Lerp(0.18f, 0.45f, (float)rng.NextDouble());
+        t.requiredDelay = Mathf.Lerp(0.45f, 1.2f, (float)rng.NextDouble());
+        t.holdDuration = Mathf.Lerp(1.0f, 3.0f, (float)rng.NextDouble());
+        t.pulseSpeed = Mathf.Lerp(2.0f, 4.0f, (float)rng.NextDouble());
+        t.calibrationDelay = Mathf.Lerp(0.45f, 1.2f, (float)rng.NextDouble());
+        t.overridePrompt = GetTerminalPrompt(t.challengeMode, index);
         t.highlightRenderer = terminal.GetComponent<Renderer>();
     }
 
@@ -492,6 +825,7 @@ public class CybergrindArenaGenerator : MonoBehaviour
 
     private void SpawnArchitecturalContent(Transform root, CellKind[,] cells, System.Random rng)
     {
+        ThemeProfile profile = ResolveThemeProfile(themeIndex);
         SpawnBridgeRailings(root, cells);
         SpawnStairsAndParkour(root, cells);
         SpawnGateFrames(root, cells);
@@ -502,13 +836,13 @@ public class CybergrindArenaGenerator : MonoBehaviour
         {
             for (int z = 2; z < length - 2; z++)
             {
-                if (cells[x, z] == CellKind.Platform || cells[x, z] == CellKind.Bridge)
+                if (cells[x, z] == CellKind.Platform || cells[x, z] == CellKind.Bridge || cells[x, z] == CellKind.UpperPlatform)
                     platforms.Add(new Vector2Int(x, z));
             }
         }
 
         Shuffle(platforms, rng);
-        int pylonCount = Mathf.Clamp((width * length) / 145, 6, 16);
+        int pylonCount = Mathf.Clamp((width * length) / 145, 6, 16) + profile.extraPylons;
         for (int i = 0; i < platforms.Count && pylonCount > 0; i += 5)
         {
             Vector2Int cell = platforms[i];
@@ -520,7 +854,7 @@ public class CybergrindArenaGenerator : MonoBehaviour
             pylonCount--;
         }
 
-        int jumpPadCount = Mathf.Clamp((width * length) / 260, 2, 6);
+        int jumpPadCount = Mathf.Clamp((width * length) / 260, 2, 6) + profile.extraJumpPads;
         for (int i = 2; i < platforms.Count && jumpPadCount > 0; i += 7)
         {
             Vector2Int cell = platforms[i];
@@ -532,6 +866,149 @@ public class CybergrindArenaGenerator : MonoBehaviour
             Collider trigger = pad.GetComponent<Collider>();
             if (trigger != null) trigger.isTrigger = true;
             jumpPadCount--;
+        }
+    }
+
+    private void SpawnAtmosphereFX(Transform root, System.Random rng)
+    {
+        ThemeProfile profile = ResolveThemeProfile(themeIndex);
+        GameObject fxRoot = new GameObject("ArenaAtmosphereFX");
+        fxRoot.transform.SetParent(root, false);
+        fxRoot.transform.localPosition = new Vector3(width * tileSize * 0.5f, 4f, length * tileSize * 0.5f);
+
+        ParticleSystem dust = CreateAtmosphereEmitter(fxRoot.transform, "DustField", 22f, 0.22f, profile.dustColor, new Vector3(width * tileSize * 0.85f, 1.2f, length * tileSize * 0.85f), true);
+        dust.transform.localPosition = new Vector3(0f, 3.2f, 0f);
+
+        if (arenaMode == ArenaMode.Boss)
+        {
+            ParticleSystem sparks = CreateAtmosphereEmitter(fxRoot.transform, "BossSparks", 8f, 0.12f, profile.sparkColor, new Vector3(8f, 1.4f, 8f), false);
+            sparks.transform.localPosition = Vector3.zero;
+        }
+    }
+
+    private ParticleSystem CreateAtmosphereEmitter(Transform parent, string name, float rate, float particleLifetime, Color color, Vector3 boxSize, bool drifting)
+    {
+        GameObject go = new GameObject(name);
+        go.transform.SetParent(parent, false);
+        ParticleSystem ps = go.AddComponent<ParticleSystem>();
+        ParticleSystemRenderer renderer = go.GetComponent<ParticleSystemRenderer>();
+        if (renderer != null)
+        {
+            Shader shader = Shader.Find("Universal Render Pipeline/Particles/Unlit");
+            if (shader == null) shader = Shader.Find("Particles/Standard Unlit");
+            if (shader == null) shader = Shader.Find("Standard");
+
+            Material mat = new Material(shader);
+            mat.color = color;
+            renderer.material = mat;
+        }
+
+        var main = ps.main;
+        main.loop = true;
+        main.playOnAwake = true;
+        main.startLifetime = particleLifetime;
+        main.startSpeed = drifting ? 0.35f : 0.12f;
+        main.startSize = drifting ? 0.14f : 0.08f;
+        main.startColor = color;
+        main.maxParticles = 1200;
+
+        var emission = ps.emission;
+        emission.rateOverTime = rate;
+
+        var shape = ps.shape;
+        shape.shapeType = ParticleSystemShapeType.Box;
+        shape.scale = boxSize;
+
+        var velocity = ps.velocityOverLifetime;
+        velocity.enabled = drifting;
+        if (drifting)
+        {
+            velocity.space = ParticleSystemSimulationSpace.Local;
+            velocity.x = new ParticleSystem.MinMaxCurve(-0.2f, 0.2f);
+            velocity.y = new ParticleSystem.MinMaxCurve(0.05f, 0.18f);
+            velocity.z = new ParticleSystem.MinMaxCurve(-0.2f, 0.2f);
+        }
+
+        var noise = ps.noise;
+        noise.enabled = drifting;
+        noise.strength = drifting ? 0.35f : 0.08f;
+        noise.frequency = 0.18f;
+
+        var colorOverLifetime = ps.colorOverLifetime;
+        colorOverLifetime.enabled = true;
+        Gradient gradient = new Gradient();
+        gradient.SetKeys(
+            new[]
+            {
+                new GradientColorKey(color, 0f),
+                new GradientColorKey(new Color(color.r, color.g, color.b, 0f), 1f)
+            },
+            new[]
+            {
+                new GradientAlphaKey(color.a, 0f),
+                new GradientAlphaKey(0f, 1f)
+            });
+        colorOverLifetime.color = gradient;
+
+        ps.Play();
+        return ps;
+    }
+
+    private string GenerateTerminalCode(System.Random rng, int index)
+    {
+        int value = rng.Next(1000, 9999);
+        value = (value + (themeIndex * 173) + (index * 41)) % 9000 + 1000;
+        return value.ToString();
+    }
+
+    private bool[] GenerateSwitchPattern(System.Random rng, int switchCount)
+    {
+        bool[] pattern = new bool[Mathf.Clamp(switchCount, 3, 5)];
+        for (int i = 0; i < pattern.Length; i++)
+            pattern[i] = rng.NextDouble() > 0.5;
+
+        bool allSame = true;
+        for (int i = 1; i < pattern.Length; i++)
+        {
+            if (pattern[i] != pattern[0])
+            {
+                allSame = false;
+                break;
+            }
+        }
+
+        if (allSame)
+            pattern[pattern.Length - 1] = !pattern[0];
+
+        return pattern;
+    }
+
+    private string GetTerminalPrompt(CybergrindPuzzleTerminal.ChallengeMode mode, int index)
+    {
+        switch (mode)
+        {
+            case CybergrindPuzzleTerminal.ChallengeMode.Relay:
+                return $"Relay latch {index + 1}";
+            case CybergrindPuzzleTerminal.ChallengeMode.Burst:
+                return $"Burst-lock terminal {index + 1}";
+            case CybergrindPuzzleTerminal.ChallengeMode.Rhythm:
+                return $"Beat-sync terminal {index + 1}";
+            case CybergrindPuzzleTerminal.ChallengeMode.Delay:
+                return $"Delay-lock node {index + 1}";
+            case CybergrindPuzzleTerminal.ChallengeMode.DoubleTap:
+                return $"Double-tap node {index + 1}";
+            case CybergrindPuzzleTerminal.ChallengeMode.Hold:
+                return $"Hold steady on node {index + 1}";
+            case CybergrindPuzzleTerminal.ChallengeMode.Alternating:
+                return $"Cadence lock {index + 1}";
+            case CybergrindPuzzleTerminal.ChallengeMode.Calibration:
+                return $"Calibrate node {index + 1}";
+            case CybergrindPuzzleTerminal.ChallengeMode.Pulse:
+                return $"Pulse sync node {index + 1}";
+            case CybergrindPuzzleTerminal.ChallengeMode.Lockstep:
+                return $"Lockstep node {index + 1}";
+            default:
+                return $"Machine-lock node {index + 1}";
         }
     }
 
@@ -549,14 +1026,46 @@ public class CybergrindArenaGenerator : MonoBehaviour
         }
     }
 
+    private void SpawnRecoveryDecks(Transform root)
+    {
+        float deckY = -Mathf.Max(6f, levelHeight * 1.4f);
+        float centerX = (width - 1) * tileSize * 0.5f;
+        float centerZ = (length - 1) * tileSize * 0.5f;
+        Vector3[] anchors =
+        {
+            new Vector3(centerX, deckY, centerZ),
+            new Vector3(centerX - tileSize * 4f, deckY - 0.75f, centerZ),
+            new Vector3(centerX + tileSize * 4f, deckY - 0.75f, centerZ),
+            new Vector3(centerX, deckY - 0.75f, centerZ - tileSize * 4f),
+            new Vector3(centerX, deckY - 0.75f, centerZ + tileSize * 4f)
+        };
+
+        for (int i = 0; i < anchors.Length; i++)
+        {
+            Vector3 deckPosition = anchors[i];
+            CreateCube(root, $"RecoveryDeck_{i}", deckPosition, new Vector3(tileSize * 2.2f, 0.4f, tileSize * 2.2f), darkMaterial);
+            CreateCube(root, $"RecoveryGlow_{i}", deckPosition + Vector3.up * 0.28f, new Vector3(tileSize * 1.3f, 0.08f, tileSize * 1.3f), accentMaterial, false);
+
+            GameObject pad = CreateCube(root, $"RecoveryPad_{i}", deckPosition + Vector3.up * 0.42f, new Vector3(tileSize * 0.85f, 0.18f, tileSize * 0.85f), spawnMaterial);
+            JumpPad jumpPad = pad.AddComponent<JumpPad>();
+            jumpPad.launchHeight = (platformLevel * levelHeight) + 6f;
+            jumpPad.forwardMomentumBoost = 2.5f;
+            Collider trigger = pad.GetComponent<Collider>();
+            if (trigger != null)
+                trigger.isTrigger = true;
+
+            recoveryPoints.Add(deckPosition + Vector3.up * 1.2f);
+        }
+    }
+
     private void SpawnStairsAndParkour(Transform root, CellKind[,] cells)
     {
         int stairsMade = 0;
-        for (int x = 2; x < width - 2 && stairsMade < 12; x++)
+        for (int x = 2; x < width - 2 && stairsMade < 18; x++)
         {
-            for (int z = 2; z < length - 2 && stairsMade < 12; z++)
+            for (int z = 2; z < length - 2 && stairsMade < 18; z++)
             {
-                if (cells[x, z] != CellKind.Floor) continue;
+                if (cells[x, z] != CellKind.Floor && cells[x, z] != CellKind.Bridge && cells[x, z] != CellKind.Platform && cells[x, z] != CellKind.UpperPlatform) continue;
                 TryCreateStairsTo(root, cells, x, z, 1, 0, ref stairsMade);
                 TryCreateStairsTo(root, cells, x, z, -1, 0, ref stairsMade);
                 TryCreateStairsTo(root, cells, x, z, 0, 1, ref stairsMade);
@@ -574,7 +1083,7 @@ public class CybergrindArenaGenerator : MonoBehaviour
         int ex = x + dx;
         int ez = z + dz;
         if (!InBounds(ex, ez)) return;
-        if (cells[ex, ez] != CellKind.Bridge && cells[ex, ez] != CellKind.Platform) return;
+        if (cells[ex, ez] != CellKind.Bridge && cells[ex, ez] != CellKind.Platform && cells[ex, ez] != CellKind.UpperPlatform) return;
 
         float low = GetCellHeight(cells[x, z]);
         float high = GetCellHeight(cells[ex, ez]);
@@ -598,7 +1107,7 @@ public class CybergrindArenaGenerator : MonoBehaviour
         {
             int x = Mathf.Clamp(around.x + i - 2, 2, width - 3);
             int z = Mathf.Clamp(around.y + ((i & 1) == 0 ? 0 : 1), 2, length - 3);
-            float y = Mathf.Lerp(0.9f, levelHeight - 0.8f, i / 4f);
+            float y = Mathf.Lerp(0.9f, (crownLevel * levelHeight) - 0.8f, i / 4f);
             CreateCube(root, $"ParkourBlock_{around.x}_{around.y}_{i}", CellCenter(x, z, y), new Vector3(tileSize * 0.7f, 0.35f, tileSize * 0.7f), darkMaterial);
         }
     }
@@ -609,7 +1118,7 @@ public class CybergrindArenaGenerator : MonoBehaviour
         {
             for (int z = 1; z < length - 1; z++)
             {
-                if (cells[x, z] != CellKind.Bridge && cells[x, z] != CellKind.Platform) continue;
+                if (cells[x, z] != CellKind.Bridge && cells[x, z] != CellKind.Platform && cells[x, z] != CellKind.UpperPlatform) continue;
 
                 float y = GetCellHeight(cells[x, z]);
                 bool northOpen = !IsSameElevatedSurface(cells, x, z, x, z + 1);
@@ -635,7 +1144,7 @@ public class CybergrindArenaGenerator : MonoBehaviour
         if (!InBounds(nx, nz)) return false;
         if (cells[nx, nz] == CellKind.Void) return false;
         return Mathf.Abs(GetCellHeight(cells[x, z]) - GetCellHeight(cells[nx, nz])) < 0.1f &&
-               (cells[nx, nz] == CellKind.Bridge || cells[nx, nz] == CellKind.Platform || cells[nx, nz] == CellKind.Spawn || cells[nx, nz] == CellKind.Exit);
+               (cells[nx, nz] == CellKind.Bridge || cells[nx, nz] == CellKind.Platform || cells[nx, nz] == CellKind.UpperPlatform || cells[nx, nz] == CellKind.Spawn || cells[nx, nz] == CellKind.Exit);
     }
 
     private void SpawnGateFrames(Transform root, CellKind[,] cells)
@@ -690,11 +1199,55 @@ public class CybergrindArenaGenerator : MonoBehaviour
     private void SpawnShopStalls(Transform root, CellKind[,] cells)
     {
         Vector2Int center = new Vector2Int(width / 2, length / 2);
+        CybergrindRunState runState = CybergrindRunState.GetOrCreate();
         for (int i = -1; i <= 1; i++)
         {
             Vector2Int cell = new Vector2Int(center.x + (i * 3), center.y);
             float y = GetCellHeight(CellKind.Platform);
-            CreateCube(root, $"ShopDisplay_{i + 2}", CellCenter(cell.x, cell.y, y + 0.65f), new Vector3(2.4f, 1.3f, 1.0f), itemMaterial);
+            int presetIndex = Mathf.Clamp(i + 2 + runState.bossesClearedThisRun, 0, 5);
+            GameObject stall = CreateCube(root, $"ShopDisplay_{presetIndex}", CellCenter(cell.x, cell.y, y + 0.65f), new Vector3(2.4f, 1.3f, 1.0f), itemMaterial);
+            CybergrindShopStation shop = stall.AddComponent<CybergrindShopStation>();
+            shop.service = CybergrindShopStation.ShopService.Refit;
+            shop.presetIndex = presetIndex;
+            shop.cost = Mathf.Max(1, 2 + presetIndex);
+            shop.displayRenderer = stall.GetComponent<Renderer>();
+
+            CreateCube(root, $"ShopBlade_{presetIndex}", CellCenter(cell.x, cell.y, y + 1.6f), new Vector3(0.18f, 1.4f, 0.18f), accentMaterial, false);
+        }
+
+        float serviceY = GetCellHeight(CellKind.Platform);
+        GameObject repair = CreateCube(root, "ShopRepairStation", CellCenter(center.x - 5, center.y - 2, serviceY + 0.7f), new Vector3(1.8f, 1.4f, 1.2f), spawnMaterial);
+        CybergrindShopStation repairStation = repair.AddComponent<CybergrindShopStation>();
+        repairStation.service = CybergrindShopStation.ShopService.Repair;
+        repairStation.cost = 3 + runState.bossesClearedThisRun;
+        repairStation.healAmount = 45;
+        repairStation.displayRenderer = repair.GetComponent<Renderer>();
+
+        GameObject overclock = CreateCube(root, "ShopOverclockStation", CellCenter(center.x + 5, center.y - 2, serviceY + 0.7f), new Vector3(1.8f, 1.4f, 1.2f), puzzleMaterial);
+        CybergrindShopStation overclockStation = overclock.AddComponent<CybergrindShopStation>();
+        overclockStation.service = CybergrindShopStation.ShopService.Overclock;
+        overclockStation.cost = 4 + runState.bossesClearedThisRun;
+        overclockStation.healAmount = 24;
+        overclockStation.displayRenderer = overclock.GetComponent<Renderer>();
+
+        GameObject surge = CreateCube(root, "ShopSurgeStation", CellCenter(center.x, center.y + 3, serviceY + 0.7f), new Vector3(1.8f, 1.4f, 1.2f), accentMaterial);
+        CybergrindShopStation surgeStation = surge.AddComponent<CybergrindShopStation>();
+        surgeStation.service = CybergrindShopStation.ShopService.Surge;
+        surgeStation.cost = 0;
+        surgeStation.moveSpeedBonus = 1.8f;
+        surgeStation.dashBonus = 4.5f;
+        surgeStation.jumpBonus = 0.35f;
+        surgeStation.displayRenderer = surge.GetComponent<Renderer>();
+
+        CreateCube(root, "ShopCentralTable", CellCenter(center.x, center.y - 4, serviceY + 0.28f), new Vector3(8.2f, 0.24f, 2.4f), darkMaterial);
+        CreateCube(root, "ShopSign", CellCenter(center.x, center.y - 4, serviceY + 2.2f), new Vector3(4.4f, 0.18f, 0.24f), accentMaterial, false);
+        CreateCube(root, "ShopSignPole", CellCenter(center.x, center.y - 4, serviceY + 1.1f), new Vector3(0.18f, 2.2f, 0.18f), darkMaterial);
+        CreateCube(root, "ShopSurgeSpire", CellCenter(center.x, center.y + 3, serviceY + 2.4f), new Vector3(0.28f, 3.4f, 0.28f), darkMaterial);
+        CreateCube(root, "ShopSurgeHalo", CellCenter(center.x, center.y + 3, serviceY + 4.05f), new Vector3(1.8f, 0.08f, 1.8f), accentMaterial, false);
+        for (int i = -1; i <= 1; i++)
+        {
+            CreateCube(root, $"ShopCanopy_{i}", CellCenter(center.x + i * 3, center.y + 1, serviceY + 3.2f), new Vector3(2.6f, 0.16f, 2.0f), darkMaterial);
+            CreateCube(root, $"ShopCanopyGlow_{i}", CellCenter(center.x + i * 3, center.y + 1, serviceY + 3.36f), new Vector3(2.2f, 0.06f, 1.6f), accentMaterial, false);
         }
     }
 
@@ -702,7 +1255,9 @@ public class CybergrindArenaGenerator : MonoBehaviour
     {
         Vector2Int center = new Vector2Int(width / 2, length / 2);
         float y = GetCellHeight(CellKind.Platform);
-        CreateCube(root, "BossCorePlaceholder", CellCenter(center.x, center.y, y + 1.6f), new Vector3(2.2f, 3.2f, 2.2f), hazardMaterial, false);
+        CreateCube(root, "BossArenaReactor", CellCenter(center.x, center.y, y + 0.2f), new Vector3(5.4f, 0.28f, 5.4f), hazardMaterial, false);
+        CreateCube(root, "BossArenaWarningRing", CellCenter(center.x, center.y, y + 0.38f), new Vector3(6.8f, 0.12f, 0.32f), accentMaterial, false);
+        CreateCube(root, "BossArenaWarningRingCross", CellCenter(center.x, center.y, y + 0.4f), new Vector3(0.32f, 0.12f, 6.8f), accentMaterial, false);
     }
 
     private void Shuffle(List<Vector2Int> list, System.Random rng)
@@ -728,8 +1283,31 @@ public class CybergrindArenaGenerator : MonoBehaviour
 
         Vector2Int spawn = FindFirst(cells, CellKind.Spawn);
         float y = GetCellHeight(CellKind.Spawn) + playerSpawnHeight;
-        playerToPlace.position = CellCenter(spawn.x, spawn.y, y);
+        playerToPlace.position = transform.position + CellCenter(spawn.x, spawn.y, y);
         playerToPlace.rotation = Quaternion.LookRotation(Vector3.forward, Vector3.up);
+    }
+
+    public void PlacePlayerAtSpawn()
+    {
+        if (lastCells != null)
+            PlacePlayer(lastCells);
+    }
+
+    public bool TryGetRecoveryPosition(Vector3 fromWorld, out Vector3 recoveryPosition)
+    {
+        recoveryPosition = Vector3.zero;
+        if (recoveryPoints.Count == 0) return false;
+
+        float bestDistance = float.MaxValue;
+        for (int i = 0; i < recoveryPoints.Count; i++)
+        {
+            float distance = (recoveryPoints[i] - fromWorld).sqrMagnitude;
+            if (distance >= bestDistance) continue;
+            bestDistance = distance;
+            recoveryPosition = recoveryPoints[i];
+        }
+
+        return true;
     }
 
     private Vector2Int FindFirst(CellKind[,] cells, CellKind kind)
@@ -739,6 +1317,144 @@ public class CybergrindArenaGenerator : MonoBehaviour
                 if (cells[x, z] == kind)
                     return new Vector2Int(x, z);
         return new Vector2Int(width / 2, 2);
+    }
+
+    public bool TryBuildGroundPath(Vector3 startWorld, Vector3 endWorld, out List<Vector3> worldPath)
+    {
+        worldPath = new List<Vector3>();
+        if (lastCells == null)
+            return false;
+
+        Vector2Int start = WorldToCell(startWorld);
+        Vector2Int end = WorldToCell(endWorld);
+        start = FindNearestWalkable(start);
+        end = FindNearestWalkable(end);
+        if (!InBounds(start.x, start.y) || !InBounds(end.x, end.y))
+            return false;
+
+        List<Vector2Int> cellsPath = FindPath(start, end);
+        if (cellsPath == null || cellsPath.Count == 0)
+            return false;
+
+        for (int i = 0; i < cellsPath.Count; i++)
+        {
+            Vector2Int cell = cellsPath[i];
+            float y = GetCellHeight(lastCells[cell.x, cell.y]) + 0.12f;
+            worldPath.Add(CellCenter(cell.x, cell.y, y));
+        }
+
+        if (worldPath.Count == 1)
+            worldPath.Add(worldPath[0] + Vector3.forward * 0.01f);
+
+        return true;
+    }
+
+    private Vector2Int WorldToCell(Vector3 world)
+    {
+        Vector3 local = world - transform.position;
+        return new Vector2Int(Mathf.RoundToInt(local.x / tileSize), Mathf.RoundToInt(local.z / tileSize));
+    }
+
+    private Vector2Int FindNearestWalkable(Vector2Int cell)
+    {
+        if (IsWalkableForContentCell(cell.x, cell.y))
+            return cell;
+
+        int searchRadius = Mathf.Max(width, length);
+        for (int radius = 1; radius <= searchRadius; radius++)
+        {
+            for (int dx = -radius; dx <= radius; dx++)
+            {
+                for (int dz = -radius; dz <= radius; dz++)
+                {
+                    if (Mathf.Abs(dx) != radius && Mathf.Abs(dz) != radius) continue;
+                    int x = cell.x + dx;
+                    int z = cell.y + dz;
+                    if (InBounds(x, z) && IsWalkableForContentCell(x, z))
+                        return new Vector2Int(x, z);
+                }
+            }
+        }
+
+        return new Vector2Int(Mathf.Clamp(cell.x, 1, width - 2), Mathf.Clamp(cell.y, 1, length - 2));
+    }
+
+    private bool IsWalkableForContentCell(int x, int z)
+    {
+        if (!InBounds(x, z) || lastCells == null) return false;
+        CellKind kind = lastCells[x, z];
+        return kind == CellKind.Floor || kind == CellKind.Bridge || kind == CellKind.Platform || kind == CellKind.Spawn || kind == CellKind.Exit;
+    }
+
+    private List<Vector2Int> FindPath(Vector2Int start, Vector2Int goal)
+    {
+        var open = new List<Vector2Int> { start };
+        var cameFrom = new Dictionary<Vector2Int, Vector2Int>();
+        var gScore = new Dictionary<Vector2Int, int> { [start] = 0 };
+        var fScore = new Dictionary<Vector2Int, int> { [start] = Heuristic(start, goal) };
+
+        while (open.Count > 0)
+        {
+            Vector2Int current = open[0];
+            int bestScore = fScore.TryGetValue(current, out int currentScore) ? currentScore : int.MaxValue;
+            for (int i = 1; i < open.Count; i++)
+            {
+                Vector2Int candidate = open[i];
+                int candidateScore = fScore.TryGetValue(candidate, out int s) ? s : int.MaxValue;
+                if (candidateScore < bestScore)
+                {
+                    current = candidate;
+                    bestScore = candidateScore;
+                }
+            }
+
+            if (current == goal)
+                return ReconstructPath(cameFrom, current);
+
+            open.Remove(current);
+
+            foreach (Vector2Int neighbor in GetNeighbors(current))
+            {
+                if (!IsWalkableForContentCell(neighbor.x, neighbor.y)) continue;
+                int tentative = gScore[current] + 1;
+                if (!gScore.TryGetValue(neighbor, out int neighborScore) || tentative < neighborScore)
+                {
+                    cameFrom[neighbor] = current;
+                    gScore[neighbor] = tentative;
+                    fScore[neighbor] = tentative + Heuristic(neighbor, goal);
+                    if (!open.Contains(neighbor))
+                        open.Add(neighbor);
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private List<Vector2Int> ReconstructPath(Dictionary<Vector2Int, Vector2Int> cameFrom, Vector2Int current)
+    {
+        List<Vector2Int> path = new List<Vector2Int> { current };
+        while (cameFrom.TryGetValue(current, out Vector2Int previous))
+        {
+            current = previous;
+            path.Add(current);
+        }
+
+        path.Reverse();
+        return path;
+    }
+
+    private IEnumerable<Vector2Int> GetNeighbors(Vector2Int cell)
+    {
+        yield return new Vector2Int(cell.x + 1, cell.y);
+        yield return new Vector2Int(cell.x - 1, cell.y);
+        yield return new Vector2Int(cell.x, cell.y + 1);
+        yield return new Vector2Int(cell.x, cell.y - 1);
+    }
+
+    private int Heuristic(Vector2Int a, Vector2Int b)
+    {
+        return Mathf.Abs(a.x - b.x) + Mathf.Abs(a.y - b.y);
     }
 
     private GameObject CreateCube(Transform root, string name, Vector3 position, Vector3 scale, Material material, bool collider = true)
@@ -782,6 +1498,9 @@ public class CybergrindArenaGenerator : MonoBehaviour
             case CellKind.Bridge:
                 return bridgeLevel * levelHeight;
             case CellKind.Platform:
+                return platformLevel * levelHeight;
+            case CellKind.UpperPlatform:
+                return crownLevel * levelHeight;
             case CellKind.Spawn:
             case CellKind.Exit:
                 return platformLevel * levelHeight;
@@ -796,6 +1515,7 @@ public class CybergrindArenaGenerator : MonoBehaviour
         {
             case CellKind.Bridge:
             case CellKind.Platform:
+            case CellKind.UpperPlatform:
                 return darkMaterial;
             case CellKind.Hazard:
                 return hazardMaterial;
@@ -820,14 +1540,207 @@ public class CybergrindArenaGenerator : MonoBehaviour
 
     private void EnsureMaterials()
     {
-        floorMaterial = EnsureMaterial(floorMaterial, "Cybergrind Floor", new Color(0.055f, 0.06f, 0.066f), Color.black, false);
-        darkMaterial = EnsureMaterial(darkMaterial, "Cybergrind Dark", new Color(0.012f, 0.014f, 0.017f), Color.black, false);
-        accentMaterial = EnsureMaterial(accentMaterial, "Cybergrind Cyan Accent", new Color(0.025f, 0.23f, 0.28f), new Color(0.0f, 0.22f, 0.30f), true);
-        hazardMaterial = EnsureMaterial(hazardMaterial, "Cybergrind Hazard", new Color(0.30f, 0.035f, 0.018f), new Color(0.38f, 0.04f, 0.0f), true);
-        spawnMaterial = EnsureMaterial(spawnMaterial, "Cybergrind Spawn", new Color(0.02f, 0.23f, 0.10f), new Color(0.0f, 0.25f, 0.08f), true);
-        exitMaterial = EnsureMaterial(exitMaterial, "Cybergrind Exit", new Color(0.28f, 0.13f, 0.025f), new Color(0.32f, 0.12f, 0.0f), true);
-        itemMaterial = EnsureMaterial(itemMaterial, "Cybergrind Item", new Color(0.08f, 0.17f, 0.16f), new Color(0.0f, 0.20f, 0.16f), true);
-        puzzleMaterial = EnsureMaterial(puzzleMaterial, "Cybergrind Puzzle", new Color(0.09f, 0.07f, 0.13f), new Color(0.13f, 0.05f, 0.20f), true);
+        ThemePalette palette = ResolveThemePalette();
+
+        floorMaterial = EnsureMaterial(floorMaterial, "Cybergrind Floor", palette.floor, Color.black, false);
+        darkMaterial = EnsureMaterial(darkMaterial, "Cybergrind Dark", palette.dark, Color.black, false);
+        accentMaterial = EnsureMaterial(accentMaterial, "Cybergrind Accent", palette.accent, palette.accentEmission, true);
+        hazardMaterial = EnsureMaterial(hazardMaterial, "Cybergrind Hazard", palette.hazard, palette.hazardEmission, true);
+        spawnMaterial = EnsureMaterial(spawnMaterial, "Cybergrind Spawn", palette.spawn, palette.spawnEmission, true);
+        exitMaterial = EnsureMaterial(exitMaterial, "Cybergrind Exit", palette.exit, palette.exitEmission, true);
+        itemMaterial = EnsureMaterial(itemMaterial, "Cybergrind Item", palette.item, palette.itemEmission, true);
+        puzzleMaterial = EnsureMaterial(puzzleMaterial, "Cybergrind Puzzle", palette.puzzle, palette.puzzleEmission, true);
+    }
+
+    private ThemePalette ResolveThemePalette()
+    {
+        ThemePalette basePalette = new ThemePalette
+        {
+            floor = new Color(0.055f, 0.06f, 0.066f),
+            dark = new Color(0.012f, 0.014f, 0.017f),
+            accent = new Color(0.025f, 0.23f, 0.28f),
+            accentEmission = new Color(0.0f, 0.22f, 0.30f),
+            hazard = new Color(0.30f, 0.035f, 0.018f),
+            hazardEmission = new Color(0.38f, 0.04f, 0.0f),
+            spawn = new Color(0.02f, 0.23f, 0.10f),
+            spawnEmission = new Color(0.0f, 0.25f, 0.08f),
+            exit = new Color(0.28f, 0.13f, 0.025f),
+            exitEmission = new Color(0.32f, 0.12f, 0.0f),
+            item = new Color(0.08f, 0.17f, 0.16f),
+            itemEmission = new Color(0.0f, 0.20f, 0.16f),
+            puzzle = new Color(0.09f, 0.07f, 0.13f),
+            puzzleEmission = new Color(0.13f, 0.05f, 0.20f)
+        };
+
+        if (!useThemePaletteVariants)
+            return basePalette;
+
+        switch (Mathf.Abs(themeIndex) % 4)
+        {
+            case 0:
+                return basePalette;
+            case 1:
+                return new ThemePalette
+                {
+                    floor = new Color(0.05f, 0.056f, 0.07f),
+                    dark = new Color(0.010f, 0.013f, 0.020f),
+                    accent = new Color(0.10f, 0.15f, 0.35f),
+                    accentEmission = new Color(0.07f, 0.16f, 0.42f),
+                    hazard = new Color(0.33f, 0.08f, 0.03f),
+                    hazardEmission = new Color(0.40f, 0.10f, 0.02f),
+                    spawn = new Color(0.04f, 0.22f, 0.17f),
+                    spawnEmission = new Color(0.02f, 0.26f, 0.22f),
+                    exit = new Color(0.34f, 0.17f, 0.05f),
+                    exitEmission = new Color(0.38f, 0.18f, 0.05f),
+                    item = new Color(0.08f, 0.18f, 0.22f),
+                    itemEmission = new Color(0.03f, 0.23f, 0.28f),
+                    puzzle = new Color(0.11f, 0.08f, 0.18f),
+                    puzzleEmission = new Color(0.16f, 0.07f, 0.26f)
+                };
+            case 2:
+                return new ThemePalette
+                {
+                    floor = new Color(0.063f, 0.054f, 0.052f),
+                    dark = new Color(0.020f, 0.015f, 0.015f),
+                    accent = new Color(0.30f, 0.11f, 0.09f),
+                    accentEmission = new Color(0.38f, 0.12f, 0.08f),
+                    hazard = new Color(0.36f, 0.10f, 0.02f),
+                    hazardEmission = new Color(0.46f, 0.14f, 0.01f),
+                    spawn = new Color(0.09f, 0.20f, 0.08f),
+                    spawnEmission = new Color(0.10f, 0.26f, 0.07f),
+                    exit = new Color(0.30f, 0.18f, 0.04f),
+                    exitEmission = new Color(0.36f, 0.22f, 0.04f),
+                    item = new Color(0.18f, 0.14f, 0.08f),
+                    itemEmission = new Color(0.24f, 0.17f, 0.06f),
+                    puzzle = new Color(0.14f, 0.08f, 0.09f),
+                    puzzleEmission = new Color(0.20f, 0.10f, 0.11f)
+                };
+            default:
+                return new ThemePalette
+                {
+                    floor = new Color(0.050f, 0.060f, 0.050f),
+                    dark = new Color(0.010f, 0.018f, 0.012f),
+                    accent = new Color(0.10f, 0.28f, 0.12f),
+                    accentEmission = new Color(0.08f, 0.34f, 0.14f),
+                    hazard = new Color(0.22f, 0.08f, 0.02f),
+                    hazardEmission = new Color(0.28f, 0.10f, 0.02f),
+                    spawn = new Color(0.02f, 0.22f, 0.16f),
+                    spawnEmission = new Color(0.0f, 0.28f, 0.18f),
+                    exit = new Color(0.22f, 0.19f, 0.03f),
+                    exitEmission = new Color(0.28f, 0.24f, 0.02f),
+                    item = new Color(0.08f, 0.20f, 0.10f),
+                    itemEmission = new Color(0.05f, 0.25f, 0.12f),
+                    puzzle = new Color(0.06f, 0.10f, 0.09f),
+                    puzzleEmission = new Color(0.07f, 0.15f, 0.14f)
+                };
+        }
+    }
+
+    private static ThemeProfile ResolveThemeProfile(int index)
+    {
+        switch (Mathf.Abs(index) % 4)
+        {
+            case 0:
+                return new ThemeProfile
+                {
+                    directiveTitle = "SUPPRESSIVE LATTICE",
+                    directiveDetail = "Tighter lanes, more machine locks, and crossfire pressure from precision units.",
+                    outerGapMultiplier = 0.8f,
+                    hazardMultiplier = 0.8f,
+                    coverMultiplier = 1.15f,
+                    itemMultiplier = 1f,
+                    extraIslands = 0,
+                    extraJumpPads = 0,
+                    extraPylons = 2,
+                    terminalBonus = 1,
+                    shooterWeight = 45,
+                    gruntWeight = 25,
+                    tankWeight = 20,
+                    flyingWeight = 10,
+                    fogColor = new Color(0.014f, 0.018f, 0.024f),
+                    skyTint = new Color(0.06f, 0.09f, 0.14f),
+                    bloomTint = new Color(0.70f, 0.92f, 1f),
+                    colorFilter = new Color(0.92f, 0.98f, 1f),
+                    dustColor = new Color(0.55f, 0.75f, 1f, 0.16f),
+                    sparkColor = new Color(0.95f, 0.38f, 0.12f, 0.45f),
+                    ambientBoost = 0f
+                };
+            case 1:
+                return new ThemeProfile
+                {
+                    directiveTitle = "VERTICAL DRIFT",
+                    directiveDetail = "Air routes open up here. Expect more flyers, jump pads, and broken elevations.",
+                    outerGapMultiplier = 1.12f,
+                    hazardMultiplier = 0.72f,
+                    coverMultiplier = 0.92f,
+                    itemMultiplier = 1.1f,
+                    extraIslands = 3,
+                    extraJumpPads = 2,
+                    extraPylons = 1,
+                    terminalBonus = 0,
+                    shooterWeight = 22,
+                    gruntWeight = 22,
+                    tankWeight = 14,
+                    flyingWeight = 42,
+                    fogColor = new Color(0.012f, 0.020f, 0.030f),
+                    skyTint = new Color(0.09f, 0.14f, 0.24f),
+                    bloomTint = new Color(0.55f, 0.76f, 1f),
+                    colorFilter = new Color(0.84f, 0.92f, 1f),
+                    dustColor = new Color(0.48f, 0.68f, 1f, 0.18f),
+                    sparkColor = new Color(0.46f, 0.88f, 1f, 0.45f),
+                    ambientBoost = 0.015f
+                };
+            case 2:
+                return new ThemeProfile
+                {
+                    directiveTitle = "HEAT SINK",
+                    directiveDetail = "Heavy chassis and hazard lanes hold the center. Space is safer than greed.",
+                    outerGapMultiplier = 0.9f,
+                    hazardMultiplier = 1.6f,
+                    coverMultiplier = 1.05f,
+                    itemMultiplier = 0.92f,
+                    extraIslands = 1,
+                    extraJumpPads = 0,
+                    extraPylons = 4,
+                    terminalBonus = 0,
+                    shooterWeight = 18,
+                    gruntWeight = 22,
+                    tankWeight = 44,
+                    flyingWeight = 16,
+                    fogColor = new Color(0.022f, 0.016f, 0.016f),
+                    skyTint = new Color(0.13f, 0.07f, 0.05f),
+                    bloomTint = new Color(1f, 0.65f, 0.42f),
+                    colorFilter = new Color(1f, 0.90f, 0.84f),
+                    dustColor = new Color(0.96f, 0.52f, 0.24f, 0.14f),
+                    sparkColor = new Color(1f, 0.48f, 0.16f, 0.50f),
+                    ambientBoost = 0.008f
+                };
+            default:
+                return new ThemeProfile
+                {
+                    directiveTitle = "OVERGROWTH NOISE",
+                    directiveDetail = "More cover, more pickups, and wider flanker pressure through messy sightlines.",
+                    outerGapMultiplier = 1f,
+                    hazardMultiplier = 0.86f,
+                    coverMultiplier = 1.5f,
+                    itemMultiplier = 1.35f,
+                    extraIslands = 2,
+                    extraJumpPads = 1,
+                    extraPylons = 2,
+                    terminalBonus = 1,
+                    shooterWeight = 20,
+                    gruntWeight = 34,
+                    tankWeight = 14,
+                    flyingWeight = 32,
+                    fogColor = new Color(0.012f, 0.022f, 0.016f),
+                    skyTint = new Color(0.06f, 0.12f, 0.09f),
+                    bloomTint = new Color(0.72f, 1f, 0.70f),
+                    colorFilter = new Color(0.90f, 1f, 0.92f),
+                    dustColor = new Color(0.58f, 0.90f, 0.66f, 0.16f),
+                    sparkColor = new Color(0.72f, 1f, 0.64f, 0.45f),
+                    ambientBoost = 0.012f
+                };
+        }
     }
 
     private Material EnsureMaterial(Material material, string name, Color baseColor, Color emission, bool emissive)

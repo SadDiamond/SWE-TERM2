@@ -4,10 +4,16 @@ public class Projectile : MonoBehaviour
 {
     public float damage = 10f;
     public float lifetime = 3f;
+    public float impactScalePulse = 1.35f;
+    public float impactLifetime = 0.08f;
     [HideInInspector] public GameObject owner; // Tells the bullet who shot it so they don't shoot themselves
     
     [Header("Impact FX")]
     public GameObject impactEffectPrefab; // Drag a particle system prefab here
+
+    [Header("Impact Audio")]
+    public AudioClip impactSound;
+    public float impactVolume = 0.9f;
 
     public void Initialize(GameObject projectileOwner, float projectileDamage)
     {
@@ -26,7 +32,12 @@ public class Projectile : MonoBehaviour
 
         Rigidbody rb = GetComponent<Rigidbody>();
         if (rb != null)
+        {
             rb.useGravity = false;
+            // Mark as kinematic if spawned too close to avoid stuck geometry
+            if (Vector3.Distance(transform.position, owner != null ? owner.transform.position : Vector3.zero) < 1.5f)
+                rb.isKinematic = true;
+        }
 
         // Automatically destroy bullet after a few seconds so it doesn't clutter the game
         Destroy(gameObject, lifetime);
@@ -42,6 +53,14 @@ public class Projectile : MonoBehaviour
         if (damageable != null)
         {
             damageable.TakeDamage(damage);
+
+            // Small punchier hit reaction for enemies that expose a transform.
+            if (collision.collider.attachedRigidbody != null)
+            {
+                Vector3 hitDir = collision.collider.transform.position - transform.position;
+                hitDir.y *= 0.2f;
+                collision.collider.attachedRigidbody.AddForce(hitDir.normalized * 2.8f, ForceMode.Impulse);
+            }
         }
 
         // Spawn Impact Sparks/FX at the exact point of collision pointing outwards
@@ -58,8 +77,14 @@ public class Projectile : MonoBehaviour
             Destroy(impact, 2f);
         }
 
+        if (impactSound != null)
+            AudioSource.PlayClipAtPoint(impactSound, transform.position, impactVolume);
+
+        // Tiny scale pulse for nearby impact feel before destruction.
+        transform.localScale *= impactScalePulse;
+
         // Destroy the bullet immediately after hitting anything
-        Destroy(gameObject);
+        Destroy(gameObject, impactLifetime);
     }
 
     private void IgnoreOwnerColliders()

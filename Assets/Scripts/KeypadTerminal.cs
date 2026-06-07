@@ -13,8 +13,13 @@ public class KeypadTerminal : Terminal
     {
         if (keypadUIManager == null)
         {
-            Debug.LogError("[KeypadTerminal] Keypad UI Manager is not assigned in the Inspector!");
-            return;
+            // Try to find a KeypadUI in the scene automatically
+            keypadUIManager = FindAnyObjectByType<KeypadUI>();
+            if (keypadUIManager == null)
+            {
+                GameObject uiObject = new GameObject("RuntimeKeypadUI");
+                keypadUIManager = uiObject.AddComponent<KeypadUI>();
+            }
         }
 
         keypadUIManager.OpenKeypad(this, player);
@@ -27,5 +32,10 @@ public class KeypadTerminal : Terminal
 
         SolvePuzzle(player);
         return true;
+    }
+
+    public void ConfigurePasscode(string newPasscode)
+    {
+        passcode = string.IsNullOrEmpty(newPasscode) ? "1234" : newPasscode;
     }
 }

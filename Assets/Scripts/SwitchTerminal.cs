@@ -16,8 +16,13 @@ public class SwitchTerminal : Terminal
     {
         if (switchUIManager == null)
         {
-            Debug.LogError("[SwitchTerminal] Switch UI Manager is not assigned in the Inspector!");
-            return;
+            // Try to find a SwitchUI in the scene automatically
+            switchUIManager = FindAnyObjectByType<SwitchUI>();
+            if (switchUIManager == null)
+            {
+                GameObject uiObject = new GameObject("RuntimeSwitchUI");
+                switchUIManager = uiObject.AddComponent<SwitchUI>();
+            }
         }
 
         switchUIManager.OpenSwitchPanel(this, player);
@@ -40,5 +45,19 @@ public class SwitchTerminal : Terminal
         }
 
         SolvePuzzle(player);
+    }
+
+    public void ConfigureSwitchPattern(bool[] targetStates)
+    {
+        if (targetStates == null || targetStates.Length == 0)
+            targetStates = new bool[3] { true, false, true };
+
+        targetSwitchStates = new bool[targetStates.Length];
+        currentSwitchStates = new bool[targetStates.Length];
+        for (int i = 0; i < targetStates.Length; i++)
+        {
+            targetSwitchStates[i] = targetStates[i];
+            currentSwitchStates[i] = false;
+        }
     }
 }

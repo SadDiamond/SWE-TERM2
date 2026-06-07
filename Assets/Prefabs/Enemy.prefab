@@ -124,7 +124,7 @@ NavMeshAgent:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 377378617228776714}
-  m_Enabled: 1
+  m_Enabled: 0
   m_AgentTypeID: 0
   m_Radius: 0.5
   m_Speed: 3.5
@@ -151,12 +151,37 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 77e76eaaa8b424c069d581b90da0896f, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::BasicEnemyAI
+  enemyType: 0
+  isBoss: 0
+  displayName: Enemy
   maxHealth: 30
   stoppingDistance: 10
+  moveSpeed: 4.25
+  turnSpeed: 8
+  floorStandoffDistance: 4.5
+  obstacleAvoidanceDistance: 1.4
+  movementObstacleMask:
+    serializedVersion: 2
+    m_Bits: 4294967295
+  gruntMoveSpeedMultiplier: 0.72
+  gruntReactionTime: 0.28
+  flySpeed: 6
+  hoverHeight: 2.4
+  orbitRadius: 3
+  bobAmplitude: 0.35
+  bobFrequency: 1.6
   projectilePrefab: {fileID: 5561154988564239363, guid: 7d11eeb61a22e4a498ae6724837e9b44, type: 3}
   shootPoint: {fileID: 1723098630778871193}
   fireRate: 1.5
+  meleeDamage: 12
+  meleeRange: 2.1
+  meleeCooldown: 1.1
   damageColor: {r: 1, g: 0, b: 0, a: 1}
+  autoBuildTypeModel: 1
+  shooterColor: {r: 0.18, g: 0.65, b: 0.95, a: 1}
+  gruntColor: {r: 0.92, g: 0.24, b: 0.24, a: 1}
+  tankColor: {r: 0.65, g: 0.65, b: 0.75, a: 1}
+  coreGlowColor: {r: 0, g: 0.9, b: 1, a: 1}
 --- !u!1 &4004372052540890629
 GameObject:
   m_ObjectHideFlags: 0

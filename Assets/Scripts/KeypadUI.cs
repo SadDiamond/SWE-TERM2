@@ -1,6 +1,7 @@
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro; // Standard for text in Unity now
+using UnityEngine.InputSystem;
 
 public class KeypadUI : MonoBehaviour
 {
@@ -14,12 +15,14 @@ public class KeypadUI : MonoBehaviour
     private string currentInput = "";
     private KeypadTerminal activeTerminal;
     private PlayerController interactingPlayer;
+    private Canvas runtimeCanvas;
 
     // Called by the KeypadTerminal to turn on the screen
     public void OpenKeypad(KeypadTerminal terminal, PlayerController player)
     {
         activeTerminal = terminal;
         interactingPlayer = player;
+        EnsureRuntimeUI();
         
         currentInput = "";
         UpdateScreen();
@@ -40,6 +43,33 @@ public class KeypadUI : MonoBehaviour
         {
             interactingPlayer.ToggleUIMode(false); // Unfreeze player
         }
+    }
+
+    private void Update()
+    {
+        if (!gameObject.activeInHierarchy || activeTerminal == null) return;
+        if (Keyboard.current == null) return;
+
+        if (Keyboard.current.escapeKey.wasPressedThisFrame)
+        {
+            CloseKeypad();
+            return;
+        }
+
+        for (int i = 0; i <= 9; i++)
+        {
+            Key key = (Key)((int)Key.Digit0 + i);
+            if (Keyboard.current[key].wasPressedThisFrame)
+                AddNumber(i.ToString());
+        }
+
+        if (Keyboard.current.backspaceKey.wasPressedThisFrame)
+            currentInput = currentInput.Length > 0 ? currentInput.Substring(0, currentInput.Length - 1) : "";
+
+        if (Keyboard.current.enterKey.wasPressedThisFrame || Keyboard.current.numpadEnterKey.wasPressedThisFrame)
+            SubmitCode();
+
+        UpdateScreen();
     }
 
     // Call this from 0-9 buttons
@@ -84,7 +114,49 @@ public class KeypadUI : MonoBehaviour
 
     private void UpdateScreen()
     {
+        EnsureRuntimeUI();
+        if (displayScreen == null) return;
+
         displayScreen.color = DefaultTextColor;
         displayScreen.text = currentInput == "" ? "ENTER CODE" : currentInput;
+    }
+
+    private void EnsureRuntimeUI()
+    {
+        if (displayScreen != null && runtimeCanvas != null) return;
+
+        if (runtimeCanvas == null)
+        {
+            GameObject canvasObject = new GameObject("RuntimeKeypadCanvas");
+            canvasObject.transform.SetParent(transform, false);
+            runtimeCanvas = canvasObject.AddComponent<Canvas>();
+            runtimeCanvas.renderMode = RenderMode.ScreenSpaceOverlay;
+            canvasObject.AddComponent<CanvasScaler>();
+            canvasObject.AddComponent<GraphicRaycaster>();
+
+            GameObject panel = new GameObject("Panel");
+            panel.transform.SetParent(canvasObject.transform, false);
+            Image panelImage = panel.AddComponent<Image>();
+            panelImage.color = new Color(0f, 0f, 0f, 0.82f);
+            RectTransform panelRect = panel.GetComponent<RectTransform>();
+            panelRect.anchorMin = Vector2.zero;
+            panelRect.anchorMax = Vector2.one;
+            panelRect.offsetMin = Vector2.zero;
+            panelRect.offsetMax = Vector2.zero;
+
+            GameObject textObject = new GameObject("Display");
+            textObject.transform.SetParent(panel.transform, false);
+            displayScreen = textObject.AddComponent<TextMeshProUGUI>();
+            displayScreen.fontSize = 48f;
+            displayScreen.alignment = TextAlignmentOptions.Center;
+            displayScreen.color = DefaultTextColor;
+            displayScreen.enableAutoSizing = true;
+            displayScreen.font = TMP_Settings.defaultFontAsset;
+            RectTransform textRect = displayScreen.GetComponent<RectTransform>();
+            textRect.anchorMin = new Vector2(0.1f, 0.35f);
+            textRect.anchorMax = new Vector2(0.9f, 0.75f);
+            textRect.offsetMin = Vector2.zero;
+            textRect.offsetMax = Vector2.zero;
+        }
     }
 }

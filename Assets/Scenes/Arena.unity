@@ -361,6 +361,30 @@ MeshFilter:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 278266534}
   m_Mesh: {fileID: 10202, guid: 0000000000000000e000000000000000, type: 0}
+--- !u!1 &309707566 stripped
+GameObject:
+  m_CorrespondingSourceObject: {fileID: 7846076373729192281, guid: 92eb70f1c1e264e5f8cd490ae079e84e, type: 3}
+  m_PrefabInstance: {fileID: 1127673979}
+  m_PrefabAsset: {fileID: 0}
+--- !u!114 &309707571
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 309707566}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 937377ca6eb864bd791058785ebc1805, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::RunStatusHUD
+  arenaDirector: {fileID: 0}
+  runState: {fileID: 0}
+  floorText: {fileID: 0}
+  cycleText: {fileID: 0}
+  objectiveText: {fileID: 0}
+  seedText: {fileID: 0}
+  refreshInterval: 0.2
 --- !u!1 &528702134
 GameObject:
   m_ObjectHideFlags: 0
@@ -451,6 +475,11 @@ MeshFilter:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 528702134}
   m_Mesh: {fileID: 10202, guid: 0000000000000000e000000000000000, type: 0}
+--- !u!20 &914658653 stripped
+Camera:
+  m_CorrespondingSourceObject: {fileID: 1171089793981180491, guid: 16f69749757e8440fad6d08c9e04509f, type: 3}
+  m_PrefabInstance: {fileID: 1412872395}
+  m_PrefabAsset: {fileID: 0}
 --- !u!21 &937224253
 Material:
   serializedVersion: 8
@@ -672,7 +701,10 @@ PrefabInstance:
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
-    m_AddedComponents: []
+    m_AddedComponents:
+    - targetCorrespondingSourceObject: {fileID: 7846076373729192281, guid: 92eb70f1c1e264e5f8cd490ae079e84e, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 309707571}
   m_SourcePrefab: {fileID: 100100000, guid: 92eb70f1c1e264e5f8cd490ae079e84e, type: 3}
 --- !u!21 &1252208786
 Material:
@@ -929,6 +961,12 @@ GameObject:
   - component: {fileID: 1332778275}
   - component: {fileID: 1332778274}
   - component: {fileID: 1332778273}
+  - component: {fileID: 1332778277}
+  - component: {fileID: 1332778276}
+  - component: {fileID: 1332778278}
+  - component: {fileID: 1332778279}
+  - component: {fileID: 1332778280}
+  - component: {fileID: 1332778281}
   m_Layer: 0
   m_Name: Arena Generator
   m_TagString: Untagged
@@ -950,9 +988,12 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::CybergrindArenaDirector
   generator: {fileID: 1332778274}
   floor: 1
-  transitionDelay: 1.2
+  combatFloorsPerTheme: 5
   exitActivationRange: 5
   player: {fileID: 1412872397}
+  runState: {fileID: 1332778277}
+  transitionController: {fileID: 1332778276}
+  bossFloorsToReachCore: 2
 --- !u!114 &1332778274
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -976,10 +1017,13 @@ MonoBehaviour:
   lastGeneratedSeed: -250676195
   generateOnStart: 1
   clearBeforeGenerate: 1
-  arenaMode: 0
+  arenaMode: 1
+  themeIndex: 0
+  useThemePaletteVariants: 1
   bridgeLevel: 1
-  platformLevel: 1
-  levelHeight: 5.4
+  platformLevel: 2
+  crownLevel: 3
+  levelHeight: 4.8
   mainBridgeHalfWidth: 1
   centralPlatformRadius: 4
   cornerPlatformSize: 4
@@ -991,7 +1035,14 @@ MonoBehaviour:
   safeRadiusAroundExit: 4
   playerToPlace: {fileID: 1412872397}
   playerSpawnHeight: 2.2
-  generatedRootName: _CybergrindArena
+  generatedRootName: _Arena
+  enemyPrefab: {fileID: 377378617228776714, guid: 4b14e7399341144c18fbf95dbdfafb3e, type: 3}
+  combatEnemyMin: 4
+  combatEnemyMax: 8
+  bossEnemyMin: 10
+  bossEnemyMax: 14
+  minEnemyDistanceFromSpawn: 7
+  spawnBossChampion: 1
   floorMaterial: {fileID: 2100000, guid: cd166f8fdb33fe141beded7941184561, type: 2}
   darkMaterial: {fileID: 2100000, guid: f744c56bf7b1a804f83e0dcee32c2f25, type: 2}
   accentMaterial: {fileID: 2100000, guid: c7328a7c6624ff441871c39e43e8a918, type: 2}
@@ -1015,6 +1066,156 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &1332778276
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1332778272}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 1c7b8e5a9656486f98f8e9b728ac8af0, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::CybergrindTransitionController
+  oldArenaDropDuration: 0.9
+  newArenaRiseDuration: 1.05
+  swapHoldDuration: 0.12
+  shiftCurve:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 0
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    - serializedVersion: 3
+      time: 1
+      value: 1
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  oldArenaDropDistance: 44
+  newArenaRiseDistance: 40
+  exitLiftDistance: 8.5
+  exitLiftDuration: 0.78
+  targetCamera: {fileID: 914658653}
+  fovKick: 8
+  exitHighlightColor: {r: 0.9, g: 0.6, b: 0.1, a: 0.5}
+  exitHighlightHeight: 0.06
+  exitHighlightScale: 1.6
+  coverColor: {r: 0.18, g: 0.9, b: 1, a: 0.36}
+  coverScaleDuration: 0.38
+  cageWallThickness: 0.14
+  cageWallHeight: 9.5
+  cageCellScale: 0.48
+  onTransitionStarted:
+    m_PersistentCalls:
+      m_Calls: []
+  onSwapMoment:
+    m_PersistentCalls:
+      m_Calls: []
+  onTransitionFinished:
+    m_PersistentCalls:
+      m_Calls: []
+--- !u!114 &1332778277
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1332778272}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 1f34873a2b944f2a8f4e70e57cf24a91, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::CybergrindRunState
+  bossesClearedThisRun: 0
+  currentRunSeed: 0
+  currentFloorSeed: 0
+  floorsClearedThisRun: 0
+  enemiesDefeatedThisRun: 0
+  terminalsSolvedThisRun: 0
+  shopInteractionsThisRun: 0
+  damageTakenThisRun: 0
+  runStartRealtime: 0
+  persistBossUnlocks: 1
+  maxTrackedWeaponPresets: 6
+--- !u!114 &1332778278
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1332778272}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 5635e39a1406643559d031d05282b4c3, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::CybergrindDebugMode
+  debugEnabled: 0
+  showOverlay: 1
+  invulnerable: 0
+  coinsPerGrant: 10
+--- !u!114 &1332778279
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1332778272}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9d3353f4d058747b88c73be3252cb4ca, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::ProjectStructurePresentation
+  placeholderTitle: PROJECT STRUCTURE
+  arenaDirector: {fileID: 0}
+  arenaGenerator: {fileID: 0}
+  player: {fileID: 0}
+--- !u!114 &1332778280
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1332778272}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f751de2b43863489da0752a16e817bc7, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::ProjectStructureSettingsMenu
+  player: {fileID: 0}
+  toggleKey: 27
+--- !u!114 &1332778281
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1332778272}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 85c0363b58dd54ec7a9a3465ec8003d0, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::BossEncounterHUD
+  arenaDirector: {fileID: 0}
+  bannerText: {fileID: 0}
+  bossNameText: {fileID: 0}
+  bossHealthFill: {fileID: 0}
+  bossHealthBack: {fileID: 0}
+  refreshInterval: 0.1
+  bannerDuration: 2.8
 --- !u!21 &1371015253
 Material:
   serializedVersion: 8
@@ -1197,6 +1398,14 @@ PrefabInstance:
       propertyPath: crosshair
       value: 
       objectReference: {fileID: 4191564}
+    - target: {fileID: 4635753573481123352, guid: 16f69749757e8440fad6d08c9e04509f, type: 3}
+      propertyPath: fallRespawnY
+      value: -30
+      objectReference: {fileID: 0}
+    - target: {fileID: 4635753573481123352, guid: 16f69749757e8440fad6d08c9e04509f, type: 3}
+      propertyPath: abyssRecoveryY
+      value: -20
+      objectReference: {fileID: 0}
     - target: {fileID: 7420043805816713252, guid: 16f69749757e8440fad6d08c9e04509f, type: 3}
       propertyPath: m_LocalPosition.x
       value: 0.302
@@ -1208,6 +1417,14 @@ PrefabInstance:
     - target: {fileID: 7420043805816713252, guid: 16f69749757e8440fad6d08c9e04509f, type: 3}
       propertyPath: m_LocalPosition.z
       value: 1.079
+      objectReference: {fileID: 0}
+    - target: {fileID: 7588251281789497665, guid: 16f69749757e8440fad6d08c9e04509f, type: 3}
+      propertyPath: recoilForce
+      value: 30
+      objectReference: {fileID: 0}
+    - target: {fileID: 7588251281789497665, guid: 16f69749757e8440fad6d08c9e04509f, type: 3}
+      propertyPath: presets.Array.data[0].pelletCount
+      value: 1
       objectReference: {fileID: 0}
     - target: {fileID: 7793930580539323386, guid: 16f69749757e8440fad6d08c9e04509f, type: 3}
       propertyPath: m_LocalPosition.x
