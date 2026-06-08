@@ -9,16 +9,16 @@ using UnityEngine.UI;
 public class CybergrindTransitionController : MonoBehaviour
 {
     [Header("Structure Shift Timing")]
-    [Min(0.05f)] public float oldArenaDropDuration = 0.9f;
-    [Min(0.05f)] public float newArenaRiseDuration = 1.05f;
-    [Min(0f)] public float swapHoldDuration = 0.12f;
+    [Min(0.05f)] public float oldArenaDropDuration = 2.15f;
+    [Min(0.05f)] public float newArenaRiseDuration = 2.45f;
+    [Min(0f)] public float swapHoldDuration = 0.58f;
     public AnimationCurve shiftCurve = AnimationCurve.EaseInOut(0f, 0f, 1f, 1f);
 
     [Header("Structure Shift Motion")]
     public float oldArenaDropDistance = 42f;
     public float newArenaRiseDistance = 38f;
-    public float exitLiftDistance = 8f;
-    public float exitLiftDuration = 0.65f;
+    public float exitLiftDistance = 9.5f;
+    public float exitLiftDuration = 0.92f;
 
     [Header("Camera")]
     public Camera targetCamera;
@@ -29,16 +29,18 @@ public class CybergrindTransitionController : MonoBehaviour
     public Color exitHighlightColor = new Color(0.9f, 0.6f, 0.1f, 0.5f);
     public float exitHighlightHeight = 0.06f;
     public float exitHighlightScale = 1.12f;
-    public Color coverColor = new Color(0.4f, 0.92f, 1f, 0.18f);
-    public float coverScaleDuration = 0.28f;
+    public Color coverColor = new Color(0.74f, 0.9f, 1f, 0.12f);
+    public float coverScaleDuration = 0.42f;
     public float cageWallThickness = 0.12f;
     public float cageWallHeight = 9f;
     [Range(0.3f, 0.8f)] public float cageCellScale = 0.52f;
 
     [Header("Structure Detail Motion")]
-    public float detailPieceDropDistance = 10f;
-    public float detailPieceRiseDistance = 8f;
-    public float detailStaggerRange = 0.22f;
+    public float detailPieceDropDistance = 12f;
+    public float detailPieceRiseDistance = 10f;
+    public float detailPieceSlideDistance = 3.2f;
+    public float detailPieceSpinDegrees = 12f;
+    public float detailStaggerRange = 0.34f;
 
     [Header("Transient Structure FX")]
     [Range(4, 12)] public int latticeColumnCount = 6;
@@ -50,7 +52,7 @@ public class CybergrindTransitionController : MonoBehaviour
     [Header("Overlay FX")]
     public Color flashColor = new Color(0.72f, 0.95f, 1f, 0.28f);
     public float flashDuration = 0.22f;
-    public float bannerDuration = 2.3f;
+    public float bannerDuration = 2.8f;
 
     [Header("Events")]
     public UnityEvent onTransitionStarted;
@@ -94,9 +96,9 @@ public class CybergrindTransitionController : MonoBehaviour
         IsTransitioning = true;
         DebugStage = "Start";
         onTransitionStarted?.Invoke();
-        string themeLabel = generator != null ? generator.GetThemeLabel() : "Signal Void";
+        string themeLabel = generator != null ? generator.GetThemeLabel() : "Arena";
         string directiveTitle = generator != null ? generator.GetThemeDirectiveTitle() : "Directive";
-        ShowTransitionBanner("STRUCTURE SHIFT", $"{themeLabel} route reconfiguring // {directiveTitle}");
+        ShowTransitionBanner("STRUCTURE LOCK", $"{themeLabel} is folding inward // {directiveTitle}");
         StartCoroutine(PulseFlash(flashColor, flashDuration));
 
         Transform oldRoot = generator != null ? generator.CurrentArenaRoot : null;
@@ -121,6 +123,8 @@ public class CybergrindTransitionController : MonoBehaviour
 
         if (rig.anchor != null)
             StartCoroutine(EmitAnchorLattice(rig.anchor.position, coverColor, latticeFxDuration));
+        if (rig.anchor != null)
+            StartCoroutine(EmitSegmentCascade(rig.anchor.position, coverColor, latticeFxDuration * 1.2f, false));
 
         if (rig.anchor != null)
         {
@@ -139,6 +143,8 @@ public class CybergrindTransitionController : MonoBehaviour
         DestroyTransientContent(oldRoot);
         if (rig.anchor != null)
             StartCoroutine(EmitAnchorLattice(rig.anchor.position + Vector3.up * 1.2f, exitHighlightColor, latticeFxDuration * 0.9f));
+        if (rig.anchor != null)
+            StartCoroutine(EmitSegmentCascade(rig.anchor.position + Vector3.up * 0.6f, exitHighlightColor, latticeFxDuration * 1.25f, true));
         onSwapMoment?.Invoke();
         swapAction?.Invoke();
 
@@ -150,7 +156,7 @@ public class CybergrindTransitionController : MonoBehaviour
             newRoot.position += Vector3.down * newArenaRiseDistance;
 
         DebugStage = "RiseNew";
-        ShowTransitionBanner("DESCENT LOCKED", $"{themeLabel} floor assembled // {directiveTitle}");
+        ShowTransitionBanner("NEXT FLOOR", $"{themeLabel} is locking into place // {directiveTitle}");
         StartCoroutine(PulseFlash(new Color(exitHighlightColor.r, exitHighlightColor.g, exitHighlightColor.b, 0.22f), flashDuration * 1.1f));
         if (newRoot != null)
             StartCoroutine(EmitArenaRiseAccent(newRoot));
@@ -313,13 +319,15 @@ public class CybergrindTransitionController : MonoBehaviour
         if (mat.HasProperty("_SrcBlend")) mat.SetFloat("_SrcBlend", (float)UnityEngine.Rendering.BlendMode.SrcAlpha);
         if (mat.HasProperty("_DstBlend")) mat.SetFloat("_DstBlend", (float)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
         if (mat.HasProperty("_ZWrite")) mat.SetFloat("_ZWrite", 0f);
+        if (mat.HasProperty("_Smoothness")) mat.SetFloat("_Smoothness", 0.92f);
+        if (mat.HasProperty("_Metallic")) mat.SetFloat("_Metallic", 0.04f);
         mat.renderQueue = 3000;
 
         if (emissive)
         {
             mat.EnableKeyword("_EMISSION");
             if (mat.HasProperty("_EmissionColor"))
-                mat.SetColor("_EmissionColor", new Color(color.r * 0.9f, color.g * 1.4f, color.b * 1.6f, 1f));
+                mat.SetColor("_EmissionColor", new Color(color.r * 0.35f, color.g * 0.52f, color.b * 0.58f, 1f));
         }
 
         return mat;
@@ -467,6 +475,16 @@ public class CybergrindTransitionController : MonoBehaviour
         public PlayerController player;
     }
 
+    private struct PieceMotionState
+    {
+        public Transform transform;
+        public Vector3 origin;
+        public Quaternion rotation;
+        public Vector3 offsetAxis;
+        public float stagger;
+        public float depthBias;
+    }
+
     private IEnumerator AnimateStructureDetails(Transform root, bool dropping, float duration)
     {
         if (root == null) yield break;
@@ -474,46 +492,71 @@ public class CybergrindTransitionController : MonoBehaviour
         List<Transform> pieces = CollectAnimatedPieces(root);
         if (pieces.Count == 0) yield break;
 
-        List<Vector3> originalPositions = new List<Vector3>(pieces.Count);
+        List<PieceMotionState> states = new List<PieceMotionState>(pieces.Count);
         float startTime = Time.realtimeSinceStartup;
         for (int i = 0; i < pieces.Count; i++)
         {
             Transform piece = pieces[i];
-            originalPositions.Add(piece.localPosition);
+            if (piece == null) continue;
+
+            Vector3 lateral = new Vector3(piece.localPosition.x, 0f, piece.localPosition.z);
+            Vector3 offsetAxis = lateral.sqrMagnitude > 0.01f
+                ? Vector3.Cross(Vector3.up, lateral.normalized)
+                : (((i & 1) == 0) ? Vector3.right : Vector3.forward);
+            offsetAxis.Normalize();
+
+            PieceMotionState state = new PieceMotionState
+            {
+                transform = piece,
+                origin = piece.localPosition,
+                rotation = piece.localRotation,
+                offsetAxis = offsetAxis,
+                stagger = GetPieceStagger(piece, i),
+                depthBias = 0.75f + Mathf.Repeat(i * 0.11f, 0.65f)
+            };
+            states.Add(state);
+
             if (!dropping)
             {
-                float preOffset = detailPieceRiseDistance * (1f + Mathf.Repeat(i * 0.17f, 0.45f));
-                piece.localPosition -= Vector3.up * preOffset;
+                Vector3 preOffset = offsetAxis * detailPieceSlideDistance * state.depthBias - Vector3.up * (detailPieceRiseDistance * state.depthBias);
+                piece.localPosition = state.origin + preOffset;
+                piece.localRotation = state.rotation * Quaternion.Euler(0f, detailPieceSpinDegrees * 0.55f * state.depthBias, 0f);
             }
         }
 
         while (Time.realtimeSinceStartup - startTime < duration)
         {
             float t = Mathf.Clamp01((Time.realtimeSinceStartup - startTime) / Mathf.Max(0.01f, duration));
-            for (int i = 0; i < pieces.Count; i++)
+            for (int i = 0; i < states.Count; i++)
             {
-                Transform piece = pieces[i];
+                PieceMotionState state = states[i];
+                Transform piece = state.transform;
                 if (piece == null) continue;
 
-                float stagger = Mathf.Clamp01(t - GetPieceStagger(piece, i));
+                float stagger = Mathf.Clamp01(t - state.stagger);
                 float eased = shiftCurve != null ? shiftCurve.Evaluate(stagger) : Mathf.SmoothStep(0f, 1f, stagger);
-                Vector3 origin = originalPositions[i];
-                float travel = dropping ? detailPieceDropDistance : detailPieceRiseDistance;
-                Vector3 from = dropping ? origin : origin - Vector3.up * travel;
-                Vector3 to = dropping ? origin - Vector3.up * travel : origin;
+                Vector3 modularOffset = state.offsetAxis * detailPieceSlideDistance * state.depthBias;
+                Vector3 verticalOffset = Vector3.up * (dropping ? -detailPieceDropDistance : detailPieceRiseDistance) * state.depthBias;
+                Vector3 from = dropping ? state.origin : state.origin + modularOffset - verticalOffset;
+                Vector3 to = dropping ? state.origin + modularOffset + verticalOffset : state.origin;
                 piece.localPosition = Vector3.LerpUnclamped(from, to, eased);
+
+                float spin = Mathf.Lerp(dropping ? 0f : detailPieceSpinDegrees * state.depthBias, dropping ? detailPieceSpinDegrees * state.depthBias : 0f, eased);
+                piece.localRotation = state.rotation * Quaternion.Euler(0f, spin, 0f);
             }
 
             yield return null;
         }
 
-        for (int i = 0; i < pieces.Count; i++)
+        for (int i = 0; i < states.Count; i++)
         {
-            if (pieces[i] == null) continue;
+            PieceMotionState state = states[i];
+            if (state.transform == null) continue;
             if (dropping)
-                pieces[i].localPosition = originalPositions[i] - Vector3.up * detailPieceDropDistance;
+                state.transform.localPosition = state.origin + state.offsetAxis * detailPieceSlideDistance * state.depthBias + Vector3.down * (detailPieceDropDistance * state.depthBias);
             else
-                pieces[i].localPosition = originalPositions[i];
+                state.transform.localPosition = state.origin;
+            state.transform.localRotation = state.rotation;
         }
     }
 
@@ -539,11 +582,18 @@ public class CybergrindTransitionController : MonoBehaviour
 
         string name = candidate.name;
         return name.Contains("Pillar") ||
+               name.StartsWith("Floor_") ||
+               name.StartsWith("Bridge_") ||
+               name.StartsWith("Platform_") ||
+               name.StartsWith("UpperPlatform_") ||
+               name.StartsWith("SurfacePanel_") ||
+               name.StartsWith("Edge") ||
                name.Contains("Gate") ||
                name.Contains("Shop") ||
                name.Contains("BossArena") ||
                name.Contains("Exit") ||
                name.Contains("Canopy") ||
+               name.Contains("Shell") ||
                name.Contains("Glow") ||
                name.Contains("Sign") ||
                name.Contains("Reactor");
@@ -714,6 +764,55 @@ public class CybergrindTransitionController : MonoBehaviour
         {
             if (columns[i] != null)
                 Destroy(columns[i].gameObject);
+        }
+    }
+
+    private IEnumerator EmitSegmentCascade(Vector3 center, Color color, float duration, bool rising)
+    {
+        Material material = BuildTransparentMaterial(new Color(color.r, color.g, color.b, 0.2f), true);
+        List<Transform> segments = new List<Transform>();
+        int segmentCount = 8;
+        for (int i = 0; i < segmentCount; i++)
+        {
+            float angle = (Mathf.PI * 2f * i) / segmentCount;
+            Vector3 radial = new Vector3(Mathf.Cos(angle), 0f, Mathf.Sin(angle));
+            GameObject segment = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            segment.name = "TransitionSegment";
+            segment.transform.position = center + radial * (latticeRadius * 0.72f) + Vector3.up * (rising ? -2.8f : 1.2f);
+            segment.transform.rotation = Quaternion.LookRotation(radial, Vector3.up);
+            segment.transform.localScale = new Vector3(1.4f, 0.18f, 3f);
+            Renderer renderer = segment.GetComponent<Renderer>();
+            if (renderer != null) renderer.material = material;
+            Collider collider = segment.GetComponent<Collider>();
+            if (collider != null) Destroy(collider);
+            segments.Add(segment.transform);
+        }
+
+        float start = Time.realtimeSinceStartup;
+        while (Time.realtimeSinceStartup - start < duration)
+        {
+            float t = Mathf.Clamp01((Time.realtimeSinceStartup - start) / Mathf.Max(0.01f, duration));
+            float eased = Mathf.SmoothStep(0f, 1f, t);
+            for (int i = 0; i < segments.Count; i++)
+            {
+                Transform segment = segments[i];
+                if (segment == null) continue;
+                Vector3 radial = (segment.position - center);
+                radial.y = 0f;
+                radial = radial.sqrMagnitude > 0.001f ? radial.normalized : Vector3.forward;
+                float rise = rising ? Mathf.Lerp(-2.8f, 2.4f, eased) : Mathf.Lerp(1.2f, -6.5f, eased);
+                float spread = Mathf.Lerp(latticeRadius * 0.58f, latticeRadius * 1.08f, eased);
+                segment.position = center + radial * spread + Vector3.up * rise;
+                segment.localScale = new Vector3(1.3f + eased * 0.5f, 0.18f, Mathf.Lerp(2.4f, 3.8f, eased));
+            }
+
+            yield return null;
+        }
+
+        for (int i = 0; i < segments.Count; i++)
+        {
+            if (segments[i] != null)
+                Destroy(segments[i].gameObject);
         }
     }
 

@@ -40,7 +40,7 @@ public class CybergrindTerminalUI : MonoBehaviour
     {
         if (Instance != null) return Instance;
 
-        GameObject go = new GameObject("RuntimeCybergrindTerminalUI");
+        GameObject go = new GameObject("RuntimeArenaTerminalUI");
         Instance = go.AddComponent<CybergrindTerminalUI>();
         DontDestroyOnLoad(go);
         return Instance;
@@ -195,7 +195,7 @@ public class CybergrindTerminalUI : MonoBehaviour
 
     private void BuildUI()
     {
-        GameObject canvasObject = new GameObject("CybergrindTerminalCanvas");
+        GameObject canvasObject = new GameObject("ArenaTerminalCanvas");
         canvasObject.transform.SetParent(transform, false);
         canvas = canvasObject.AddComponent<Canvas>();
         canvas.renderMode = RenderMode.ScreenSpaceOverlay;

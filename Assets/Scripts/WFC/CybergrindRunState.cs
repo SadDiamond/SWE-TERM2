@@ -3,8 +3,6 @@ using UnityEngine;
 public class CybergrindRunState : MonoBehaviour
 {
     public const int StartingWeaponPreset = 0;
-    private const string UnlockPrefix = "CybergrindWeaponUnlocked_";
-    private const string BossesClearedKey = "CybergrindBossesCleared";
     public static CybergrindRunState Instance { get; private set; }
 
     [Header("Run")]
@@ -19,7 +17,7 @@ public class CybergrindRunState : MonoBehaviour
     public float runStartRealtime;
 
     [Header("Persistence")]
-    public bool persistBossUnlocks = true;
+    public bool persistBossUnlocks = false;
     public int maxTrackedWeaponPresets = 6;
 
     private void Awake()
@@ -44,15 +42,14 @@ public class CybergrindRunState : MonoBehaviour
         CybergrindRunState existing = FindAnyObjectByType<CybergrindRunState>();
         if (existing != null) return existing;
 
-        GameObject go = new GameObject("_CybergrindRunState");
+        GameObject go = new GameObject("_ArenaRunState");
         return go.AddComponent<CybergrindRunState>();
     }
 
     public bool IsWeaponUnlocked(int presetIndex)
     {
         if (presetIndex <= StartingWeaponPreset) return true;
-        if (!persistBossUnlocks) return presetIndex <= bossesClearedThisRun;
-        return PlayerPrefs.GetInt(GetUnlockKey(presetIndex), 0) == 1;
+        return presetIndex <= bossesClearedThisRun;
     }
 
     public int RegisterBossDefeated(int themeIndex)
@@ -62,14 +59,7 @@ public class CybergrindRunState : MonoBehaviour
         int unlockIndex = Mathf.Clamp(themeIndex + 1, 1, maxTrackedWeaponPresets - 1);
         UnlockWeapon(unlockIndex);
 
-        if (persistBossUnlocks)
-        {
-            int savedBosses = Mathf.Max(PlayerPrefs.GetInt(BossesClearedKey, 0), bossesClearedThisRun);
-            PlayerPrefs.SetInt(BossesClearedKey, savedBosses);
-            PlayerPrefs.Save();
-        }
-
-        Debug.Log($"[CybergrindRunState] Boss cleared. Weapon preset {unlockIndex} is now unlocked.");
+        Debug.Log($"[ArenaRunState] Boss cleared. Weapon preset {unlockIndex} is now unlocked.");
         return unlockIndex;
     }
 
@@ -119,10 +109,6 @@ public class CybergrindRunState : MonoBehaviour
     public void UnlockWeapon(int presetIndex)
     {
         if (presetIndex < 0) return;
-        if (!persistBossUnlocks) return;
-
-        PlayerPrefs.SetInt(GetUnlockKey(presetIndex), 1);
-        PlayerPrefs.Save();
     }
 
     public int GetFirstUnlockedPreset()
@@ -147,11 +133,7 @@ public class CybergrindRunState : MonoBehaviour
         return unlocked;
     }
 
-    private void EnsureStartingWeaponUnlocked()
-    {
-        if (!persistBossUnlocks) return;
-        PlayerPrefs.SetInt(GetUnlockKey(StartingWeaponPreset), 1);
-    }
+    private void EnsureStartingWeaponUnlocked() { }
 
     private void EnsureRunSeed()
     {
@@ -182,10 +164,5 @@ public class CybergrindRunState : MonoBehaviour
             currentFloorSeed = hash;
             return hash;
         }
-    }
-
-    private static string GetUnlockKey(int presetIndex)
-    {
-        return UnlockPrefix + presetIndex;
     }
 }

@@ -382,8 +382,13 @@ MonoBehaviour:
   runState: {fileID: 0}
   floorText: {fileID: 0}
   cycleText: {fileID: 0}
+  directiveText: {fileID: 0}
   objectiveText: {fileID: 0}
   seedText: {fileID: 0}
+  coreProgressText: {fileID: 0}
+  coreProgressFill: {fileID: 0}
+  headerPanel: {fileID: 0}
+  objectivePanel: {fileID: 0}
   refreshInterval: 0.2
 --- !u!1 &528702134
 GameObject:
@@ -610,6 +615,14 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 0}
     m_Modifications:
+    - target: {fileID: 588565594800298422, guid: 92eb70f1c1e264e5f8cd490ae079e84e, type: 3}
+      propertyPath: m_Sprite
+      value: 
+      objectReference: {fileID: 0}
+    - target: {fileID: 588565594800298422, guid: 92eb70f1c1e264e5f8cd490ae079e84e, type: 3}
+      propertyPath: m_Color.a
+      value: 0
+      objectReference: {fileID: 0}
     - target: {fileID: 6349391256589938752, guid: 92eb70f1c1e264e5f8cd490ae079e84e, type: 3}
       propertyPath: m_Pivot.x
       value: 0
@@ -1111,6 +1124,7 @@ MonoBehaviour:
   exitLiftDuration: 0.78
   targetCamera: {fileID: 914658653}
   fovKick: 8
+  fovOvershoot: 3.2
   exitHighlightColor: {r: 0.9, g: 0.6, b: 0.1, a: 0.5}
   exitHighlightHeight: 0.06
   exitHighlightScale: 1.6
@@ -1119,6 +1133,19 @@ MonoBehaviour:
   cageWallThickness: 0.14
   cageWallHeight: 9.5
   cageCellScale: 0.48
+  detailPieceDropDistance: 10
+  detailPieceRiseDistance: 8
+  detailPieceSlideDistance: 3.2
+  detailPieceSpinDegrees: 12
+  detailStaggerRange: 0.22
+  latticeColumnCount: 6
+  latticeRadius: 4.6
+  latticeColumnHeight: 10
+  latticeFxDuration: 0.75
+  shockwaveScale: 9
+  flashColor: {r: 0.72, g: 0.95, b: 1, a: 0.28}
+  flashDuration: 0.22
+  bannerDuration: 2.3
   onTransitionStarted:
     m_PersistentCalls:
       m_Calls: []
@@ -1211,7 +1238,10 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::BossEncounterHUD
   arenaDirector: {fileID: 0}
   bannerText: {fileID: 0}
+  bannerDetailText: {fileID: 0}
   bossNameText: {fileID: 0}
+  bossPhaseText: {fileID: 0}
+  bossHealthValueText: {fileID: 0}
   bossHealthFill: {fileID: 0}
   bossHealthBack: {fileID: 0}
   refreshInterval: 0.1

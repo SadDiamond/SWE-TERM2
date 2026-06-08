@@ -49,7 +49,7 @@ public class Projectile : MonoBehaviour
         if (IsOwnerCollision(collision.collider)) return;
 
         // Check if what we hit can take damage
-        IDamageable damageable = collision.collider.GetComponent<IDamageable>();
+        IDamageable damageable = collision.collider.GetComponentInParent<IDamageable>();
         if (damageable != null)
         {
             damageable.TakeDamage(damage);

@@ -69,21 +69,21 @@ public class RunStatusHUD : MonoBehaviour
 
         if (runComplete)
         {
-            objectiveText.text = "Core route split open";
+            objectiveText.text = "Core is open";
             return;
         }
 
         if (isShop)
         {
             objectiveText.text = arenaDirector != null && arenaDirector.HasShopInteractionThisFloor()
-                ? "Interchange sealed - take the exit"
-                : "Use one station, then reopen the route";
+                ? "Shop done - take the exit"
+                : "Use one station, then leave";
             return;
         }
 
         if (unsolvedTerminals > 0)
         {
-            objectiveText.text = $"Break machine lock: {unsolvedTerminals} terminals remaining";
+            objectiveText.text = $"Finish terminals: {unsolvedTerminals} left";
             return;
         }
 
@@ -97,31 +97,33 @@ public class RunStatusHUD : MonoBehaviour
                     2 => "PHASE III",
                     1 => "PHASE II",
                     _ => "PHASE I"
-                } : "THREAT LOCK";
-                objectiveText.text = $"Break the champion lattice // {phase}";
+                } : "BOSS";
+                objectiveText.text = $"Beat the boss // {phase}";
             }
             else
             {
-                objectiveText.text = $"Collapse hostiles: {livingEnemies} remaining";
+                objectiveText.text = livingEnemies <= 2
+                    ? $"Clear enemies: {livingEnemies} left // marked"
+                    : $"Clear enemies: {livingEnemies} left";
             }
             return;
         }
 
         if (isBoss && bossRewardRevealActive)
         {
-            objectiveText.text = "Champion shell collapsing - receive the core variant";
+            objectiveText.text = "Boss down - grab the reward";
             return;
         }
 
         if (pendingReward)
         {
             objectiveText.text = isBoss
-                ? "Claim the core variant to cut the next shell"
-                : "Claim the variant to reopen the route";
+                ? "Grab the boss weapon to open the next floor"
+                : "Grab the weapon to open the exit";
             return;
         }
 
-        objectiveText.text = "Route clear - descend";
+        objectiveText.text = "Floor clear - take the exit";
     }
 
     private void RefreshCycleText()
@@ -141,11 +143,11 @@ public class RunStatusHUD : MonoBehaviour
         }
         else if (position == combatFloorsPerTheme)
         {
-            cycleText.text = $"{themeLabel} // Interchange";
+            cycleText.text = $"{themeLabel} // Shop";
         }
         else
         {
-            cycleText.text = $"{themeLabel} // Champion Chamber";
+            cycleText.text = $"{themeLabel} // Boss";
         }
     }
 
@@ -166,7 +168,7 @@ public class RunStatusHUD : MonoBehaviour
         if (arenaDirector == null || runState == null) return;
 
         if (coreProgressText != null)
-            coreProgressText.text = $"Core Route: {runState.bossesClearedThisRun}/{arenaDirector.bossFloorsToReachCore}";
+            coreProgressText.text = $"Bosses Beaten: {runState.bossesClearedThisRun}/{arenaDirector.bossFloorsToReachCore}";
 
         if (coreProgressFill != null)
             coreProgressFill.fillAmount = Mathf.Clamp01((float)runState.bossesClearedThisRun / Mathf.Max(1, arenaDirector.bossFloorsToReachCore));

@@ -52,8 +52,9 @@ public class CybergrindPuzzleTerminal : Terminal
         RefreshPromptFromState();
     }
 
-    private void Update()
+    protected override void Update()
     {
+        base.Update();
         if (!puzzleOpen || isSolved) return;
 
         float dt = Time.deltaTime;

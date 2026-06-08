@@ -40,7 +40,7 @@ public class CybergrindShopStation : Interactable
         if (player == null) return;
         if (spent)
         {
-            promptMessage = "Station spent";
+            promptMessage = "Empty";
             return;
         }
 
@@ -52,13 +52,13 @@ public class CybergrindShopStation : Interactable
             case ShopService.Repair:
                 if (!player.TrySpendCurrency(cost))
                 {
-                    promptMessage = $"Need {cost} coins for shell repair";
+                    promptMessage = $"Need {cost} coins";
                     return;
                 }
                 player.Heal(healAmount);
-                promptMessage = $"Shell repaired (+{healAmount} HP)";
-                bannerTitle = "SHELL RESEALED";
-                bannerDetail = $"Hull restored by {healAmount}. Re-enter the route with full pressure.";
+                promptMessage = $"Healed +{healAmount}";
+                bannerTitle = "PATCHED UP";
+                bannerDetail = $"Recovered {healAmount} hull. Back to work.";
                 success = true;
                 break;
 
@@ -66,18 +66,18 @@ public class CybergrindShopStation : Interactable
                 Gun gun = GetGun(player);
                 if (gun == null)
                 {
-                    promptMessage = "Armory link unavailable";
+                    promptMessage = "No weapon found";
                     return;
                 }
                 if (!player.TrySpendCurrency(cost))
                 {
-                    promptMessage = $"Need {cost} coins for refit";
+                    promptMessage = $"Need {cost} coins";
                     return;
                 }
                 gun.EquipPreset(presetIndex);
-                promptMessage = $"Refit applied // {gun.GetPresetDisplayName(presetIndex)}";
-                bannerTitle = "VARIANT BUS REWIRED";
-                bannerDetail = $"{gun.GetPresetDisplayName(presetIndex)} linked. {gun.GetActiveDescriptorLine()}";
+                promptMessage = $"{gun.GetPresetDisplayName(presetIndex)} equipped";
+                bannerTitle = "LOADOUT CHANGED";
+                bannerDetail = $"{gun.GetPresetDisplayName(presetIndex)} equipped. {gun.GetActiveDescriptorLine()}";
                 success = true;
                 break;
 
@@ -85,31 +85,31 @@ public class CybergrindShopStation : Interactable
                 Gun overclockGun = GetGun(player);
                 if (overclockGun == null)
                 {
-                    promptMessage = "Armory link unavailable";
+                    promptMessage = "No weapon found";
                     return;
                 }
                 if (!player.TrySpendCurrency(cost))
                 {
-                    promptMessage = $"Need {cost} coins for overclock";
+                    promptMessage = $"Need {cost} coins";
                     return;
                 }
                 overclockGun.ApplyWeaponOverclock(fireRateBoostPercent, damageBoostPercent, altCooldownBoostPercent);
                 player.Heal(Mathf.Max(12, healAmount / 3));
                 promptMessage = overclockGun.GetRunModifierStatus();
-                bannerTitle = "BUS OVERCLOCKED";
-                bannerDetail = $"{overclockGun.GetRunModifierStatus()} Keep pressure high before the lattice cools.";
+                bannerTitle = "WEAPON BOOSTED";
+                bannerDetail = $"{overclockGun.GetRunModifierStatus()} Use it while the floor is still hot.";
                 success = true;
                 break;
 
             case ShopService.Surge:
                 if (!player.TrySpendCurrency(cost))
                 {
-                    promptMessage = $"Need {cost} coins for surge sync";
+                    promptMessage = $"Need {cost} coins";
                     return;
                 }
                 player.ApplyMobilityUpgrade(moveSpeedBonus, dashBonus, jumpBonus);
-                promptMessage = "Mobility lattice tuned";
-                bannerTitle = "MOBILITY LATTICE TUNED";
+                promptMessage = "Movement boosted";
+                bannerTitle = "MOBILITY TUNED";
                 bannerDetail = $"+{moveSpeedBonus:0.0} move  +{dashBonus:0.0} dash  +{jumpBonus:0.0} jump";
                 success = true;
                 break;
@@ -146,7 +146,7 @@ public class CybergrindShopStation : Interactable
     {
         if (spent)
         {
-            promptMessage = "Station spent";
+            promptMessage = "Empty";
             return;
         }
 
@@ -154,21 +154,21 @@ public class CybergrindShopStation : Interactable
         switch (service)
         {
             case ShopService.Repair:
-                promptMessage = $"Repair shell // +{healAmount} HP ({cost} coins)";
+                promptMessage = $"Heal up // +{healAmount} HP ({cost} coins)";
                 break;
             case ShopService.Refit:
                 string weaponName = gun != null ? gun.GetPresetDisplayName(presetIndex) : $"Variant {presetIndex + 1}";
-                promptMessage = $"Refit // {weaponName} ({cost} coins)";
+                promptMessage = $"Swap weapon // {weaponName} ({cost} coins)";
                 break;
             case ShopService.Overclock:
                 int fireRatePercent = Mathf.RoundToInt(fireRateBoostPercent * 100f);
                 int damagePercent = Mathf.RoundToInt(damageBoostPercent * 100f);
-                promptMessage = $"Overclock // +{fireRatePercent}% cycle, +{damagePercent}% damage ({cost} coins)";
+                promptMessage = $"Boost weapon // +{fireRatePercent}% fire rate, +{damagePercent}% damage ({cost} coins)";
                 break;
             case ShopService.Surge:
                 promptMessage = cost <= 0
-                    ? $"Surge sync // +move +dash +jump (free)"
-                    : $"Surge sync // +move +dash +jump ({cost} coins)";
+                    ? "Tune movement // speed, dash, jump (free)"
+                    : $"Tune movement // speed, dash, jump ({cost} coins)";
                 break;
         }
     }

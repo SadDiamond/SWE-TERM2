@@ -25,31 +25,33 @@ public class PlayerController : MonoBehaviour, IDamageable
     private float damageInvulnerabilityTimer;
 
     [Header("Movement (Core)")]
-    public float moveSpeed = 12f;
-    public float groundAcceleration = 10f;
-    public float groundDeceleration = 10f;
-    public float airAcceleration = 2f; // Low value = Retains momentum in air
-    public float gravity = -25f;
-    public float jumpHeight = 2.5f;
+    public float moveSpeed = 13.5f;
+    public float groundAcceleration = 24f;
+    public float groundDeceleration = 11f;
+    public float airAcceleration = 10f;
+    public float gravity = -29f;
+    public float jumpHeight = 2.85f;
     public int maxJumps = 2; 
+    public float coyoteTime = 0.12f;
+    public float jumpBufferTime = 0.12f;
 
     [Header("Movement (Dash)")]
-    public float dashForce = 25f; // Pure momentum burst
-    public float dashCooldown = 1f;
+    public float dashForce = 28f; // Pure momentum burst
+    public float dashCooldown = 0.85f;
 
     [Header("Movement (Slide & Slam)")]
-    public float slideBaseSpeed = 16f; // Just a bit faster than running (12)
-    public float slideFriction = 2.5f; // How fast you slow down while sliding
-    public float fallSpeedToSlideBoost = 0.5f; // Hitting the ground hard speeds up your slide
-    public float maxSlideJumpCarrySpeed = 22f;
+    public float slideBaseSpeed = 18f; // Just a bit faster than running
+    public float slideFriction = 1.95f; // How fast you slow down while sliding
+    public float fallSpeedToSlideBoost = 0.58f; // Hitting the ground hard speeds up your slide
+    public float maxSlideJumpCarrySpeed = 26f;
     public float slideHeight = 1f;
     public float slideCooldown = 0.45f;
     public float slamSpeed = 40f; // How fast you plummet downwards
-    public float postSlamSlideLockout = 0.35f;
+    public float postSlamSlideLockout = 0.25f;
     private float defaultHeight;
 
     [Header("Movement (Limits)")]
-    public float maxSpeedLimit = 36f; // Exactly 3x running speed
+    public float maxSpeedLimit = 42f; // Enough headroom for chaining movement
 
     [Header("FX & Polish")]
     public Camera playerCamera;
@@ -77,6 +79,10 @@ public class PlayerController : MonoBehaviour, IDamageable
     public float damageFlashDuration = 0.26f;
     public float damageLookKick = 2.8f;
     public float damageFovKick = 3.5f;
+    public float weaponKickDuration = 0.12f;
+    public float weaponLookKick = 0.7f;
+    public float weaponCameraKickBack = 0.075f;
+    public float weaponCameraKickDown = 0.035f;
 
     [Header("Look")]
     public float mouseSensitivity = 100f;
@@ -100,8 +106,12 @@ public class PlayerController : MonoBehaviour, IDamageable
     private float disableGroundCheckTimer = 0f;
     private bool abyssRecoveredThisAirborneState;
     private bool transitionLocked;
+    private float coyoteTimer;
+    private float jumpBufferTimer;
     private float damageFlashTimer;
     private float damageKickTimer;
+    private float weaponKickTimer;
+    private float crosshairFireTimer;
     private Image damageFlashOverlay;
     private RectTransform crosshairRect;
     private readonly RectTransform[] crosshairSegmentRects = new RectTransform[4];
@@ -145,6 +155,7 @@ public class PlayerController : MonoBehaviour, IDamageable
         if (playerCamera != null) baseFOV = playerCamera.fieldOfView;
         if (cameraTransform != null) baseCameraLocalPos = cameraTransform.localPosition;
         lastSafePosition = transform.position;
+        EnsureVitalsHud();
         EnsureCrosshair();
         EnsureSpeedLines();
         EnsureDamageOverlay();
@@ -504,6 +515,8 @@ public class PlayerController : MonoBehaviour, IDamageable
         
         float fallSpeed = lastFrameVelocityY; // Capture before we reset it
 
+        coyoteTimer = isGrounded ? coyoteTime : Mathf.Max(0f, coyoteTimer - Time.deltaTime);
+
         if (isGrounded && velocity.y < 0)
         {
             velocity.y = -2f;
@@ -538,6 +551,10 @@ public class PlayerController : MonoBehaviour, IDamageable
         ).normalized;
 
         Vector3 inputDir = transform.right * input.x + transform.forward * input.y;
+        if (jumpBufferTimer > 0f)
+            jumpBufferTimer = Mathf.Max(0f, jumpBufferTimer - Time.deltaTime);
+        if (UnityEngine.InputSystem.Keyboard.current.spaceKey.wasPressedThisFrame)
+            jumpBufferTimer = jumpBufferTime;
 
         // --- DASH LOGIC ---
         // Dash now ADDS a massive burst of momentum rather than overriding control
@@ -590,6 +607,7 @@ public class PlayerController : MonoBehaviour, IDamageable
             // If we have no input direction, slide wherever we are looking
             Vector3 slideDir = inputDir.magnitude > 0.1f ? inputDir.normalized : transform.forward;
             momentum = slideDir * newSpeed;
+            velocity.y = Mathf.Max(velocity.y, 0f);
         }
         else if ((!wantsToSlide || !isGrounded) && isSliding)
         {
@@ -607,33 +625,34 @@ public class PlayerController : MonoBehaviour, IDamageable
         {
             if (isSliding)
             {
-                // Sliding decays momentum very slowly
-                momentum = Vector3.Lerp(momentum, Vector3.zero, slideFriction * Time.deltaTime);
+                momentum = Vector3.Lerp(momentum, Vector3.zero, slideFriction * 0.85f * Time.deltaTime);
             }
             else
             {
-                // Normal running (snaps quickly to target speed)
-                Vector3 targetVel = inputDir * CurrentMoveSpeed;
-                float accel = (inputDir.magnitude > 0) ? groundAcceleration : groundDeceleration;
-                momentum = Vector3.Lerp(momentum, targetVel, accel * Time.deltaTime);
+                ApplyGroundMovement(inputDir);
             }
         }
         else
         {
-            // Air control (Decays smoothly, retains high speeds from dashes/slides)
-            Vector3 targetVel = inputDir * CurrentMoveSpeed;
-            momentum = Vector3.Lerp(momentum, targetVel, airAcceleration * Time.deltaTime);
+            ApplyAirMovement(inputDir);
         }
 
         // --- JUMP LOGIC ---
-        if (UnityEngine.InputSystem.Keyboard.current.spaceKey.wasPressedThisFrame && jumpsRemaining > 0)
+        bool canGroundJump = isGrounded || coyoteTimer > 0f;
+        bool canAirJump = !canGroundJump && jumpsRemaining > 0;
+        if (jumpBufferTimer > 0f && (canGroundJump || canAirJump))
         {
             velocity.y = Mathf.Sqrt(CurrentJumpHeight * -2f * gravity);
-            jumpsRemaining--;
+            jumpBufferTimer = 0f;
+            coyoteTimer = 0f;
+            if (canGroundJump)
+                jumpsRemaining = Mathf.Max(0, maxJumps - 1);
+            else
+                jumpsRemaining--;
+            isGrounded = false;
 
             if (isSliding)
             {
-                // Slide jump! Stand up, but momentum is automatically preserved by the low airAcceleration!
                 isSliding = false; 
                 controller.height = defaultHeight;
                 momentum = Vector3.ClampMagnitude(momentum, maxSlideJumpCarrySpeed);
@@ -665,9 +684,11 @@ public class PlayerController : MonoBehaviour, IDamageable
             playerCamera.fieldOfView = Mathf.Lerp(playerCamera.fieldOfView, targetFOV, 10f * Time.deltaTime);
 
             float targetCamY = isSliding ? baseCameraLocalPos.y - slideCameraDrop : baseCameraLocalPos.y;
+            float weaponKick01 = Mathf.Clamp01(weaponKickTimer / Mathf.Max(0.01f, weaponKickDuration));
+            Vector3 recoilOffset = new Vector3(0f, -weaponCameraKickDown * weaponKick01, -weaponCameraKickBack * weaponKick01);
             cameraTransform.localPosition = Vector3.Lerp(
                 cameraTransform.localPosition, 
-                new Vector3(baseCameraLocalPos.x, targetCamY, baseCameraLocalPos.z), 
+                new Vector3(baseCameraLocalPos.x, targetCamY, baseCameraLocalPos.z) + recoilOffset, 
                 15f * Time.deltaTime
             );
         }
@@ -746,6 +767,53 @@ public class PlayerController : MonoBehaviour, IDamageable
         momentum *= 0.55f;
     }
 
+    private void ApplyGroundMovement(Vector3 inputDir)
+    {
+        if (inputDir.sqrMagnitude <= 0.0001f)
+        {
+            momentum = Vector3.MoveTowards(momentum, Vector3.zero, groundDeceleration * CurrentMoveSpeed * 0.95f * Time.deltaTime);
+            return;
+        }
+
+        Vector3 desiredDir = inputDir.normalized;
+        Vector3 desiredVelocity = desiredDir * CurrentMoveSpeed;
+        float forwardSpeed = Vector3.Dot(momentum, desiredDir);
+        bool carryingSpeed = momentum.magnitude > CurrentMoveSpeed && forwardSpeed > CurrentMoveSpeed * 0.9f;
+
+        if (carryingSpeed)
+        {
+            Vector3 sideways = Vector3.ProjectOnPlane(momentum, desiredDir);
+            sideways = Vector3.MoveTowards(sideways, Vector3.zero, groundDeceleration * CurrentMoveSpeed * 0.85f * Time.deltaTime);
+            float retainedForward = Mathf.MoveTowards(forwardSpeed, CurrentMoveSpeed, groundDeceleration * CurrentMoveSpeed * 1.2f * Time.deltaTime);
+            momentum = desiredDir * retainedForward + sideways;
+        }
+        else
+        {
+            momentum = Vector3.MoveTowards(momentum, desiredVelocity, groundAcceleration * CurrentMoveSpeed * 2.1f * Time.deltaTime);
+        }
+    }
+
+    private void ApplyAirMovement(Vector3 inputDir)
+    {
+        if (inputDir.sqrMagnitude > 0.0001f)
+        {
+            Vector3 wishDir = inputDir.normalized;
+            float currentSpeed = Vector3.Dot(momentum, wishDir);
+            float targetAirSpeed = Mathf.Max(CurrentMoveSpeed, momentum.magnitude);
+            float addSpeed = Mathf.Max(0f, targetAirSpeed - currentSpeed);
+            float accel = airAcceleration * CurrentMoveSpeed * 1.7f * Time.deltaTime;
+            accel = Mathf.Min(accel, addSpeed);
+            momentum += wishDir * accel;
+
+            Vector3 lateral = Vector3.ProjectOnPlane(momentum, wishDir);
+            momentum = wishDir * Vector3.Dot(momentum, wishDir) + Vector3.MoveTowards(lateral, lateral * 0.92f, airAcceleration * 0.15f * Time.deltaTime);
+        }
+        else
+        {
+            momentum *= 1f - Mathf.Clamp01(Time.deltaTime * 0.08f);
+        }
+    }
+
     private void HandleDefeatAndRespawn()
     {
         HandleDeath();
@@ -816,6 +884,15 @@ public class PlayerController : MonoBehaviour, IDamageable
         }
     }
 
+    public void NotifySpawnPlacement(Vector3 spawnPosition)
+    {
+        velocity = Vector3.zero;
+        momentum = Vector3.zero;
+        lastSafePosition = spawnPosition;
+        safePositionTimer = 0f;
+        abyssRecoveredThisAirborneState = false;
+    }
+
     public void NotifyWeaponHit(Color accentColor, bool kill)
     {
         EnsureCrosshair();
@@ -823,6 +900,13 @@ public class PlayerController : MonoBehaviour, IDamageable
         crosshairHitTimer = 0.11f;
         if (kill)
             crosshairKillTimer = 0.26f;
+    }
+
+    public void NotifyWeaponFired(bool heavy)
+    {
+        weaponKickTimer = Mathf.Max(weaponKickTimer, weaponKickDuration * (heavy ? 1.15f : 1f));
+        crosshairFireTimer = Mathf.Max(crosshairFireTimer, heavy ? 0.14f : 0.1f);
+        xRotation = Mathf.Clamp(xRotation - (heavy ? weaponLookKick * 1.35f : weaponLookKick), -80f, 80f);
     }
 
     private void RefreshVitalsUI()
@@ -834,6 +918,62 @@ public class PlayerController : MonoBehaviour, IDamageable
             currencyText.text = $"COINS {currency}";
     }
 
+    private void EnsureVitalsHud()
+    {
+        if (healthText != null && currencyText != null)
+            return;
+
+        Canvas canvas = ProjectStructureUIRoot.GetOrCreateCanvas();
+        if (canvas == null)
+            return;
+
+        Transform root = canvas.transform.Find("VitalsHUD");
+        if (root == null)
+        {
+            GameObject hud = new GameObject("VitalsHUD");
+            hud.transform.SetParent(canvas.transform, false);
+            RectTransform rect = hud.AddComponent<RectTransform>();
+            rect.anchorMin = new Vector2(0f, 1f);
+            rect.anchorMax = new Vector2(0f, 1f);
+            rect.pivot = new Vector2(0f, 1f);
+            rect.anchoredPosition = new Vector2(22f, -18f);
+            rect.sizeDelta = new Vector2(240f, 88f);
+
+            Image panel = hud.AddComponent<Image>();
+            panel.color = new Color(0.02f, 0.035f, 0.05f, 0.72f);
+
+            if (healthText == null)
+                healthText = CreateVitalsText(hud.transform, "HullText", new Vector2(0f, 1f), new Vector2(18f, -16f), 26f, new Color(0.92f, 0.97f, 1f));
+            if (currencyText == null)
+                currencyText = CreateVitalsText(hud.transform, "CoinsText", new Vector2(0f, 1f), new Vector2(18f, -48f), 22f, new Color(1f, 0.87f, 0.46f));
+            return;
+        }
+
+        if (healthText == null)
+            healthText = root.Find("HullText")?.GetComponent<TMP_Text>();
+        if (currencyText == null)
+            currencyText = root.Find("CoinsText")?.GetComponent<TMP_Text>();
+    }
+
+    private TMP_Text CreateVitalsText(Transform parent, string name, Vector2 anchor, Vector2 position, float fontSize, Color color)
+    {
+        GameObject go = new GameObject(name);
+        go.transform.SetParent(parent, false);
+        RectTransform rect = go.AddComponent<RectTransform>();
+        rect.anchorMin = anchor;
+        rect.anchorMax = anchor;
+        rect.pivot = anchor;
+        rect.anchoredPosition = position;
+        rect.sizeDelta = new Vector2(210f, 28f);
+
+        TMP_Text text = go.AddComponent<TextMeshProUGUI>();
+        text.fontSize = fontSize;
+        text.alignment = TextAlignmentOptions.Left;
+        text.color = color;
+        text.text = string.Empty;
+        return text;
+    }
+
     private void TriggerDamageFeedback()
     {
         damageFlashTimer = damageFlashDuration;
@@ -843,6 +983,9 @@ public class PlayerController : MonoBehaviour, IDamageable
 
     private void UpdateDamageFeedback()
     {
+        if (weaponKickTimer > 0f)
+            weaponKickTimer -= Time.deltaTime;
+
         if (playerCamera != null && damageKickTimer > 0f)
         {
             damageKickTimer -= Time.deltaTime;
@@ -1090,11 +1233,14 @@ public class PlayerController : MonoBehaviour, IDamageable
             crosshairHitTimer -= Time.deltaTime;
         if (crosshairKillTimer > 0f)
             crosshairKillTimer -= Time.deltaTime;
+        if (crosshairFireTimer > 0f)
+            crosshairFireTimer -= Time.deltaTime;
 
         float speed = controller != null ? new Vector3(controller.velocity.x, 0f, controller.velocity.z).magnitude : 0f;
         float speed01 = Mathf.InverseLerp(0f, maxSpeedLimit, speed);
         float hit01 = Mathf.Clamp01(crosshairHitTimer / 0.11f);
         float kill01 = Mathf.Clamp01(crosshairKillTimer / 0.26f);
+        float fire01 = Mathf.Clamp01(crosshairFireTimer / 0.14f);
         bool focused = currentInteractable != null && !isUIActive && !isDead;
         bool hostile = IsAimingAtHostile();
 
@@ -1104,10 +1250,10 @@ public class PlayerController : MonoBehaviour, IDamageable
         if (hit01 > 0.01f || kill01 > 0.01f)
             targetColor = Color.Lerp(targetColor, crosshairPulseColor == default ? crosshairHitColor : crosshairPulseColor, Mathf.Max(hit01, kill01));
 
-        float gap = 12f + speed01 * 8f + hit01 * 5f + kill01 * 9f;
-        float length = 11f + speed01 * 3.5f + kill01 * 3f;
-        float thickness = 3f + hit01 * 1.2f + kill01 * 1.4f;
-        float scale = 1f + speed01 * 0.05f + hit01 * 0.08f + kill01 * 0.12f;
+        float gap = 12f + speed01 * 8f + fire01 * 4.5f + hit01 * 5f + kill01 * 9f;
+        float length = 11f + speed01 * 3.5f + fire01 * 1.6f + kill01 * 3f;
+        float thickness = 3f + fire01 * 0.7f + hit01 * 1.2f + kill01 * 1.4f;
+        float scale = 1f + speed01 * 0.05f + fire01 * 0.05f + hit01 * 0.08f + kill01 * 0.12f;
         crosshairRect.localScale = Vector3.one * scale;
 
         Vector2[] positions =

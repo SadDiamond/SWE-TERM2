@@ -55,6 +55,7 @@ public class Gun : MonoBehaviour
     public float fireRate = 0.15f;
     public float bulletSpeed = 50f;
     public float maxHitScanDistance = 1000f;
+    [Min(0f)] public float hitScanRadius = 0.16f;
     public float muzzleForwardOffset = 1.1f;
     public Transform gunBarrel;
     public GameObject bulletPrefab;
@@ -273,7 +274,7 @@ public class Gun : MonoBehaviour
     public string GetActiveDescriptorLine()
     {
         WeaponPreset preset = ActivePreset;
-        if (preset == null) return "Armory link unavailable.";
+        if (preset == null) return "Weapon system unavailable.";
         return $"{GetPrimaryDescriptor(preset.archetype)} Right click {GetAltDescriptor(preset.archetype)}";
     }
 
@@ -383,6 +384,8 @@ public class Gun : MonoBehaviour
         float baseDamage = GetEffectiveDamage(preset.damage);
 
         currentRecoilPosition -= new Vector3(0f, 0f, recoilForce * 0.1f);
+        if (player != null)
+            player.NotifyWeaponFired(preset.archetype == WeaponArchetype.Rail || preset.archetype == WeaponArchetype.Slab);
 
         if (muzzleFlash != null) muzzleFlash.Play();
         if (audioSource != null && shootSound != null) audioSource.PlayOneShot(shootSound);
@@ -435,6 +438,8 @@ public class Gun : MonoBehaviour
         float cooldown = Mathf.Max(0.3f, preset.fireRate * 2.2f * runAltCooldownMultiplier);
         nextAltFireTime = Time.time + cooldown;
         currentRecoilPosition -= new Vector3(0f, 0f, recoilForce * 0.14f);
+        if (player != null)
+            player.NotifyWeaponFired(true);
 
         if (muzzleFlash != null) muzzleFlash.Play();
         if (audioSource != null)
@@ -509,7 +514,9 @@ public class Gun : MonoBehaviour
 
     private bool TryGetAimHit(Vector3 origin, Vector3 direction, out RaycastHit hit)
     {
-        RaycastHit[] hits = Physics.RaycastAll(origin, direction, maxHitScanDistance, ~0, QueryTriggerInteraction.Ignore);
+        RaycastHit[] hits = hitScanRadius > 0.001f
+            ? Physics.SphereCastAll(origin, hitScanRadius, direction, maxHitScanDistance, ~0, QueryTriggerInteraction.Ignore)
+            : Physics.RaycastAll(origin, direction, maxHitScanDistance, ~0, QueryTriggerInteraction.Ignore);
         Array.Sort(hits, (a, b) => a.distance.CompareTo(b.distance));
 
         for (int h = 0; h < hits.Length; h++)
@@ -763,10 +770,37 @@ public class Gun : MonoBehaviour
             renderer.material = mat;
         }
 
+        GameObject ring = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+        ring.name = "HitRing";
+        ring.transform.position = position;
+        ring.transform.localScale = new Vector3(scale * 0.55f, 0.01f, scale * 0.55f);
+        Collider ringCollider = ring.GetComponent<Collider>();
+        if (ringCollider != null)
+            Destroy(ringCollider);
+
+        Renderer ringRenderer = ring.GetComponent<Renderer>();
+        if (ringRenderer != null)
+        {
+            Material ringMat = new Material(FindUrpShader(true));
+            ringMat.color = new Color(color.r, color.g, color.b, 0.92f);
+            if (ringMat.HasProperty(EmissionColorId))
+            {
+                ringMat.EnableKeyword("_EMISSION");
+                ringMat.SetColor(EmissionColorId, color * 2.2f);
+            }
+            ringRenderer.material = ringMat;
+        }
+
         StartCoroutine(ScaleBurstDown(burst.transform, lifetime));
+        StartCoroutine(ScaleBurstDown(ring.transform, lifetime * 0.85f, new Vector3(scale * 2.2f, 0.01f, scale * 2.2f)));
     }
 
     private System.Collections.IEnumerator ScaleBurstDown(Transform burst, float lifetime)
+    {
+        yield return ScaleBurstDown(burst, lifetime, Vector3.zero);
+    }
+
+    private System.Collections.IEnumerator ScaleBurstDown(Transform burst, float lifetime, Vector3 targetScale)
     {
         if (burst == null) yield break;
         Vector3 startScale = burst.localScale;
@@ -775,7 +809,7 @@ public class Gun : MonoBehaviour
         {
             elapsed += Time.deltaTime;
             float t = Mathf.Clamp01(elapsed / Mathf.Max(0.01f, lifetime));
-            burst.localScale = Vector3.Lerp(startScale, Vector3.zero, t);
+            burst.localScale = Vector3.Lerp(startScale, targetScale, t);
             yield return null;
         }
 
@@ -947,9 +981,14 @@ public class Gun : MonoBehaviour
         runDamageMultiplier = 1f;
         runAltCooldownMultiplier = 1f;
 
-        WeaponPreset preset = ActivePreset;
-        if (preset != null)
-            fireRate = GetEffectiveFireRate(preset);
+        if (restrictToUnlockedWeapons)
+            ApplyPreset(CybergrindRunState.GetOrCreate().GetFirstUnlockedPreset());
+        else
+        {
+            WeaponPreset preset = ActivePreset;
+            if (preset != null)
+                fireRate = GetEffectiveFireRate(preset);
+        }
     }
 
     private static string GetArchetypeLabel(WeaponArchetype archetype)

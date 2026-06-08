@@ -1,4 +1,5 @@
 using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.AI;
 
@@ -28,8 +29,15 @@ public class BasicEnemyAI : MonoBehaviour, IDamageable
     public float floorStandoffDistance = 4.5f;
     public float obstacleAvoidanceDistance = 1.4f;
     public LayerMask movementObstacleMask = ~0;
+    [Min(0.1f)] public float pathRefreshInterval = 0.45f;
+    [Min(0.15f)] public float pathNodeReachDistance = 0.65f;
     private NavMeshAgent agent;
     private Transform player;
+    private CybergrindArenaGenerator arenaGenerator;
+    private readonly List<Vector3> groundPath = new List<Vector3>();
+    private int groundPathIndex;
+    private float repathTimer;
+    private Vector3 lastRequestedPathTarget;
 
     [Header("Grunt Tuning")]
     [Range(0.1f, 1f)] public float gruntMoveSpeedMultiplier = 0.72f;
@@ -77,6 +85,11 @@ public class BasicEnemyAI : MonoBehaviour, IDamageable
     private float groundY;
     private bool hasGroundAnchor;
     private bool isDying;
+    private CapsuleCollider combatCollider;
+    private Transform priorityMarker;
+    private Renderer priorityMarkerRenderer;
+    private bool isPriorityTarget;
+    public bool IsPriorityTarget => isPriorityTarget && !IsCombatResolved;
 
     [Header("Type Visuals")]
     public bool autoBuildTypeModel = true;
@@ -105,6 +118,7 @@ public class BasicEnemyAI : MonoBehaviour, IDamageable
         // Find the player automatically (Updated for modern Unity versions)
         PlayerController p = Object.FindAnyObjectByType<PlayerController>();
         if (p != null) player = p.transform;
+        arenaGenerator = Object.FindAnyObjectByType<CybergrindArenaGenerator>();
 
         // Adjust stats per enemy type
         ApplyDefaultDisplayName();
@@ -139,9 +153,11 @@ public class BasicEnemyAI : MonoBehaviour, IDamageable
 
         if (isBoss)
         {
-            currentHealth = Mathf.Max(currentHealth, maxHealth * 4f);
+            currentHealth = Mathf.Max(currentHealth, maxHealth * 2.6f);
             stoppingDistance = Mathf.Max(stoppingDistance, 12f);
-            fireRate = Mathf.Max(0.35f, fireRate * 0.72f);
+            fireRate = Mathf.Max(0.45f, fireRate * 0.9f);
+            moveSpeed *= bossArchetype == BossArchetype.Striker ? 1.05f : 0.92f;
+            meleeDamage *= 0.88f;
             bossPatternTimer = Random.Range(1.5f, 3f);
         }
 
@@ -171,6 +187,8 @@ public class BasicEnemyAI : MonoBehaviour, IDamageable
             BuildTypeModel();
         }
 
+        EnsureCombatCollider();
+
         modelRoot = transform.Find("_EnemyTypeModel");
         if (modelRoot != null)
         {
@@ -193,6 +211,19 @@ public class BasicEnemyAI : MonoBehaviour, IDamageable
             flashTimer -= Time.deltaTime;
             if (flashTimer <= 0 && enemyRenderer != null && enemyRenderer.material != null)
                 enemyRenderer.material.color = originalColor;
+        }
+
+        if (priorityMarker != null && priorityMarker.gameObject.activeSelf)
+        {
+            priorityMarker.Rotate(Vector3.forward, 80f * Time.deltaTime, Space.Self);
+            float pulse = 0.9f + Mathf.Sin(Time.time * 7f) * 0.16f;
+            priorityMarker.localScale = new Vector3(pulse, 0.03f, pulse);
+            if (priorityMarkerRenderer != null)
+            {
+                Color c = new Color(1f, 0.86f, 0.32f, 0.72f + Mathf.Sin(Time.time * 7f) * 0.08f);
+                if (priorityMarkerRenderer.material.HasProperty("_BaseColor")) priorityMarkerRenderer.material.SetColor("_BaseColor", c);
+                if (priorityMarkerRenderer.material.HasProperty("_Color")) priorityMarkerRenderer.material.SetColor("_Color", c);
+            }
         }
 
         if (hurtPulseTimer > 0f) hurtPulseTimer -= Time.deltaTime;
@@ -270,8 +301,19 @@ public class BasicEnemyAI : MonoBehaviour, IDamageable
                 if (planarDistance > 0.001f)
                 {
                     Vector3 moveDir = toPlayer / planarDistance;
+                    float groundMoveSpeed = enemyType == EnemyType.Grunt
+                        ? moveSpeed * gruntMoveSpeedMultiplier
+                        : enemyType == EnemyType.Tank
+                            ? moveSpeed * 0.55f
+                            : moveSpeed;
 
-                    if (enemyType == EnemyType.Grunt)
+                    bool usedPath = enemyType != EnemyType.Flying && TryFollowGroundPath(target, groundMoveSpeed);
+
+                    if (usedPath)
+                    {
+                        FacePlayer();
+                    }
+                    else if (enemyType == EnemyType.Grunt)
                     {
                         if (planarDistance > meleeRange)
                         {
@@ -522,14 +564,14 @@ public class BasicEnemyAI : MonoBehaviour, IDamageable
             {
                 Vector3 orbit = new Vector3(Mathf.Sin(Time.time * 0.9f), 0f, Mathf.Cos(Time.time * 0.9f)) * (6f + GetBossPhase() * 1.2f);
                 Vector3 hoverTarget = playerFlat + orbit + Vector3.up * Mathf.Max(hoverHeight + 1.8f, 4.2f);
-                transform.position = Vector3.Lerp(transform.position, hoverTarget, Time.deltaTime * 1.8f);
+                transform.position = Vector3.Lerp(transform.position, hoverTarget, Time.deltaTime * 1.1f);
                 FacePlayer();
                 break;
             }
             case BossArchetype.Striker:
                 if (distanceToPlayer > meleeRange * 1.2f)
                 {
-                    Vector3 rushTarget = Vector3.MoveTowards(transform.position, playerFlat, moveSpeed * (1.8f + GetBossPhase() * 0.35f) * Time.deltaTime);
+                    Vector3 rushTarget = Vector3.MoveTowards(transform.position, playerFlat, moveSpeed * (1.15f + GetBossPhase() * 0.2f) * Time.deltaTime);
                     transform.position = rushTarget;
                     ClampToAccessibleSpace();
                 }
@@ -541,7 +583,7 @@ public class BasicEnemyAI : MonoBehaviour, IDamageable
                 if (lateral.sqrMagnitude < 0.01f) lateral = transform.right;
                 float sway = Mathf.Sin(Time.time * 1.6f) * (5.2f + GetBossPhase());
                 Vector3 glideTarget = player.position + lateral.normalized * sway + Vector3.up * (hoverHeight + 4.8f);
-                transform.position = Vector3.Lerp(transform.position, glideTarget, Time.deltaTime * 1.65f);
+                transform.position = Vector3.Lerp(transform.position, glideTarget, Time.deltaTime * 0.95f);
                 FacePlayer();
                 break;
             }
@@ -586,6 +628,51 @@ public class BasicEnemyAI : MonoBehaviour, IDamageable
         return gruntReactiveTarget;
     }
 
+    private bool TryFollowGroundPath(Vector3 target, float speed)
+    {
+        if (arenaGenerator == null || enemyType == EnemyType.Flying)
+            return false;
+
+        target.y = transform.position.y;
+        repathTimer -= Time.deltaTime;
+        bool needsPath = groundPath.Count == 0 ||
+                         groundPathIndex >= groundPath.Count ||
+                         repathTimer <= 0f ||
+                         Vector3.Distance(lastRequestedPathTarget, target) > 2.5f ||
+                         Mathf.Abs(transform.position.y - player.position.y) > 1.6f ||
+                         !HasLineOfSightTo(player.position + Vector3.up * 1.1f);
+
+        if (needsPath)
+        {
+            if (!arenaGenerator.TryBuildGroundPath(transform.position, target, out List<Vector3> path) || path == null || path.Count == 0)
+                return false;
+
+            groundPath.Clear();
+            groundPath.AddRange(path);
+            groundPathIndex = Mathf.Min(1, Mathf.Max(0, groundPath.Count - 1));
+            repathTimer = pathRefreshInterval;
+            lastRequestedPathTarget = target;
+        }
+
+        if (groundPath.Count == 0 || groundPathIndex >= groundPath.Count)
+            return false;
+
+        Vector3 next = groundPath[groundPathIndex];
+        Vector3 planarCurrent = transform.position;
+        planarCurrent.y = next.y;
+        Vector3 planarNext = next;
+        Vector3 move = Vector3.MoveTowards(planarCurrent, planarNext, speed * Time.deltaTime);
+        transform.position = move;
+
+        if (Vector3.Distance(new Vector3(transform.position.x, next.y, transform.position.z), next) <= pathNodeReachDistance)
+            groundPathIndex++;
+
+        if (groundPathIndex >= groundPath.Count)
+            groundPath.Clear();
+
+        return true;
+    }
+
     private void ClampToAccessibleSpace()
     {
         if (enemyType == EnemyType.Flying) return;
@@ -593,13 +680,13 @@ public class BasicEnemyAI : MonoBehaviour, IDamageable
         Vector3 origin = transform.position + Vector3.up * 0.6f;
         if (Physics.Raycast(origin, Vector3.down, out RaycastHit hit, 8f, movementObstacleMask, QueryTriggerInteraction.Ignore))
         {
-            float minY = hit.point.y + 0.05f;
-            if (transform.position.y < minY)
-            {
-                Vector3 p = transform.position;
-                p.y = minY;
-                transform.position = p;
-            }
+            float targetY = hit.point.y + 0.05f;
+            Vector3 p = transform.position;
+            if (Mathf.Abs(p.y - targetY) > 0.01f)
+                p.y = Mathf.Lerp(p.y, targetY, Time.deltaTime * 14f);
+            transform.position = p;
+            groundY = targetY;
+            hasGroundAnchor = true;
         }
     }
 
@@ -749,7 +836,7 @@ public class BasicEnemyAI : MonoBehaviour, IDamageable
             lineEnd.y = transform.position.y + 0.05f;
 
             SpawnTelegraphLine(lineStart, lineEnd, new Color(1f, 0.44f, 0.08f), 0.55f);
-            yield return new WaitForSeconds(0.42f);
+            yield return new WaitForSeconds(0.52f);
             DamagePlayerNearLine(lineStart, lineEnd, 1.1f, damage);
             SpawnTelegraphLine(lineStart, lineEnd, Color.white, 0.12f);
             yield return new WaitForSeconds(0.14f);
@@ -775,7 +862,7 @@ public class BasicEnemyAI : MonoBehaviour, IDamageable
         SpawnTelegraphLine(backRight, backLeft, new Color(1f, 0.54f, 0.12f), 0.62f);
         SpawnTelegraphLine(backLeft, frontLeft, new Color(1f, 0.54f, 0.12f), 0.62f);
         SpawnTelegraphDisc(center, halfExtent * 0.82f, new Color(1f, 0.26f, 0.08f), 0.62f);
-        yield return new WaitForSeconds(0.48f);
+        yield return new WaitForSeconds(0.62f);
 
         DamagePlayerNearLine(frontLeft, frontRight, 0.9f, damage);
         DamagePlayerNearLine(frontRight, backRight, 0.9f, damage);
@@ -815,10 +902,10 @@ public class BasicEnemyAI : MonoBehaviour, IDamageable
 
             transform.position = start;
             SpawnTelegraphLine(start, end, new Color(1f, 0.22f, 0.12f), 0.3f);
-            yield return new WaitForSeconds(0.16f);
+            yield return new WaitForSeconds(0.22f);
 
             float elapsed = 0f;
-            float duration = Mathf.Clamp(Vector3.Distance(start, end) / Mathf.Max(0.1f, dashSpeed), 0.08f, 0.26f);
+            float duration = Mathf.Clamp(Vector3.Distance(start, end) / Mathf.Max(0.1f, dashSpeed), 0.12f, 0.34f);
             while (elapsed < duration)
             {
                 elapsed += Time.deltaTime;
@@ -842,7 +929,7 @@ public class BasicEnemyAI : MonoBehaviour, IDamageable
         Vector3 riseTarget = player.position + Vector3.up * (hoverHeight + 6f);
         float riseElapsed = 0f;
         Vector3 riseStart = transform.position;
-        while (riseElapsed < 0.45f)
+        while (riseElapsed < 0.56f)
         {
             riseElapsed += Time.deltaTime;
             transform.position = Vector3.Lerp(riseStart, riseTarget, Mathf.Clamp01(riseElapsed / 0.45f));
@@ -859,7 +946,7 @@ public class BasicEnemyAI : MonoBehaviour, IDamageable
         Vector3 diveTarget = player.position;
         diveTarget.y = hasGroundAnchor ? groundY : transform.position.y;
         SpawnTelegraphLine(transform.position, diveTarget, new Color(0.62f, 0.95f, 1f), 0.24f);
-        yield return new WaitForSeconds(0.2f);
+        yield return new WaitForSeconds(0.3f);
         transform.position = diveTarget;
         DamagePlayerIfInside(diveTarget, radius * 0.8f, damage * 1.15f);
         SpawnTelegraphDisc(diveTarget, radius * 0.72f, Color.white, 0.12f);
@@ -873,7 +960,7 @@ public class BasicEnemyAI : MonoBehaviour, IDamageable
         Vector3 highAnchor = player.position + Vector3.up * (hoverHeight + 8f);
         Vector3 start = transform.position;
         float riseElapsed = 0f;
-        while (riseElapsed < 0.32f)
+        while (riseElapsed < 0.42f)
         {
             riseElapsed += Time.deltaTime;
             transform.position = Vector3.Lerp(start, highAnchor, Mathf.Clamp01(riseElapsed / 0.32f));
@@ -962,41 +1049,175 @@ public class BasicEnemyAI : MonoBehaviour, IDamageable
 
     private void SpawnTelegraphDisc(Vector3 center, float radius, Color color, float lifetime)
     {
+        GameObject root = new GameObject("BossTelegraphDisc");
+        root.transform.position = center + Vector3.up * 0.06f;
+
         GameObject disc = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
-        disc.name = "BossTelegraphDisc";
-        disc.transform.position = center + Vector3.up * 0.06f;
+        disc.transform.SetParent(root.transform, false);
         disc.transform.localScale = new Vector3(radius * 2f, 0.03f, radius * 2f);
         Collider collider = disc.GetComponent<Collider>();
         if (collider != null) Destroy(collider);
         Renderer renderer = disc.GetComponent<Renderer>();
+        Material mat = null;
         if (renderer != null)
         {
-            Material mat = new Material(Shader.Find("Universal Render Pipeline/Unlit") ?? Shader.Find("Sprites/Default"));
-            mat.color = new Color(color.r, color.g, color.b, 0.45f);
+            mat = new Material(Shader.Find("Universal Render Pipeline/Unlit") ?? Shader.Find("Sprites/Default"));
+            mat.color = new Color(color.r, color.g, color.b, 0.22f);
             renderer.material = mat;
         }
-        Destroy(disc, lifetime);
+
+        GameObject ring = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+        ring.transform.SetParent(root.transform, false);
+        ring.transform.localScale = new Vector3(radius * 2.25f, 0.012f, radius * 2.25f);
+        ring.transform.localPosition = new Vector3(0f, 0.012f, 0f);
+        Collider ringCollider = ring.GetComponent<Collider>();
+        if (ringCollider != null) Destroy(ringCollider);
+        Renderer ringRenderer = ring.GetComponent<Renderer>();
+        Material ringMat = null;
+        if (ringRenderer != null)
+        {
+            ringMat = new Material(Shader.Find("Universal Render Pipeline/Unlit") ?? Shader.Find("Sprites/Default"));
+            ringMat.color = new Color(color.r, color.g, color.b, 0.42f);
+            ringRenderer.material = ringMat;
+        }
+
+        GameObject core = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+        core.transform.SetParent(root.transform, false);
+        core.transform.localScale = new Vector3(radius * 0.2f, 1.2f, radius * 0.2f);
+        core.transform.localPosition = new Vector3(0f, 0.6f, 0f);
+        Collider coreCollider = core.GetComponent<Collider>();
+        if (coreCollider != null) Destroy(coreCollider);
+        Renderer coreRenderer = core.GetComponent<Renderer>();
+        Material coreMat = null;
+        if (coreRenderer != null)
+        {
+            coreMat = new Material(Shader.Find("Universal Render Pipeline/Unlit") ?? Shader.Find("Sprites/Default"));
+            coreMat.color = new Color(color.r, color.g, color.b, 0.18f);
+            coreRenderer.material = coreMat;
+        }
+
+        StartCoroutine(AnimateTelegraphDisc(root.transform, disc.transform, ring.transform, core.transform, mat, ringMat, coreMat, color, lifetime));
     }
 
     private void SpawnTelegraphLine(Vector3 start, Vector3 end, Color color, float lifetime)
     {
-        GameObject line = GameObject.CreatePrimitive(PrimitiveType.Cube);
-        line.name = "BossTelegraphLine";
         Vector3 direction = end - start;
         float length = Mathf.Max(0.1f, direction.magnitude);
-        line.transform.position = start + direction * 0.5f + Vector3.up * 0.08f;
-        line.transform.rotation = Quaternion.LookRotation(direction.normalized);
-        line.transform.localScale = new Vector3(0.3f, 0.06f, length);
+        GameObject root = new GameObject("BossTelegraphLine");
+        root.transform.position = start + direction * 0.5f + Vector3.up * 0.08f;
+        root.transform.rotation = Quaternion.LookRotation(direction.normalized);
+
+        GameObject line = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        line.transform.SetParent(root.transform, false);
+        line.transform.localScale = new Vector3(0.22f, 0.06f, length);
         Collider collider = line.GetComponent<Collider>();
         if (collider != null) Destroy(collider);
         Renderer renderer = line.GetComponent<Renderer>();
+        Material mat = null;
         if (renderer != null)
         {
-            Material mat = new Material(Shader.Find("Universal Render Pipeline/Unlit") ?? Shader.Find("Sprites/Default"));
-            mat.color = new Color(color.r, color.g, color.b, 0.42f);
+            mat = new Material(Shader.Find("Universal Render Pipeline/Unlit") ?? Shader.Find("Sprites/Default"));
+            mat.color = new Color(color.r, color.g, color.b, 0.32f);
             renderer.material = mat;
         }
-        Destroy(line, lifetime);
+
+        GameObject railA = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        railA.transform.SetParent(root.transform, false);
+        railA.transform.localPosition = new Vector3(0.24f, 0f, 0f);
+        railA.transform.localScale = new Vector3(0.06f, 0.08f, length);
+        Collider railACollider = railA.GetComponent<Collider>();
+        if (railACollider != null) Destroy(railACollider);
+        Renderer railARenderer = railA.GetComponent<Renderer>();
+        Material railMat = null;
+        if (railARenderer != null)
+        {
+            railMat = new Material(Shader.Find("Universal Render Pipeline/Unlit") ?? Shader.Find("Sprites/Default"));
+            railMat.color = new Color(color.r, color.g, color.b, 0.52f);
+            railARenderer.material = railMat;
+        }
+
+        GameObject railB = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        railB.transform.SetParent(root.transform, false);
+        railB.transform.localPosition = new Vector3(-0.24f, 0f, 0f);
+        railB.transform.localScale = new Vector3(0.06f, 0.08f, length);
+        Collider railBCollider = railB.GetComponent<Collider>();
+        if (railBCollider != null) Destroy(railBCollider);
+        Renderer railBRenderer = railB.GetComponent<Renderer>();
+        if (railBRenderer != null)
+            railBRenderer.material = railMat != null ? railMat : mat;
+
+        StartCoroutine(AnimateTelegraphLine(root.transform, line.transform, railA.transform, railB.transform, mat, railMat, color, lifetime));
+    }
+
+    private IEnumerator AnimateTelegraphDisc(Transform root, Transform disc, Transform ring, Transform core, Material discMat, Material ringMat, Material coreMat, Color color, float lifetime)
+    {
+        if (root == null) yield break;
+
+        float elapsed = 0f;
+        Vector3 discTargetScale = disc != null ? disc.localScale : Vector3.one;
+        Vector3 ringTargetScale = ring != null ? ring.localScale : Vector3.one;
+        Vector3 coreTargetScale = core != null ? core.localScale : Vector3.one;
+
+        if (disc != null) disc.localScale = new Vector3(discTargetScale.x * 0.35f, discTargetScale.y, discTargetScale.z * 0.35f);
+        if (ring != null) ring.localScale = new Vector3(ringTargetScale.x * 0.45f, ringTargetScale.y, ringTargetScale.z * 0.45f);
+        if (core != null) core.localScale = new Vector3(coreTargetScale.x, 0.2f, coreTargetScale.z);
+
+        while (elapsed < lifetime)
+        {
+            elapsed += Time.deltaTime;
+            float t = Mathf.Clamp01(elapsed / Mathf.Max(0.01f, lifetime));
+            float pulse = Mathf.Sin(t * Mathf.PI);
+
+            if (disc != null)
+                disc.localScale = Vector3.Lerp(new Vector3(discTargetScale.x * 0.35f, discTargetScale.y, discTargetScale.z * 0.35f), discTargetScale, Mathf.SmoothStep(0f, 1f, t));
+            if (ring != null)
+                ring.localScale = Vector3.Lerp(new Vector3(ringTargetScale.x * 0.45f, ringTargetScale.y, ringTargetScale.z * 0.45f), ringTargetScale * (1f + pulse * 0.16f), Mathf.SmoothStep(0f, 1f, t));
+            if (core != null)
+            {
+                core.localScale = Vector3.Lerp(new Vector3(coreTargetScale.x, 0.2f, coreTargetScale.z), coreTargetScale, Mathf.SmoothStep(0f, 1f, t));
+                core.localPosition = new Vector3(0f, Mathf.Lerp(0.25f, 0.6f, t), 0f);
+            }
+
+            if (discMat != null) discMat.color = new Color(color.r, color.g, color.b, Mathf.Lerp(0.16f, 0.32f, pulse));
+            if (ringMat != null) ringMat.color = new Color(color.r, color.g, color.b, Mathf.Lerp(0.28f, 0.62f, pulse));
+            if (coreMat != null) coreMat.color = new Color(color.r, color.g, color.b, Mathf.Lerp(0.08f, 0.26f, pulse));
+            yield return null;
+        }
+
+        if (root != null)
+            Destroy(root.gameObject);
+    }
+
+    private IEnumerator AnimateTelegraphLine(Transform root, Transform line, Transform railA, Transform railB, Material lineMat, Material railMat, Color color, float lifetime)
+    {
+        if (root == null) yield break;
+
+        float elapsed = 0f;
+        Vector3 lineTarget = line != null ? line.localScale : Vector3.one;
+        Vector3 railTargetA = railA != null ? railA.localScale : Vector3.one;
+        Vector3 railTargetB = railB != null ? railB.localScale : Vector3.one;
+        if (line != null) line.localScale = new Vector3(lineTarget.x, lineTarget.y, lineTarget.z * 0.08f);
+        if (railA != null) railA.localScale = new Vector3(railTargetA.x, railTargetA.y, railTargetA.z * 0.08f);
+        if (railB != null) railB.localScale = new Vector3(railTargetB.x, railTargetB.y, railTargetB.z * 0.08f);
+
+        while (elapsed < lifetime)
+        {
+            elapsed += Time.deltaTime;
+            float t = Mathf.Clamp01(elapsed / Mathf.Max(0.01f, lifetime));
+            float pulse = Mathf.Sin(t * Mathf.PI);
+            if (line != null)
+                line.localScale = Vector3.Lerp(new Vector3(lineTarget.x, lineTarget.y, lineTarget.z * 0.08f), lineTarget, Mathf.SmoothStep(0f, 1f, t));
+            if (railA != null)
+                railA.localScale = Vector3.Lerp(new Vector3(railTargetA.x, railTargetA.y, railTargetA.z * 0.08f), new Vector3(railTargetA.x, railTargetA.y, railTargetA.z * (1f + pulse * 0.08f)), Mathf.SmoothStep(0f, 1f, t));
+            if (railB != null)
+                railB.localScale = Vector3.Lerp(new Vector3(railTargetB.x, railTargetB.y, railTargetB.z * 0.08f), new Vector3(railTargetB.x, railTargetB.y, railTargetB.z * (1f + pulse * 0.08f)), Mathf.SmoothStep(0f, 1f, t));
+            if (lineMat != null) lineMat.color = new Color(color.r, color.g, color.b, Mathf.Lerp(0.18f, 0.36f, pulse));
+            if (railMat != null) railMat.color = new Color(color.r, color.g, color.b, Mathf.Lerp(0.32f, 0.68f, pulse));
+            yield return null;
+        }
+
+        if (root != null)
+            Destroy(root.gameObject);
     }
 
     private void TryDirectDamage(float amount)
@@ -1109,10 +1330,20 @@ public class BasicEnemyAI : MonoBehaviour, IDamageable
         }
     }
 
+    public void SetPriorityTarget(bool highlighted)
+    {
+        isPriorityTarget = highlighted;
+        EnsurePriorityMarker();
+        if (priorityMarker != null)
+            priorityMarker.gameObject.SetActive(highlighted && !IsCombatResolved);
+    }
+
     private void Die()
     {
         if (isDying) return;
         isDying = true;
+        if (priorityMarker != null)
+            priorityMarker.gameObject.SetActive(false);
         CybergrindRunState.GetOrCreate().RegisterEnemyDefeated();
         SpawnDeathBurst();
         Destroy(gameObject);
@@ -1236,6 +1467,7 @@ public class BasicEnemyAI : MonoBehaviour, IDamageable
 
         shootPoint.localPosition = GetShootPointLocalPosition();
         shootPoint.localRotation = Quaternion.identity;
+        EnsureCombatCollider();
     }
 
     private void BuildShooterModel(Transform root)
@@ -1380,5 +1612,72 @@ public class BasicEnemyAI : MonoBehaviour, IDamageable
         // small guns
         CreateModelPart(root, "GunL", PrimitiveType.Cylinder, new Vector3(-0.28f, 1.02f, 0.6f), new Vector3(0.06f, 0.34f, 0.06f), Quaternion.Euler(90f, 0f, 0f), glowMaterial);
         CreateModelPart(root, "GunR", PrimitiveType.Cylinder, new Vector3(0.28f, 1.02f, 0.6f), new Vector3(0.06f, 0.34f, 0.06f), Quaternion.Euler(90f, 0f, 0f), glowMaterial);
+    }
+
+    private void EnsureCombatCollider()
+    {
+        Renderer[] renderers = GetComponentsInChildren<Renderer>();
+        if (renderers == null || renderers.Length == 0)
+            return;
+
+        Bounds bounds = renderers[0].bounds;
+        for (int i = 1; i < renderers.Length; i++)
+            bounds.Encapsulate(renderers[i].bounds);
+
+        if (combatCollider == null)
+            combatCollider = GetComponent<CapsuleCollider>();
+        if (combatCollider == null)
+            combatCollider = gameObject.AddComponent<CapsuleCollider>();
+
+        Vector3 centerLocal = transform.InverseTransformPoint(bounds.center);
+        Vector3 lossy = transform.lossyScale;
+        float scaleY = Mathf.Max(0.01f, lossy.y);
+        float scaleX = Mathf.Max(0.01f, lossy.x);
+        float scaleZ = Mathf.Max(0.01f, lossy.z);
+        float radius = Mathf.Max(bounds.extents.x / scaleX, bounds.extents.z / scaleZ) * 0.92f;
+        float height = Mathf.Max(radius * 2.1f, bounds.size.y / scaleY * 0.96f);
+
+        combatCollider.direction = 1;
+        combatCollider.center = new Vector3(centerLocal.x, centerLocal.y, centerLocal.z);
+        combatCollider.radius = Mathf.Max(0.18f, radius);
+        combatCollider.height = Mathf.Max(combatCollider.radius * 2.1f, height);
+        combatCollider.isTrigger = false;
+    }
+
+    private void EnsurePriorityMarker()
+    {
+        if (priorityMarker != null)
+            return;
+
+        GameObject marker = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+        marker.name = "PriorityMarker";
+        marker.transform.SetParent(transform, false);
+        marker.transform.localPosition = new Vector3(0f, 3.15f, 0f);
+        marker.transform.localScale = new Vector3(0.95f, 0.03f, 0.95f);
+        marker.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
+
+        Collider collider = marker.GetComponent<Collider>();
+        if (collider != null)
+            Destroy(collider);
+
+        priorityMarkerRenderer = marker.GetComponent<Renderer>();
+        if (priorityMarkerRenderer != null)
+        {
+            Shader shader = Shader.Find("Universal Render Pipeline/Unlit");
+            if (shader == null) shader = Shader.Find("Sprites/Default");
+            Material mat = new Material(shader);
+            Color c = new Color(1f, 0.86f, 0.32f, 0.78f);
+            if (mat.HasProperty("_BaseColor")) mat.SetColor("_BaseColor", c);
+            if (mat.HasProperty("_Color")) mat.SetColor("_Color", c);
+            if (mat.HasProperty("_EmissionColor"))
+            {
+                mat.EnableKeyword("_EMISSION");
+                mat.SetColor("_EmissionColor", new Color(1f, 0.62f, 0.12f, 1f));
+            }
+            priorityMarkerRenderer.material = mat;
+        }
+
+        priorityMarker = marker.transform;
+        priorityMarker.gameObject.SetActive(false);
     }
 }

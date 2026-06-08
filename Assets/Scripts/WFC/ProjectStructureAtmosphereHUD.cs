@@ -109,7 +109,7 @@ public class ProjectStructureAtmosphereHUD : MonoBehaviour
 
         float lowHealth = 1f - health01;
         float pulse = 0.5f + 0.5f * Mathf.Sin(Time.time * (isBoss ? 5.4f : 2.8f));
-        float vignetteAlpha = 0.1f + lowHealth * 0.2f + speed01 * 0.08f + (isBoss ? 0.06f : 0f);
+        float vignetteAlpha = 0.12f + lowHealth * 0.34f + speed01 * 0.05f + (isBoss ? 0.07f : 0f);
         vignetteOverlay.color = new Color(0.02f, 0.03f, 0.04f, Mathf.Clamp01(vignetteAlpha));
 
         Color sectorTint = ResolveSectorTint(themeIndex);
@@ -120,11 +120,11 @@ public class ProjectStructureAtmosphereHUD : MonoBehaviour
                 : new Color(sectorTint.r, sectorTint.g, sectorTint.b, 0.03f + speed01 * 0.04f);
         modeTintOverlay.color = tint;
 
-        float scanAlpha = 0.045f + speed01 * 0.03f + lowHealth * 0.04f + (isBoss ? 0.035f : 0f);
+        float scanAlpha = lowHealth > 0.72f ? Mathf.Lerp(0f, 0.008f, Mathf.InverseLerp(0.72f, 1f, lowHealth)) : 0f;
         scanlineOverlay.color = new Color(0.7f, 0.86f, 0.92f, Mathf.Clamp01(scanAlpha));
         RectTransform rect = scanlineOverlay.rectTransform;
         if (rect != null)
-            rect.anchoredPosition = new Vector2(0f, Mathf.Repeat(Time.unscaledTime * 22f, 24f));
+            rect.anchoredPosition = new Vector2(0f, Mathf.Repeat(Time.unscaledTime * 3f, 24f));
     }
 
     private Texture2D BuildScanlineTexture()

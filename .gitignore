@@ -105,6 +105,14 @@ InitTestScene*.unity*
 # Auto-generated cache in Assets folder
 /[Aa]ssets/[Ss]ceneDependencyCache*
 CLAUDE.md
+AGENTS.md
+PLAN.md
+.codex/
+.claude/
+.cursor/
+.roo/
+.copilot/
+.github/copilot-instructions.md
 
 # Unity cache folder
 Library/

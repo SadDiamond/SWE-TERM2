@@ -98,8 +98,8 @@ public class CybergrindArenaGenerator : MonoBehaviour
 
     [Header("References")]
     public Transform playerToPlace;
-    public float playerSpawnHeight = 2.2f;
-    public string generatedRootName = "_CybergrindArena";
+    public float playerSpawnHeight = 3.1f;
+    public string generatedRootName = "_Arena";
 
     [Header("Enemy Spawning")]
     public GameObject enemyPrefab;
@@ -226,6 +226,7 @@ public class CybergrindArenaGenerator : MonoBehaviour
         SpawnArchitecturalContent(root, cells, rng);
         SpawnGameplayContent(root, cells, rng);
         SpawnArenaLighting(root);
+        SpawnStructuralShell(root, rng);
         SpawnAtmosphereFX(root, rng);
         ApplyEnvironmentFX();
         if (!skipPlayerPlacementOnce)
@@ -233,7 +234,7 @@ public class CybergrindArenaGenerator : MonoBehaviour
         else
             skipPlayerPlacementOnce = false;
 
-        Debug.Log($"[CybergrindArena] Generated {width}x{length} arena with seed {actualSeed}.");
+        Debug.Log($"[Arena] Generated {width}x{length} arena with seed {actualSeed}.");
     }
 
     [ContextMenu("Clear Arena")]
@@ -242,6 +243,7 @@ public class CybergrindArenaGenerator : MonoBehaviour
         for (int i = spawned.Count - 1; i >= 0; i--)
         {
             if (spawned[i] == null) continue;
+            spawned[i].SetActive(false);
             if (Application.isPlaying)
                 Destroy(spawned[i]);
             else
@@ -255,6 +257,7 @@ public class CybergrindArenaGenerator : MonoBehaviour
         Transform old = transform.Find(generatedRootName);
         if (old != null)
         {
+            old.gameObject.SetActive(false);
             if (Application.isPlaying)
                 Destroy(old.gameObject);
             else
@@ -315,6 +318,15 @@ public class CybergrindArenaGenerator : MonoBehaviour
         StampRect(cells, width - 5, 3, width - 4, 4, CellKind.UpperPlatform);
         StampRect(cells, 3, length - 5, 4, length - 4, CellKind.UpperPlatform);
         StampRect(cells, width - 5, length - 5, width - 4, length - 4, CellKind.UpperPlatform);
+
+        StampBridgeLine(cells, new Vector2Int(4, 4), new Vector2Int(center.x - centerRadius - 1, center.y - centerRadius - 1), 0);
+        StampBridgeLine(cells, new Vector2Int(width - 5, 4), new Vector2Int(center.x + centerRadius + 1, center.y - centerRadius - 1), 0);
+        StampBridgeLine(cells, new Vector2Int(4, length - 5), new Vector2Int(center.x - centerRadius - 1, center.y + centerRadius + 1), 0);
+        StampBridgeLine(cells, new Vector2Int(width - 5, length - 5), new Vector2Int(center.x + centerRadius + 1, center.y + centerRadius + 1), 0);
+        StampBridgeLine(cells, new Vector2Int(center.x - centerRadius - 1, center.y), new Vector2Int(4, center.y), 0);
+        StampBridgeLine(cells, new Vector2Int(center.x + centerRadius + 1, center.y), new Vector2Int(width - 5, center.y), 0);
+        StampBridgeLine(cells, new Vector2Int(center.x, center.y - centerRadius - 1), new Vector2Int(center.x, 4), 0);
+        StampBridgeLine(cells, new Vector2Int(center.x, center.y + centerRadius + 1), new Vector2Int(center.x, length - 5), 0);
 
         StampOuterDetail(cells, rng, center, spawn, exit);
         StampFloatingIslands(cells, rng, center, spawn, exit);
@@ -524,7 +536,7 @@ public class CybergrindArenaGenerator : MonoBehaviour
         RenderSettings.fog = true;
         RenderSettings.fogMode = FogMode.ExponentialSquared;
         RenderSettings.fogColor = profile.fogColor;
-        RenderSettings.fogDensity = themeIndex % 4 == 1 ? 0.024f : themeIndex % 4 == 2 ? 0.02f : 0.022f;
+        RenderSettings.fogDensity = themeIndex % 4 == 1 ? 0.014f : themeIndex % 4 == 2 ? 0.012f : 0.013f;
 
         GameObject key = new GameObject("ArenaKeyLight");
         key.transform.SetParent(root, false);
@@ -536,6 +548,57 @@ public class CybergrindArenaGenerator : MonoBehaviour
         key.transform.rotation = Quaternion.Euler(55f, -35f, 0f);
 
         CreateCube(root, "AbyssFogPlane", new Vector3((width - 1) * tileSize * 0.5f, killPlaneY - 8f, (length - 1) * tileSize * 0.5f), new Vector3(width * tileSize * 2.2f, 1f, length * tileSize * 2.2f), darkMaterial, false);
+    }
+
+    private void SpawnStructuralShell(Transform root, System.Random rng)
+    {
+        float arenaSpanX = width * tileSize;
+        float arenaSpanZ = length * tileSize;
+        Vector3 center = new Vector3((width - 1) * tileSize * 0.5f, 0f, (length - 1) * tileSize * 0.5f);
+        float shellInset = tileSize * 3.4f;
+        float shellRadiusX = arenaSpanX * 0.5f + shellInset;
+        float shellRadiusZ = arenaSpanZ * 0.5f + shellInset;
+        float lowerDeckY = -6.5f;
+        float lowerDeckThickness = 0.8f;
+        float wallHeight = 28f;
+
+        CreateCube(root, "ShellNorthDeck", center + new Vector3(0f, lowerDeckY, shellRadiusZ - tileSize * 1.4f), new Vector3(arenaSpanX + tileSize * 7f, lowerDeckThickness, tileSize * 4.2f), darkMaterial, false);
+        CreateCube(root, "ShellSouthDeck", center + new Vector3(0f, lowerDeckY, -(shellRadiusZ - tileSize * 1.4f)), new Vector3(arenaSpanX + tileSize * 7f, lowerDeckThickness, tileSize * 4.2f), darkMaterial, false);
+        CreateCube(root, "ShellEastDeck", center + new Vector3(shellRadiusX - tileSize * 1.4f, lowerDeckY, 0f), new Vector3(tileSize * 4.2f, lowerDeckThickness, arenaSpanZ + tileSize * 7f), darkMaterial, false);
+        CreateCube(root, "ShellWestDeck", center + new Vector3(-(shellRadiusX - tileSize * 1.4f), lowerDeckY, 0f), new Vector3(tileSize * 4.2f, lowerDeckThickness, arenaSpanZ + tileSize * 7f), darkMaterial, false);
+
+        CreateCube(root, "ShellNorthWall", center + new Vector3(0f, wallHeight * 0.5f - 5f, shellRadiusZ), new Vector3(arenaSpanX + tileSize * 8.5f, wallHeight, tileSize * 1.1f), darkMaterial, false);
+        CreateCube(root, "ShellSouthWall", center + new Vector3(0f, wallHeight * 0.5f - 5f, -shellRadiusZ), new Vector3(arenaSpanX + tileSize * 8.5f, wallHeight, tileSize * 1.1f), darkMaterial, false);
+        CreateCube(root, "ShellEastWall", center + new Vector3(shellRadiusX, wallHeight * 0.5f - 5f, 0f), new Vector3(tileSize * 1.1f, wallHeight, arenaSpanZ + tileSize * 8.5f), darkMaterial, false);
+        CreateCube(root, "ShellWestWall", center + new Vector3(-shellRadiusX, wallHeight * 0.5f - 5f, 0f), new Vector3(tileSize * 1.1f, wallHeight, arenaSpanZ + tileSize * 8.5f), darkMaterial, false);
+
+        for (int i = -2; i <= 2; i++)
+        {
+            float offsetX = i * tileSize * 4.4f;
+            CreateCube(root, $"ShellNorthRib_{i}", center + new Vector3(offsetX, 7.5f, shellRadiusZ - tileSize * 0.4f), new Vector3(tileSize * 0.36f, 17f + Mathf.Abs(i) * 1.8f, tileSize * 0.44f), darkMaterial, false);
+            CreateCube(root, $"ShellSouthRib_{i}", center + new Vector3(offsetX, 7.5f, -shellRadiusZ + tileSize * 0.4f), new Vector3(tileSize * 0.36f, 17f + Mathf.Abs(i) * 1.8f, tileSize * 0.44f), darkMaterial, false);
+            CreateCube(root, $"ShellNorthGlow_{i}", center + new Vector3(offsetX, 8.8f, shellRadiusZ - tileSize * 0.88f), new Vector3(tileSize * 0.08f, 11f, tileSize * 0.08f), accentMaterial, false);
+            CreateCube(root, $"ShellSouthGlow_{i}", center + new Vector3(offsetX, 8.8f, -shellRadiusZ + tileSize * 0.88f), new Vector3(tileSize * 0.08f, 11f, tileSize * 0.08f), accentMaterial, false);
+        }
+
+        for (int i = -2; i <= 2; i++)
+        {
+            float offsetZ = i * tileSize * 4.4f;
+            CreateCube(root, $"ShellEastRib_{i}", center + new Vector3(shellRadiusX - tileSize * 0.4f, 7.5f, offsetZ), new Vector3(tileSize * 0.44f, 17f + Mathf.Abs(i) * 1.8f, tileSize * 0.36f), darkMaterial, false);
+            CreateCube(root, $"ShellWestRib_{i}", center + new Vector3(-shellRadiusX + tileSize * 0.4f, 7.5f, offsetZ), new Vector3(tileSize * 0.44f, 17f + Mathf.Abs(i) * 1.8f, tileSize * 0.36f), darkMaterial, false);
+            CreateCube(root, $"ShellEastGlow_{i}", center + new Vector3(shellRadiusX - tileSize * 0.88f, 8.8f, offsetZ), new Vector3(tileSize * 0.08f, 11f, tileSize * 0.08f), accentMaterial, false);
+            CreateCube(root, $"ShellWestGlow_{i}", center + new Vector3(-shellRadiusX + tileSize * 0.88f, 8.8f, offsetZ), new Vector3(tileSize * 0.08f, 11f, tileSize * 0.08f), accentMaterial, false);
+        }
+
+        for (int i = 0; i < 8; i++)
+        {
+            float angle = i * Mathf.PI * 0.25f;
+            float ringX = Mathf.Cos(angle) * (shellRadiusX - tileSize * 1.8f);
+            float ringZ = Mathf.Sin(angle) * (shellRadiusZ - tileSize * 1.8f);
+            float towerHeight = 8f + (float)rng.NextDouble() * 5f;
+            CreateCube(root, $"ShellTower_{i}", center + new Vector3(ringX, lowerDeckY + towerHeight * 0.5f + 0.2f, ringZ), new Vector3(tileSize * 0.82f, towerHeight, tileSize * 0.82f), darkMaterial, false);
+            CreateCube(root, $"ShellTowerCap_{i}", center + new Vector3(ringX, lowerDeckY + towerHeight + 0.45f, ringZ), new Vector3(tileSize * 1.2f, 0.24f, tileSize * 1.2f), accentMaterial, false);
+        }
     }
 
     private void ApplyEnvironmentFX()
@@ -552,7 +615,8 @@ public class CybergrindArenaGenerator : MonoBehaviour
             Shader shader = Shader.Find("Skybox/Procedural");
             if (shader == null) shader = Shader.Find("Skybox/6 Sided");
             if (shader == null) shader = Shader.Find("Standard");
-            skyboxMaterial = new Material(shader);
+        skyboxMaterial = new Material(shader);
+        skyboxMaterial.name = "Arena Sky";
         }
 
         if (skyboxMaterial == null) return;
@@ -748,9 +812,11 @@ public class CybergrindArenaGenerator : MonoBehaviour
             : ai.bossArchetype == BasicEnemyAI.BossArchetype.Striker
                 ? $"{themeLabel} Raze Striker"
                 : $"{themeLabel} Obelisk Warden";
-        ai.maxHealth = 140f + (themeIndex * 40f);
-        ai.fireRate = ai.bossArchetype == BasicEnemyAI.BossArchetype.Striker ? 1.2f : 0.9f;
-        ai.stoppingDistance = ai.bossArchetype == BasicEnemyAI.BossArchetype.Striker ? 6f : 14f;
+        ai.maxHealth = 74f + (themeIndex * 18f);
+        ai.moveSpeed = ai.bossArchetype == BasicEnemyAI.BossArchetype.Striker ? 5.3f : ai.bossArchetype == BasicEnemyAI.BossArchetype.Sentinel ? 4.6f : 3.9f;
+        ai.fireRate = ai.bossArchetype == BasicEnemyAI.BossArchetype.Striker ? 1.48f : 1.2f;
+        ai.meleeDamage = ai.bossArchetype == BasicEnemyAI.BossArchetype.Striker ? 8.5f : ai.bossArchetype == BasicEnemyAI.BossArchetype.Sentinel ? 7.5f : 9f;
+        ai.stoppingDistance = ai.bossArchetype == BasicEnemyAI.BossArchetype.Striker ? 8.8f : ai.bossArchetype == BasicEnemyAI.BossArchetype.Sentinel ? 14.5f : 12f;
         ai.autoBuildTypeModel = true;
     }
 
@@ -1213,6 +1279,7 @@ public class CybergrindArenaGenerator : MonoBehaviour
             shop.displayRenderer = stall.GetComponent<Renderer>();
 
             CreateCube(root, $"ShopBlade_{presetIndex}", CellCenter(cell.x, cell.y, y + 1.6f), new Vector3(0.18f, 1.4f, 0.18f), accentMaterial, false);
+            BuildShopStationModel(stall.transform, CybergrindShopStation.ShopService.Refit, $"VARIANT {presetIndex + 1}");
         }
 
         float serviceY = GetCellHeight(CellKind.Platform);
@@ -1222,6 +1289,7 @@ public class CybergrindArenaGenerator : MonoBehaviour
         repairStation.cost = 3 + runState.bossesClearedThisRun;
         repairStation.healAmount = 45;
         repairStation.displayRenderer = repair.GetComponent<Renderer>();
+        BuildShopStationModel(repair.transform, CybergrindShopStation.ShopService.Repair, "REPAIR");
 
         GameObject overclock = CreateCube(root, "ShopOverclockStation", CellCenter(center.x + 5, center.y - 2, serviceY + 0.7f), new Vector3(1.8f, 1.4f, 1.2f), puzzleMaterial);
         CybergrindShopStation overclockStation = overclock.AddComponent<CybergrindShopStation>();
@@ -1229,6 +1297,7 @@ public class CybergrindArenaGenerator : MonoBehaviour
         overclockStation.cost = 4 + runState.bossesClearedThisRun;
         overclockStation.healAmount = 24;
         overclockStation.displayRenderer = overclock.GetComponent<Renderer>();
+        BuildShopStationModel(overclock.transform, CybergrindShopStation.ShopService.Overclock, "OVERCLOCK");
 
         GameObject surge = CreateCube(root, "ShopSurgeStation", CellCenter(center.x, center.y + 3, serviceY + 0.7f), new Vector3(1.8f, 1.4f, 1.2f), accentMaterial);
         CybergrindShopStation surgeStation = surge.AddComponent<CybergrindShopStation>();
@@ -1238,6 +1307,7 @@ public class CybergrindArenaGenerator : MonoBehaviour
         surgeStation.dashBonus = 4.5f;
         surgeStation.jumpBonus = 0.35f;
         surgeStation.displayRenderer = surge.GetComponent<Renderer>();
+        BuildShopStationModel(surge.transform, CybergrindShopStation.ShopService.Surge, "SURGE");
 
         CreateCube(root, "ShopCentralTable", CellCenter(center.x, center.y - 4, serviceY + 0.28f), new Vector3(8.2f, 0.24f, 2.4f), darkMaterial);
         CreateCube(root, "ShopSign", CellCenter(center.x, center.y - 4, serviceY + 2.2f), new Vector3(4.4f, 0.18f, 0.24f), accentMaterial, false);
@@ -1255,9 +1325,113 @@ public class CybergrindArenaGenerator : MonoBehaviour
     {
         Vector2Int center = new Vector2Int(width / 2, length / 2);
         float y = GetCellHeight(CellKind.Platform);
-        CreateCube(root, "BossArenaReactor", CellCenter(center.x, center.y, y + 0.2f), new Vector3(5.4f, 0.28f, 5.4f), hazardMaterial, false);
-        CreateCube(root, "BossArenaWarningRing", CellCenter(center.x, center.y, y + 0.38f), new Vector3(6.8f, 0.12f, 0.32f), accentMaterial, false);
-        CreateCube(root, "BossArenaWarningRingCross", CellCenter(center.x, center.y, y + 0.4f), new Vector3(0.32f, 0.12f, 6.8f), accentMaterial, false);
+        Vector3 platformCenter = CellCenter(center.x, center.y, y + 0.22f);
+        CreateCube(root, "BossArenaDais", platformCenter, new Vector3(6.4f, 0.42f, 6.4f), hazardMaterial, false);
+        CreateCube(root, "BossArenaDaisInset", platformCenter + Vector3.up * 0.18f, new Vector3(4.2f, 0.1f, 4.2f), darkMaterial, false);
+        CreateCube(root, "BossArenaInnerPad", platformCenter + Vector3.up * 0.28f, new Vector3(2.5f, 0.08f, 2.5f), accentMaterial, false);
+        CreateCube(root, "BossArenaNorthArch", platformCenter + new Vector3(0f, 2.4f, 3.4f), new Vector3(5.2f, 0.22f, 0.28f), darkMaterial, false);
+        CreateCube(root, "BossArenaSouthArch", platformCenter + new Vector3(0f, 2.4f, -3.4f), new Vector3(5.2f, 0.22f, 0.28f), darkMaterial, false);
+        CreateCube(root, "BossArenaEastArch", platformCenter + new Vector3(3.4f, 2.4f, 0f), new Vector3(0.28f, 0.22f, 5.2f), darkMaterial, false);
+        CreateCube(root, "BossArenaWestArch", platformCenter + new Vector3(-3.4f, 2.4f, 0f), new Vector3(0.28f, 0.22f, 5.2f), darkMaterial, false);
+        CreateCube(root, "BossArenaGlowRingA", platformCenter + Vector3.up * 0.26f, new Vector3(6.9f, 0.08f, 0.24f), accentMaterial, false);
+        CreateCube(root, "BossArenaGlowRingB", platformCenter + Vector3.up * 0.26f, new Vector3(0.24f, 0.08f, 6.9f), accentMaterial, false);
+        for (int i = 0; i < 4; i++)
+        {
+            Vector3 offset = i switch
+            {
+                0 => new Vector3(2.85f, 0f, 2.85f),
+                1 => new Vector3(-2.85f, 0f, 2.85f),
+                2 => new Vector3(2.85f, 0f, -2.85f),
+                _ => new Vector3(-2.85f, 0f, -2.85f)
+            };
+            CreateCube(root, $"BossArenaPylon_{i}", platformCenter + offset + Vector3.up * 1.45f, new Vector3(0.42f, 2.9f, 0.42f), darkMaterial, false);
+            CreateCube(root, $"BossArenaPylonGlow_{i}", platformCenter + offset + Vector3.up * 2.45f, new Vector3(0.16f, 0.78f, 0.16f), accentMaterial, false);
+        }
+    }
+
+    private void BuildShopStationModel(Transform parent, CybergrindShopStation.ShopService service, string label)
+    {
+        Material glow = accentMaterial != null ? accentMaterial : itemMaterial;
+        Material body = darkMaterial != null ? darkMaterial : floorMaterial;
+
+        CreateChildCube(parent, $"{label}_BaseTrim", Vector3.up * 0.82f, new Vector3(1.45f, 0.12f, 0.82f), body, false);
+        CreateChildCube(parent, $"{label}_SignPole", Vector3.up * 1.95f, new Vector3(0.12f, 1.2f, 0.12f), body, false);
+        CreateChildCube(parent, $"{label}_Sign", Vector3.up * 2.7f, new Vector3(1.35f, 0.18f, 0.16f), glow, false);
+
+        switch (service)
+        {
+            case CybergrindShopStation.ShopService.Repair:
+                CreateChildCube(parent, "RepairCrossH", new Vector3(0f, 1.45f, 0.62f), new Vector3(0.82f, 0.12f, 0.12f), glow, false);
+                CreateChildCube(parent, "RepairCrossV", new Vector3(0f, 1.45f, 0.62f), new Vector3(0.12f, 0.72f, 0.12f), glow, false);
+                break;
+            case CybergrindShopStation.ShopService.Overclock:
+                CreateChildCube(parent, "OverclockFinL", new Vector3(-0.42f, 1.55f, 0.54f), new Vector3(0.12f, 0.86f, 0.16f), glow, false);
+                CreateChildCube(parent, "OverclockFinR", new Vector3(0.42f, 1.55f, 0.54f), new Vector3(0.12f, 0.86f, 0.16f), glow, false);
+                break;
+            case CybergrindShopStation.ShopService.Surge:
+                CreateChildCube(parent, "SurgeSpine", new Vector3(0f, 1.75f, 0.54f), new Vector3(0.18f, 1.2f, 0.18f), glow, false);
+                CreateChildCube(parent, "SurgeHalo", new Vector3(0f, 2.18f, 0.54f), new Vector3(0.92f, 0.05f, 0.92f), glow, false);
+                break;
+            default:
+                CreateChildCube(parent, "RefitBarrel", new Vector3(0f, 1.55f, 0.58f), new Vector3(0.22f, 0.82f, 0.22f), glow, false);
+                CreateChildCube(parent, "RefitCradle", new Vector3(0f, 1.24f, 0.58f), new Vector3(0.92f, 0.12f, 0.28f), body, false);
+                break;
+        }
+
+        CreateWorldLabel(parent, $"{label}_Label", label, new Vector3(0f, 2.72f, 0.22f), service switch
+        {
+            CybergrindShopStation.ShopService.Repair => new Color(0.70f, 1f, 0.84f),
+            CybergrindShopStation.ShopService.Refit => new Color(0.76f, 0.88f, 1f),
+            CybergrindShopStation.ShopService.Overclock => new Color(1f, 0.82f, 0.62f),
+            _ => new Color(0.92f, 0.78f, 1f)
+        });
+    }
+
+    private GameObject CreateChildCube(Transform parent, string name, Vector3 localPosition, Vector3 scale, Material material, bool collider = true)
+    {
+        GameObject go = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        go.name = name;
+        go.transform.SetParent(parent, false);
+        go.transform.localPosition = localPosition;
+        go.transform.localScale = scale;
+
+        Renderer renderer = go.GetComponent<Renderer>();
+        if (renderer != null) renderer.sharedMaterial = material;
+
+        if (!collider)
+        {
+            Collider col = go.GetComponent<Collider>();
+            if (col != null)
+            {
+                if (Application.isPlaying) Destroy(col);
+                else DestroyImmediate(col);
+            }
+        }
+
+        return go;
+    }
+
+    private void CreateWorldLabel(Transform parent, string name, string text, Vector3 localPosition, Color color)
+    {
+        GameObject go = new GameObject(name);
+        go.transform.SetParent(parent, false);
+        go.transform.localPosition = localPosition;
+        go.transform.localRotation = Quaternion.Euler(0f, 180f, 0f);
+
+        TextMesh mesh = go.AddComponent<TextMesh>();
+        mesh.text = text;
+        mesh.fontSize = 56;
+        mesh.characterSize = 0.08f;
+        mesh.anchor = TextAnchor.MiddleCenter;
+        mesh.alignment = TextAlignment.Center;
+        mesh.color = color;
+
+        MeshRenderer renderer = go.GetComponent<MeshRenderer>();
+        if (renderer != null)
+        {
+            renderer.shadowCastingMode = ShadowCastingMode.Off;
+            renderer.receiveShadows = false;
+        }
     }
 
     private void Shuffle(List<Vector2Int> list, System.Random rng)
@@ -1283,8 +1457,20 @@ public class CybergrindArenaGenerator : MonoBehaviour
 
         Vector2Int spawn = FindFirst(cells, CellKind.Spawn);
         float y = GetCellHeight(CellKind.Spawn) + playerSpawnHeight;
+        CharacterController controller = playerToPlace.GetComponent<CharacterController>();
+        bool hadController = controller != null;
+        if (hadController)
+            controller.enabled = false;
+
         playerToPlace.position = transform.position + CellCenter(spawn.x, spawn.y, y);
         playerToPlace.rotation = Quaternion.LookRotation(Vector3.forward, Vector3.up);
+
+        PlayerController playerController = playerToPlace.GetComponent<PlayerController>();
+        if (playerController != null)
+            playerController.NotifySpawnPlacement(playerToPlace.position);
+
+        if (hadController)
+            controller.enabled = true;
     }
 
     public void PlacePlayerAtSpawn()
@@ -1383,7 +1569,7 @@ public class CybergrindArenaGenerator : MonoBehaviour
     {
         if (!InBounds(x, z) || lastCells == null) return false;
         CellKind kind = lastCells[x, z];
-        return kind == CellKind.Floor || kind == CellKind.Bridge || kind == CellKind.Platform || kind == CellKind.Spawn || kind == CellKind.Exit;
+        return kind == CellKind.Floor || kind == CellKind.Bridge || kind == CellKind.Platform || kind == CellKind.UpperPlatform || kind == CellKind.Spawn || kind == CellKind.Exit;
     }
 
     private List<Vector2Int> FindPath(Vector2Int start, Vector2Int goal)
@@ -1416,7 +1602,8 @@ public class CybergrindArenaGenerator : MonoBehaviour
             foreach (Vector2Int neighbor in GetNeighbors(current))
             {
                 if (!IsWalkableForContentCell(neighbor.x, neighbor.y)) continue;
-                int tentative = gScore[current] + 1;
+                if (!CanTraverseCells(current, neighbor)) continue;
+                int tentative = gScore[current] + GetTraversalCost(current, neighbor);
                 if (!gScore.TryGetValue(neighbor, out int neighborScore) || tentative < neighborScore)
                 {
                     cameFrom[neighbor] = current;
@@ -1450,6 +1637,37 @@ public class CybergrindArenaGenerator : MonoBehaviour
         yield return new Vector2Int(cell.x - 1, cell.y);
         yield return new Vector2Int(cell.x, cell.y + 1);
         yield return new Vector2Int(cell.x, cell.y - 1);
+        yield return new Vector2Int(cell.x + 1, cell.y + 1);
+        yield return new Vector2Int(cell.x + 1, cell.y - 1);
+        yield return new Vector2Int(cell.x - 1, cell.y + 1);
+        yield return new Vector2Int(cell.x - 1, cell.y - 1);
+    }
+
+    private bool CanTraverseCells(Vector2Int from, Vector2Int to)
+    {
+        if (!InBounds(from.x, from.y) || !InBounds(to.x, to.y) || lastCells == null)
+            return false;
+
+        bool diagonal = from.x != to.x && from.y != to.y;
+        if (diagonal)
+        {
+            if (!IsWalkableForContentCell(from.x, to.y) || !IsWalkableForContentCell(to.x, from.y))
+                return false;
+        }
+
+        float fromY = GetCellHeight(lastCells[from.x, from.y]);
+        float toY = GetCellHeight(lastCells[to.x, to.y]);
+        return Mathf.Abs(fromY - toY) <= levelHeight * 1.05f;
+    }
+
+    private int GetTraversalCost(Vector2Int from, Vector2Int to)
+    {
+        bool diagonal = from.x != to.x && from.y != to.y;
+        float fromY = GetCellHeight(lastCells[from.x, from.y]);
+        float toY = GetCellHeight(lastCells[to.x, to.y]);
+        int baseCost = diagonal ? 14 : 10;
+        int heightPenalty = Mathf.RoundToInt(Mathf.Abs(fromY - toY) / Mathf.Max(0.01f, levelHeight) * 8f);
+        return baseCost + heightPenalty;
     }
 
     private int Heuristic(Vector2Int a, Vector2Int b)
@@ -1542,14 +1760,14 @@ public class CybergrindArenaGenerator : MonoBehaviour
     {
         ThemePalette palette = ResolveThemePalette();
 
-        floorMaterial = EnsureMaterial(floorMaterial, "Cybergrind Floor", palette.floor, Color.black, false);
-        darkMaterial = EnsureMaterial(darkMaterial, "Cybergrind Dark", palette.dark, Color.black, false);
-        accentMaterial = EnsureMaterial(accentMaterial, "Cybergrind Accent", palette.accent, palette.accentEmission, true);
-        hazardMaterial = EnsureMaterial(hazardMaterial, "Cybergrind Hazard", palette.hazard, palette.hazardEmission, true);
-        spawnMaterial = EnsureMaterial(spawnMaterial, "Cybergrind Spawn", palette.spawn, palette.spawnEmission, true);
-        exitMaterial = EnsureMaterial(exitMaterial, "Cybergrind Exit", palette.exit, palette.exitEmission, true);
-        itemMaterial = EnsureMaterial(itemMaterial, "Cybergrind Item", palette.item, palette.itemEmission, true);
-        puzzleMaterial = EnsureMaterial(puzzleMaterial, "Cybergrind Puzzle", palette.puzzle, palette.puzzleEmission, true);
+        floorMaterial = EnsureMaterial(floorMaterial, "Arena Floor", palette.floor, Color.black, false);
+        darkMaterial = EnsureMaterial(darkMaterial, "Arena Dark", palette.dark, Color.black, false);
+        accentMaterial = EnsureMaterial(accentMaterial, "Arena Accent", palette.accent, palette.accentEmission, true);
+        hazardMaterial = EnsureMaterial(hazardMaterial, "Arena Hazard", palette.hazard, palette.hazardEmission, true);
+        spawnMaterial = EnsureMaterial(spawnMaterial, "Arena Spawn", palette.spawn, palette.spawnEmission, true);
+        exitMaterial = EnsureMaterial(exitMaterial, "Arena Exit", palette.exit, palette.exitEmission, true);
+        itemMaterial = EnsureMaterial(itemMaterial, "Arena Item", palette.item, palette.itemEmission, true);
+        puzzleMaterial = EnsureMaterial(puzzleMaterial, "Arena Puzzle", palette.puzzle, palette.puzzleEmission, true);
     }
 
     private ThemePalette ResolveThemePalette()

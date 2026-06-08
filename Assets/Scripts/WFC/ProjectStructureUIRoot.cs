@@ -35,12 +35,12 @@ public static class ProjectStructureUIRoot
         if (named != null && named.TryGetComponent(out Canvas namedCanvas))
             return namedCanvas;
 
-        Canvas[] canvases = Object.FindObjectsByType<Canvas>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+        Canvas[] canvases = Object.FindObjectsByType<Canvas>(FindObjectsInactive.Include);
         for (int i = 0; i < canvases.Length; i++)
         {
             Canvas canvas = canvases[i];
             if (canvas == null) continue;
-            if (canvas.gameObject.name == "CybergrindTerminalCanvas") continue;
+            if (canvas.gameObject.name == "ArenaTerminalCanvas") continue;
             if (canvas.gameObject.name == "RuntimeKeypadCanvas") continue;
             if (canvas.gameObject.name == "RuntimeSwitchCanvas") continue;
             if (!canvas.isRootCanvas) continue;

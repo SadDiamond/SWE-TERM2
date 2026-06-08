@@ -23,8 +23,9 @@ public class Door : Interactable
         promptMessage = "Press E to open";
     }
 
-    void Update()
+    protected override void Update()
     {
+        base.Update();
         Quaternion targetRotation = isOpen ? openRotation : closedRotation;
 
         // Skip work when already at the target rotation

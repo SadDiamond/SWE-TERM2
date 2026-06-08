@@ -36,6 +36,11 @@ public class CybergrindArenaDirector : MonoBehaviour
         if (runState == null) runState = CybergrindRunState.GetOrCreate();
         if (transitionController == null)
             transitionController = GetComponent<CybergrindTransitionController>() ?? gameObject.AddComponent<CybergrindTransitionController>();
+        if (FindAnyObjectByType<EnemyPriorityHUD>() == null)
+        {
+            GameObject go = new GameObject("EnemyPriorityHUD");
+            go.AddComponent<EnemyPriorityHUD>();
+        }
 
         if (player == null)
         {
@@ -55,12 +60,12 @@ public class CybergrindArenaDirector : MonoBehaviour
 
         bool terminalsSolved = AreAllTerminalsSolved();
         bool enemiesCleared = AreAllEnemiesCleared();
+        UpdateEnemyPriorityHighlights();
         if (terminalsSolved && enemiesCleared && !exitHighlighted)
         {
             if (generator.arenaMode == CybergrindArenaGenerator.ArenaMode.Boss)
             {
-                if (!bossRewardRevealActive && !bossRewardRevealQueued)
-                    StartCoroutine(BossRewardRevealSequence());
+                TryBeginBossRewardReveal();
             }
             else
             {
@@ -121,6 +126,28 @@ public class CybergrindArenaDirector : MonoBehaviour
         return true;
     }
 
+    private void UpdateEnemyPriorityHighlights()
+    {
+        BasicEnemyAI[] enemies = GetCurrentArenaEnemies();
+        if (enemies == null || enemies.Length == 0)
+            return;
+
+        int aliveCount = 0;
+        for (int i = 0; i < enemies.Length; i++)
+        {
+            if (enemies[i] == null || enemies[i].IsCombatResolved) continue;
+            aliveCount++;
+        }
+
+        bool highlightFinalTargets = aliveCount > 0 && aliveCount <= 2;
+        for (int i = 0; i < enemies.Length; i++)
+        {
+            BasicEnemyAI enemy = enemies[i];
+            if (enemy == null) continue;
+            enemy.SetPriorityTarget(highlightFinalTargets && !enemy.IsCombatResolved);
+        }
+    }
+
     private bool IsPlayerAtExit()
     {
         if (player == null)
@@ -157,7 +184,7 @@ public class CybergrindArenaDirector : MonoBehaviour
         {
             if (runState == null) runState = CybergrindRunState.GetOrCreate();
             int unlockedPreset = runState.RegisterBossDefeated(CurrentThemeIndex);
-            Debug.Log($"[CybergrindArenaDirector] Boss floor cleared. Unlocked weapon preset {unlockedPreset}.");
+            Debug.Log($"[ArenaDirector] Boss floor cleared. Unlocked weapon preset {unlockedPreset}.");
 
             if (runState.bossesClearedThisRun >= bossFloorsToReachCore)
             {
@@ -255,27 +282,28 @@ public class CybergrindArenaDirector : MonoBehaviour
 
     private IEnumerator BossRewardRevealSequence()
     {
-        bossRewardRevealQueued = true;
-        bossRewardRevealActive = true;
-
-        PlayerController playerController = GetPlayerController();
-        if (playerController != null)
-            playerController.ToggleUIMode(false);
-
-        yield return new WaitForSeconds(0.45f);
+        BossEncounterHUD hud = FindAnyObjectByType<BossEncounterHUD>();
+        yield return new WaitForSecondsRealtime(0.35f);
 
         if (transitionController != null)
             transitionController.HighlightExitInGenerator(generator);
 
-        yield return new WaitForSeconds(0.35f);
+        if (hud != null)
+        {
+            hud.ShowSystemBanner(
+                "WEAPON DROP INBOUND",
+                "Core weapon aligning. Grab it, then take the exit.",
+                new Color(0.18f, 0.08f, 0.03f, 0.95f),
+                2.8f);
+        }
 
-        SpawnExitReward(true);
+        yield return new WaitForSecondsRealtime(0.3f);
         exitHighlighted = true;
         bossRewardRevealActive = false;
         bossRewardRevealQueued = false;
     }
 
-    private void SpawnExitReward(bool isBossReward = false)
+    private void SpawnExitReward(bool isBossReward = false, Vector3? overridePosition = null)
     {
         if (generator == null || generator.CurrentArenaRoot == null) return;
         if (currentReward != null) return;
@@ -283,14 +311,15 @@ public class CybergrindArenaDirector : MonoBehaviour
         Transform exit = transitionController != null
             ? transitionController.FindExitCellTransform(generator)
             : null;
-        if (exit == null) return;
+        if (exit == null && !isBossReward) return;
+        if (!overridePosition.HasValue && exit == null) return;
 
         int presetIndex = GetFloorRewardPresetIndex();
         GameObject reward = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
         reward.name = $"WeaponReward_{presetIndex}";
         reward.transform.SetParent(generator.CurrentArenaRoot, true);
-        reward.transform.position = exit.position + Vector3.up * 1.45f;
-        reward.transform.localScale = new Vector3(0.9f, 0.28f, 0.9f);
+        reward.transform.position = overridePosition ?? (exit.position + Vector3.up * 1.45f);
+        reward.transform.localScale = isBossReward ? new Vector3(1.05f, 0.34f, 1.05f) : new Vector3(0.9f, 0.28f, 0.9f);
 
         CybergrindWeaponReward weaponReward = reward.AddComponent<CybergrindWeaponReward>();
         weaponReward.presetIndex = presetIndex;
@@ -298,6 +327,86 @@ public class CybergrindArenaDirector : MonoBehaviour
         weaponReward.highlightRenderer = reward.GetComponent<Renderer>();
         weaponReward.isBossReward = isBossReward;
         currentReward = weaponReward;
+    }
+
+    private Vector3 ResolveBossRewardAnchor()
+    {
+        if (generator == null || generator.CurrentArenaRoot == null)
+            return Vector3.zero;
+
+        Transform dais = generator.CurrentArenaRoot.Find("BossArenaDais");
+        if (dais != null)
+            return dais.position + Vector3.up * 1.5f;
+
+        Transform exit = transitionController != null ? transitionController.FindExitCellTransform(generator) : null;
+        return exit != null ? exit.position + Vector3.up * 1.45f : generator.CurrentArenaRoot.position + Vector3.up * 1.5f;
+    }
+
+    private void StartBossRewardPreludeFx(Vector3 center)
+    {
+        if (!Application.isPlaying)
+            return;
+        StartCoroutine(BossRewardPreludeFx(center));
+    }
+
+    private IEnumerator BossRewardPreludeFx(Vector3 center)
+    {
+        for (int i = 0; i < 3; i++)
+        {
+            SpawnRewardPulse(center, 1.35f + i * 0.8f, new Color(1f, 0.68f, 0.22f, 0.55f), 0.34f + i * 0.06f);
+            yield return new WaitForSecondsRealtime(0.12f);
+        }
+    }
+
+    private void SpawnRewardPulse(Vector3 center, float radius, Color color, float lifetime)
+    {
+        GameObject ring = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+        ring.name = "BossRewardPulse";
+        ring.transform.position = center + Vector3.up * 0.04f;
+        ring.transform.localScale = new Vector3(radius, 0.025f, radius);
+        Collider collider = ring.GetComponent<Collider>();
+        if (collider != null)
+        {
+            if (Application.isPlaying) Destroy(collider);
+            else DestroyImmediate(collider);
+        }
+
+        Renderer renderer = ring.GetComponent<Renderer>();
+        Material mat = null;
+        if (renderer != null)
+        {
+            Shader shader = Shader.Find("Universal Render Pipeline/Unlit") ?? Shader.Find("Sprites/Default");
+            mat = new Material(shader);
+            mat.color = color;
+            renderer.material = mat;
+        }
+
+        StartCoroutine(AnimateRewardPulse(ring.transform, mat, color, lifetime));
+    }
+
+    private IEnumerator AnimateRewardPulse(Transform ring, Material mat, Color color, float lifetime)
+    {
+        if (ring == null) yield break;
+
+        Vector3 startScale = ring.localScale * 0.4f;
+        Vector3 endScale = ring.localScale * 1.8f;
+        ring.localScale = startScale;
+        float elapsed = 0f;
+        while (elapsed < lifetime)
+        {
+            elapsed += Time.deltaTime;
+            float t = Mathf.Clamp01(elapsed / Mathf.Max(0.01f, lifetime));
+            ring.localScale = Vector3.Lerp(startScale, endScale, Mathf.SmoothStep(0f, 1f, t));
+            if (mat != null)
+                mat.color = new Color(color.r, color.g, color.b, Mathf.Lerp(color.a, 0f, t));
+            yield return null;
+        }
+
+        if (ring != null)
+        {
+            if (Application.isPlaying) Destroy(ring.gameObject);
+            else DestroyImmediate(ring.gameObject);
+        }
     }
 
     private int GetFloorRewardPresetIndex()
@@ -322,6 +431,37 @@ public class CybergrindArenaDirector : MonoBehaviour
     public bool HasShopInteractionThisFloor()
     {
         return shopInteractionThisFloor;
+    }
+
+    public void TryBeginBossRewardReveal()
+    {
+        if (generator == null || generator.arenaMode != CybergrindArenaGenerator.ArenaMode.Boss)
+            return;
+        if (bossRewardRevealActive || bossRewardRevealQueued || currentReward != null)
+            return;
+
+        bossRewardRevealQueued = true;
+        bossRewardRevealActive = true;
+
+        PlayerController playerController = GetPlayerController();
+        if (playerController != null)
+            playerController.ToggleUIMode(false);
+
+        BossEncounterHUD hud = FindAnyObjectByType<BossEncounterHUD>();
+        if (hud != null)
+        {
+            hud.ShowSystemBanner(
+                "CHAMBER OPEN",
+                "The boss shell is breaking apart. Hold for the weapon drop.",
+                new Color(0.14f, 0.05f, 0.04f, 0.94f),
+                2.6f);
+        }
+
+        Vector3 rewardAnchor = ResolveBossRewardAnchor();
+        StartBossRewardPreludeFx(rewardAnchor);
+        SpawnExitReward(true, rewardAnchor);
+
+        StartCoroutine(BossRewardRevealSequence());
     }
 
     public void NotifyShopInteraction()

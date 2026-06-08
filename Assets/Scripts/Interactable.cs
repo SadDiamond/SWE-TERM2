@@ -15,6 +15,9 @@ public abstract class Interactable : MonoBehaviour
 
     protected virtual void Start()
     {
+        if (highlightRenderer == null)
+            highlightRenderer = GetComponentInChildren<Renderer>();
+
         // If the user setup both a renderer and a material, we cache the arrays!
         if (highlightRenderer != null && outlineMaterial != null)
         {
@@ -49,5 +52,9 @@ public abstract class Interactable : MonoBehaviour
         {
             highlightRenderer.materials = originalMaterials;
         }
+    }
+
+    protected virtual void Update()
+    {
     }
 }

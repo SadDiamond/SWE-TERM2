@@ -24,12 +24,12 @@ public class ProjectStructureSettingsMenu : MonoBehaviour
 
     private readonly string[] optionLabels =
     {
-        "Look Gain",
-        "Base FOV",
-        "Signal Volume",
-        "Reset Link",
-        "Restart Descent",
-        "Return To Title"
+        "Mouse Sensitivity",
+        "Field of View",
+        "Volume",
+        "Reset Defaults",
+        "Restart Run",
+        "Back to Title"
     };
 
     private void Start()
@@ -224,27 +224,27 @@ public class ProjectStructureSettingsMenu : MonoBehaviour
             presentation = FindAnyObjectByType<ProjectStructurePresentation>();
 
         titleText.text = presentation != null && presentation.IsTitleVisible
-            ? "SYSTEM LINK // STANDBY"
-            : "SETTINGS // SYSTEM LINK";
+            ? "SETTINGS"
+            : "PAUSE";
         titleText.color = ResolveAccentColor();
         if (panelImage != null)
             panelImage.color = ResolvePanelColor();
 
         bool actionLine = selectedIndex >= 3;
         string footer = selectedIndex == 3
-            ? "UP / DOWN select   LEFT / RIGHT adjust   ENTER restore defaults   ESC close channel"
+            ? "UP / DOWN move   LEFT / RIGHT adjust   ENTER reset   ESC close"
             : actionLine
-                ? "UP / DOWN select   ENTER confirm   ESC close channel"
-                : "UP / DOWN select   LEFT / RIGHT adjust   ESC close channel";
-        string restartLabel = presentation != null && presentation.IsTitleVisible ? "Begin Descent" : "Restart Descent";
+                ? "UP / DOWN move   ENTER confirm   ESC close"
+                : "UP / DOWN move   LEFT / RIGHT adjust   ESC close";
+        string restartLabel = presentation != null && presentation.IsTitleVisible ? "Start Run" : "Restart Run";
         bodyText.text =
             BuildStatusLine() + "\n\n" +
-            $"{GetLine(0, $"Look Gain          {Mathf.RoundToInt(sensitivity),3}   {BuildMeter(Mathf.InverseLerp(20f, 220f, sensitivity), 12)}")}\n" +
-            $"{GetLine(1, $"Base FOV           {Mathf.RoundToInt(baseFov),3}   {BuildMeter(Mathf.InverseLerp(70f, 120f, baseFov), 12)}")}\n" +
-            $"{GetLine(2, $"Signal Volume      {Mathf.RoundToInt(masterVolume * 100f),3}%  {BuildMeter(masterVolume, 12)}")}\n" +
-            $"{GetLine(3, "Reset Link")}\n" +
+            $"{GetLine(0, $"Mouse Sensitivity  {Mathf.RoundToInt(sensitivity),3}   {BuildMeter(Mathf.InverseLerp(20f, 220f, sensitivity), 12)}")}\n" +
+            $"{GetLine(1, $"Field of View      {Mathf.RoundToInt(baseFov),3}   {BuildMeter(Mathf.InverseLerp(70f, 120f, baseFov), 12)}")}\n" +
+            $"{GetLine(2, $"Volume             {Mathf.RoundToInt(masterVolume * 100f),3}%  {BuildMeter(masterVolume, 12)}")}\n" +
+            $"{GetLine(3, "Reset Defaults")}\n" +
             $"{GetLine(4, restartLabel)}\n" +
-            $"{GetLine(5, "Return To Title")}\n\n" +
+            $"{GetLine(5, "Back to Title")}\n\n" +
             footer;
     }
 
@@ -266,14 +266,14 @@ public class ProjectStructureSettingsMenu : MonoBehaviour
     {
         CybergrindArenaDirector director = FindAnyObjectByType<CybergrindArenaDirector>();
         if (presentation != null && presentation.IsTitleVisible)
-            return "Standby channel open. Set the rig, then cut into the route when you are ready.";
+            return "Set things how you like, then start the run.";
         if (director == null || director.generator == null)
-            return "System link active. Adjust the descent rig before the channel resumes.";
+            return "Change your settings and jump back in when you're ready.";
 
         string mode = director.generator.arenaMode switch
         {
-            CybergrindArenaGenerator.ArenaMode.Shop => "INTERCHANGE",
-            CybergrindArenaGenerator.ArenaMode.Boss => "CHAMPION CHAMBER",
+            CybergrindArenaGenerator.ArenaMode.Shop => "SHOP",
+            CybergrindArenaGenerator.ArenaMode.Boss => "BOSS",
             _ => $"FLOOR {director.floor:00}"
         };
         return $"{director.CurrentThemeLabel.ToUpperInvariant()} // {mode} // {director.CurrentDirectiveTitle}";

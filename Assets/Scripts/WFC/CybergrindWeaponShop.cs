@@ -23,14 +23,14 @@ public class CybergrindWeaponShop : Interactable
         Gun gun = GetGun(player);
         if (gun == null)
         {
-            promptMessage = "Armory link unavailable";
+            promptMessage = "Weapon system unavailable";
             return;
         }
 
         CybergrindRunState runState = CybergrindRunState.GetOrCreate();
         if (!runState.IsWeaponUnlocked(presetIndex))
         {
-            promptMessage = "Champion gate still sealed";
+            promptMessage = "Locked until you beat a boss";
             return;
         }
 
@@ -41,14 +41,14 @@ public class CybergrindWeaponShop : Interactable
         }
 
         gun.EquipPreset(presetIndex);
-        promptMessage = $"Variant linked // {gun.GetPresetDisplayName(presetIndex)}";
+        promptMessage = $"Weapon equipped // {gun.GetPresetDisplayName(presetIndex)}";
 
         BossEncounterHUD hud = FindAnyObjectByType<BossEncounterHUD>();
         if (hud != null)
         {
             hud.ShowShopServiceBanner(
                 CybergrindShopStation.ShopService.Refit,
-                "VARIANT LINKED",
+                "WEAPON EQUIPPED",
                 $"{gun.GetPresetDisplayName(presetIndex)} active. {gun.GetActiveDescriptorLine()}");
         }
 
@@ -66,9 +66,9 @@ public class CybergrindWeaponShop : Interactable
     private void RefreshPrompt()
     {
         Gun gun = GetGun(null);
-        string weaponName = gun != null ? gun.GetPresetDisplayName(presetIndex) : $"Dormant Variant {presetIndex + 1}";
+        string weaponName = gun != null ? gun.GetPresetDisplayName(presetIndex) : $"Weapon {presetIndex + 1}";
         bool unlocked = CybergrindRunState.GetOrCreate().IsWeaponUnlocked(presetIndex);
-        promptMessage = unlocked ? $"Refit // {weaponName} ({equipCost} coins)" : $"{weaponName} // champion gate sealed";
+        promptMessage = unlocked ? $"Equip weapon // {weaponName} ({equipCost} coins)" : $"{weaponName} // locked";
     }
 
     private Gun GetGun(PlayerController player)

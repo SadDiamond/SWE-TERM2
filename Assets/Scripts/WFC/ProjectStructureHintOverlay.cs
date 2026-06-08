@@ -63,7 +63,7 @@ public class ProjectStructureHintOverlay : MonoBehaviour
         string nextKey = string.Empty;
         string title = string.Empty;
         string body = string.Empty;
-        string sectorLabel = arenaDirector != null ? arenaDirector.CurrentThemeLabel.ToUpperInvariant() : "SECTOR";
+        string sectorLabel = arenaDirector != null ? arenaDirector.CurrentThemeLabel.ToUpperInvariant() : "ARENA";
         string directiveTitle = arenaDirector != null ? arenaDirector.CurrentDirectiveTitle : "Directive";
 
         CharacterController controller = player != null ? player.GetComponent<CharacterController>() : null;
@@ -72,40 +72,40 @@ public class ProjectStructureHintOverlay : MonoBehaviour
         if (!sawMovementHint && speed < 2f)
         {
             nextKey = "movement";
-            title = "MOVE AGGRESSIVELY";
-            body = "Dash with SHIFT, slide with CTRL/C, and keep momentum alive. This arena reads better once you move like you belong in it.";
+            title = "KEEP MOVING";
+            body = "Dash with SHIFT, slide with CTRL/C, and chain your jumps. The faster you move, the easier this arena is to read.";
         }
         else if (!sawWeaponHint && arenaDirector != null && arenaDirector.floor <= 2)
         {
             nextKey = "weapons";
-            title = "VARIANT BUS";
-            body = "1/2 swaps weapon family. Q/E cycles variants. Right click is not optional here; every variant has a special that changes how it solves a fight.";
+            title = "WEAPON CONTROLS";
+            body = "1/2 swaps weapon family. Q/E cycles variants. Right click uses the special move on your current weapon.";
         }
         else if (!sawTerminalHint && CountUnsolvedTerminals() > 0)
         {
             nextKey = "terminal";
-            title = $"{sectorLabel} // MACHINE LOCK";
-            body = $"{directiveTitle} is live here. Solve terminals under pressure, then collapse the remaining enemies to open the route forward.";
+            title = $"{sectorLabel} // TERMINALS";
+            body = $"{directiveTitle} is active here. Finish the terminals, then clear the enemies to open the exit.";
         }
         else if (!sawRewardHint && arenaDirector != null && arenaDirector.HasPendingReward())
         {
             nextKey = "reward";
-            title = "CLAIM THE VARIANT";
-            body = "Weapon rewards are floor milestones. Claim the pickup before you step into the exit so the run actually grows stronger.";
+            title = "GRAB THE WEAPON";
+            body = "A floor reward is more than a pickup. Take it before you leave so the next floor starts stronger.";
         }
         else if (!sawShopHint && arenaDirector != null && arenaDirector.generator != null &&
                  arenaDirector.generator.arenaMode == CybergrindArenaGenerator.ArenaMode.Shop)
         {
             nextKey = "shop";
-            title = $"{sectorLabel} // INTERCHANGE";
-            body = $"{directiveTitle} stays in effect between floors. Use at least one station: Refit changes variant, Overclock buffs the weapon bus, Surge tunes movement, and Repair patches the hull.";
+            title = $"{sectorLabel} // SHOP";
+            body = $"{directiveTitle} keeps going between floors. Use at least one station: Refit swaps weapons, Overclock boosts damage, Surge improves movement, and Repair heals you.";
         }
         else if (!sawBossHint && arenaDirector != null && arenaDirector.generator != null &&
                  arenaDirector.generator.arenaMode == CybergrindArenaGenerator.ArenaMode.Boss)
         {
             nextKey = "boss";
-            title = $"{sectorLabel} // CHAMPION CHAMBER";
-            body = "Bosses are pattern fights, not stat checks. Read the phase text, stay mobile, and punish the gaps after telegraphed bursts.";
+            title = $"{sectorLabel} // BOSS";
+            body = "Bosses are pattern fights. Watch the tells, keep moving, and punish the gaps after each big attack.";
         }
 
         if (nextKey == currentHintKey) return;

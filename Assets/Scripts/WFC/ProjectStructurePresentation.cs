@@ -152,7 +152,7 @@ public class ProjectStructurePresentation : MonoBehaviour
         overlayText.color = ResolveOverlayAccent();
         CybergrindRunState runState = CybergrindRunState.GetOrCreate();
         if (rankText != null)
-            rankText.text = $"DESCENT PROTOCOL // {runState.CountUnlockedWeapons()}/{runState.maxTrackedWeaponPresets} VARIANTS ONLINE";
+            rankText.text = "STARTING LOADOUT // STANDARD FRAME";
         subtitleText.text =
             BuildTitleIntro() + "\n\n" +
             "WASD move  SHIFT dash  CTRL/C slide  SPACE jump  E interact\n" +
@@ -160,7 +160,7 @@ public class ProjectStructurePresentation : MonoBehaviour
         if (detailText != null)
             detailText.text = BuildTitleDetail(runState);
         if (footerText != null)
-            footerText.text = "ENTER / SPACE // OPEN DESCENT ROUTE";
+            footerText.text = "ENTER / SPACE // START RUN";
 
         Time.timeScale = 0f;
         if (player != null) player.ToggleUIMode(true);
@@ -275,8 +275,8 @@ public class ProjectStructurePresentation : MonoBehaviour
         if (rankText != null)
             rankText.text = "DESCENT LOSS // SYSTEM DISENGAGED";
         subtitleText.text =
-            "The route collapsed before the core answered.\n" +
-            "Another descent can still cut deeper.";
+            "You went down before reaching the core.\n" +
+            "Take another run and push deeper.";
         if (detailText != null && runState != null)
         {
             detailText.text =
@@ -309,7 +309,7 @@ public class ProjectStructurePresentation : MonoBehaviour
         if (runState.terminalsSolvedThisRun >= 8)
             return "You reached a living core and bent its machine logic into an open wound.";
         if (runState.enemiesDefeatedThisRun >= 40)
-            return "You reached a living core after tearing a path through its entire defense lattice.";
+            return "You reached the core after tearing through everything it threw at you.";
         return "You reached a living core and forced it to answer.";
     }
 
@@ -317,20 +317,13 @@ public class ProjectStructurePresentation : MonoBehaviour
     {
         return
             "Descend through a self-building megastructure.\n" +
-            "Break the machine lock. Dismantle the robots. Claim new variants and push deeper toward the core.";
+            "Finish the terminals. Break the robots. Grab new weapons and push deeper toward the core.";
     }
 
     private string BuildTitleDetail(CybergrindRunState runState)
     {
-        int unlocked = runState != null ? runState.CountUnlockedWeapons() : 1;
-        int maxTracked = runState != null ? runState.maxTrackedWeaponPresets : 6;
-
-        if (unlocked >= maxTracked)
-            return "Full variant lattice retained. The route is open; only the descent remains.";
-        if (unlocked >= 4)
-            return "Variant lattice partially restored. Champion chambers are feeding the armory back online.";
-
-        return "Early descent state. Break champion chambers to bring more weapon variants online.";
+        int bossTargets = arenaDirector != null ? Mathf.Max(1, arenaDirector.bossFloorsToReachCore) : 3;
+        return $"Each run starts clean. Beat {bossTargets} boss floor{(bossTargets == 1 ? string.Empty : "s")} to reach the core.";
     }
 
     private Color ResolveOverlayAccent()
@@ -382,29 +375,29 @@ public class ProjectStructurePresentation : MonoBehaviour
 
         yield return PlayEndingBeat(
             "CORE SIGNAL",
-            "The descent did not stop.\nThe entire structure narrowed into a single response.",
-            "Stand by for core imprint.",
+            "The structure finally answered.\nEverything around you locked onto the core.",
+            "Hold on.",
             new Color(0.01f, 0.02f, 0.03f, 0.82f),
             0.85f);
 
         yield return PlayEndingBeat(
             "INNER SHELL OPEN",
-            "A chamber answered from beneath the arena stack.\nThe machine recognized the run.",
-            "Run signature accepted.",
+            "A chamber opened beneath the arena.\nThe machine recognized what you did.",
+            "Access granted.",
             new Color(0.02f, 0.03f, 0.05f, 0.88f),
             0.8f);
 
         yield return PlayEndingBeat(
             "IMPRINT RECORDED",
-            "Your descent was catalogued inside the living core.\nIt will remember the route you forced open.",
-            "Preparing final run imprint.",
+            "Your run is written into the core now.\nIt will remember the path you forced open.",
+            "Saving run data.",
             new Color(0.04f, 0.03f, 0.02f, 0.9f),
             0.82f);
 
         yield return PlayEndingBeat(
             "CORE RESPONSE",
-            "The megastructure marked the breach and kept the route alive.\nAnother descent can follow the scar you made.",
-            "Finalizing descent summary.",
+            "The structure stayed open where you broke it.\nAnother run can follow the same wound.",
+            "Wrapping up the run.",
             new Color(0.02f, 0.03f, 0.03f, 0.92f),
             0.78f);
 
@@ -428,15 +421,15 @@ public class ProjectStructurePresentation : MonoBehaviour
 
         yield return PlayEndingBeat(
             "HULL BREACH",
-            "The descent lost containment.\nThe structure kept moving without you.",
-            "Run telemetry collapsing.",
+            "You lost the run.\nThe structure kept moving without you.",
+            "Recording failure.",
             new Color(0.03f, 0.01f, 0.015f, 0.88f),
             0.82f);
 
         yield return PlayEndingBeat(
             "SIGNAL LOST",
-            "The route sealed over the failure.\nAnother attempt can still reopen the scar.",
-            "Preparing restart channel.",
+            "The path sealed over behind you.\nYou can still break it open again.",
+            "Ready to restart.",
             new Color(0.04f, 0.015f, 0.02f, 0.92f),
             0.78f);
 
@@ -451,7 +444,7 @@ public class ProjectStructurePresentation : MonoBehaviour
         overlayText.text = title;
         overlayText.color = ResolveOverlayAccent();
         if (rankText != null)
-            rankText.text = "CORE CHANNEL // ACTIVE";
+            rankText.text = "CORE ONLINE";
         subtitleText.text = subtitle;
         if (detailText != null)
             detailText.text = detail;
@@ -495,10 +488,10 @@ public class ProjectStructurePresentation : MonoBehaviour
         RunSummary summary = new RunSummary();
         if (runState == null)
         {
-            summary.rankLabel = "UNCLASSIFIED DESCENT";
+            summary.rankLabel = "UNRANKED RUN";
             summary.signature = "NO SIGNAL";
             summary.epitaph = "You reached a living core and forced it to answer.";
-            summary.highlightLine = "No run telemetry was preserved.";
+            summary.highlightLine = "No run data was saved.";
             summary.score = 0;
             return summary;
         }
@@ -522,11 +515,11 @@ public class ProjectStructurePresentation : MonoBehaviour
 
     private string ResolveRankLabel(int score)
     {
-        if (score >= 1000) return "BLACK-CHANNEL DESCENT";
-        if (score >= 820) return "CORELINE BREACH";
-        if (score >= 650) return "THREAT-LATTICE CUT";
-        if (score >= 480) return "DEEP STACK ADVANCE";
-        return "SURFACE SCAR";
+        if (score >= 1000) return "PERFECT RUN";
+        if (score >= 820) return "CORE BREAKER";
+        if (score >= 650) return "DEEP RUN";
+        if (score >= 480) return "STRONG PUSH";
+        return "FIRST CUT";
     }
 
     private string BuildRunSignature(CybergrindRunState runState, float duration)
@@ -555,13 +548,13 @@ public class ProjectStructurePresentation : MonoBehaviour
         if (duration > 0f && duration <= 300f)
             return "Fast breach. You moved faster than the stack could settle.";
         if (runState.terminalsSolvedThisRun >= 8)
-            return "Machine lock pressure stayed under control the whole descent.";
+            return "You kept the terminals under control all the way down.";
         if (runState.enemiesDefeatedThisRun >= 50)
-            return "Defense lattice shattered under sustained pressure.";
+            return "You kept the pressure up and broke every line of defense.";
         if (runState.shopInteractionsThisRun <= 1)
-            return "You barely stopped moving. The route stayed hot all the way down.";
+            return "You barely slowed down the whole run.";
 
-        return "The route is scarred open. Another descent can follow it.";
+        return "You opened the way down. The next run can go even deeper.";
     }
 
     private void EnsureRuntimePresentation()
@@ -602,6 +595,12 @@ public class ProjectStructurePresentation : MonoBehaviour
         {
             GameObject go = new GameObject("CombatFeedbackHUD");
             go.AddComponent<CombatFeedbackHUD>();
+        }
+
+        if (FindAnyObjectByType<EnemyPriorityHUD>() == null)
+        {
+            GameObject go = new GameObject("EnemyPriorityHUD");
+            go.AddComponent<EnemyPriorityHUD>();
         }
 
         if (FindAnyObjectByType<ProjectStructureHintOverlay>() == null)

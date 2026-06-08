@@ -9,6 +9,7 @@ public class BossEncounterHUD : MonoBehaviour
     public TMP_Text bannerDetailText;
     public TMP_Text bossNameText;
     public TMP_Text bossPhaseText;
+    public TMP_Text bossHealthValueText;
     public Image bossHealthFill;
     public Image bossHealthBack;
 
@@ -83,8 +84,8 @@ public class BossEncounterHUD : MonoBehaviour
             if (shopReady && !lastShopReady)
             {
                 ShowEncounterBanner(
-                    "INTERCHANGE SEALED",
-                    "Station sync accepted. Descent gate is live.",
+                    "SHOP DONE",
+                    "You used a station. The exit is open.",
                     new Color(0.04f, 0.15f, 0.12f, 0.92f),
                     bannerDuration + 0.4f);
             }
@@ -111,24 +112,24 @@ public class BossEncounterHUD : MonoBehaviour
             if (rewardRevealActive && !lastBossRewardRevealActive)
             {
                 ShowEncounterBanner(
-                    "CHAMBER UNSEALING",
-                    "Champion lock is collapsing. Armory cradle descending.",
+                    "BOSS DOWN",
+                    "The boss is falling apart. Your reward is on the way.",
                     new Color(0.12f, 0.05f, 0.03f, 0.92f),
                     bannerDuration + 0.3f);
             }
             if (rewardPending && !lastRewardPending)
             {
                 ShowEncounterBanner(
-                    "ARMORY CRADLE OPEN",
-                    "Core variant is live. Claim it before the descent resumes.",
+                    "REWARD READY",
+                    "Your boss weapon is ready. Grab it before you leave.",
                     new Color(0.14f, 0.08f, 0.03f, 0.94f),
                     bannerDuration + 0.55f);
             }
             if (lastBossVisible)
             {
                 ShowEncounterBanner(
-                    "CHAMPION BROKEN",
-                    "Threat lock collapsed. Inner route is splitting open.",
+                    "BOSS DEFEATED",
+                    "The floor is clear. Take your reward and move on.",
                     new Color(0.16f, 0.06f, 0.04f, 0.92f),
                     bannerDuration + 0.55f);
             }
@@ -158,6 +159,8 @@ public class BossEncounterHUD : MonoBehaviour
             bossNameText.text = boss.displayName.ToUpperInvariant();
         if (bossPhaseText != null)
             bossPhaseText.text = BuildBossPhaseText(boss);
+        if (bossHealthValueText != null)
+            bossHealthValueText.text = $"{Mathf.CeilToInt(boss.CurrentHealth)} / {Mathf.CeilToInt(boss.maxHealth)} HULL";
         if (bossHealthFill != null)
         {
             bossHealthFill.fillAmount = boss.Health01;
@@ -186,27 +189,27 @@ public class BossEncounterHUD : MonoBehaviour
 
     private void ShowBannerForMode(CybergrindArenaGenerator.ArenaMode mode)
     {
-        string themeLabel = arenaDirector != null ? arenaDirector.CurrentThemeLabel : "Signal Void";
+        string themeLabel = arenaDirector != null ? arenaDirector.CurrentThemeLabel : "Arena";
         switch (mode)
         {
             case CybergrindArenaGenerator.ArenaMode.Shop:
                 ShowEncounterBanner(
-                    $"{themeLabel.ToUpperInvariant()} // INTERCHANGE",
-                    $"{arenaDirector.CurrentDirectiveTitle}. Tune the run, then take the exit.",
+                    $"{themeLabel.ToUpperInvariant()} // SHOP",
+                    $"{arenaDirector.CurrentDirectiveTitle}. Use a station, then take the exit.",
                     new Color(0.02f, 0.11f, 0.10f, 0.9f),
                     bannerDuration);
                 break;
             case CybergrindArenaGenerator.ArenaMode.Boss:
                 ShowEncounterBanner(
-                    $"{themeLabel.ToUpperInvariant()} // CHAMPION CHAMBER",
-                    $"{arenaDirector.CurrentDirectiveTitle}. Pattern fight ahead. Stay mobile and read the telegraphs.",
+                    $"{themeLabel.ToUpperInvariant()} // BOSS FLOOR",
+                    $"{arenaDirector.CurrentDirectiveTitle}. Watch the patterns, keep moving, and hit back after each attack.",
                     new Color(0.11f, 0.03f, 0.04f, 0.92f),
                     bannerDuration + 0.2f);
                 break;
             default:
                 ShowEncounterBanner(
                     $"{themeLabel.ToUpperInvariant()} // FLOOR {arenaDirector.floor:00}",
-                    $"{arenaDirector.CurrentDirectiveTitle}. Break the machine lock, clear the hostiles, claim the variant.",
+                    $"{arenaDirector.CurrentDirectiveTitle}. Finish the terminals, clear the enemies, and grab the weapon.",
                     new Color(0.01f, 0.05f, 0.08f, 0.88f),
                     bannerDuration);
                 break;
@@ -219,10 +222,10 @@ public class BossEncounterHUD : MonoBehaviour
 
         string suffix = boss.bossArchetype switch
         {
-            BasicEnemyAI.BossArchetype.Warden => "RING LOCK / CROSSFIRE",
-            BasicEnemyAI.BossArchetype.Striker => "BREACH RUSH / IMPACT",
-            BasicEnemyAI.BossArchetype.Sentinel => "AIR CONTROL / DIVE RUN",
-            _ => "THREAT LOCK"
+            BasicEnemyAI.BossArchetype.Warden => "WIDE SHOTS / AREA TRAPS",
+            BasicEnemyAI.BossArchetype.Striker => "FAST RUSH / SLAM ATTACKS",
+            BasicEnemyAI.BossArchetype.Sentinel => "AIR STRIKES / DIVE RUNS",
+            _ => "BOSS"
         };
 
         ShowEncounterBanner(
@@ -286,16 +289,18 @@ public class BossEncounterHUD : MonoBehaviour
         bossNameText.color = new Color(1f, 0.82f, 0.7f);
         bossPhaseText = CreateText(bossRoot.transform, "BossPhaseText", 18f, TextAlignmentOptions.Center, new Vector2(0.5f, 0.5f), new Vector2(680f, 28f));
         bossPhaseText.color = new Color(0.86f, 0.92f, 0.96f);
+        bossHealthValueText = CreateText(bossRoot.transform, "BossHealthValueText", 17f, TextAlignmentOptions.Center, new Vector2(0.5f, 0.28f), new Vector2(680f, 24f));
+        bossHealthValueText.color = new Color(0.98f, 0.88f, 0.76f);
 
         GameObject back = new GameObject("BossHealthBack");
         back.transform.SetParent(bossRoot.transform, false);
         RectTransform backRect = back.AddComponent<RectTransform>();
-        backRect.anchorMin = new Vector2(0.08f, 0.18f);
-        backRect.anchorMax = new Vector2(0.92f, 0.38f);
+        backRect.anchorMin = new Vector2(0.07f, 0.06f);
+        backRect.anchorMax = new Vector2(0.93f, 0.23f);
         backRect.offsetMin = Vector2.zero;
         backRect.offsetMax = Vector2.zero;
         bossHealthBack = back.AddComponent<Image>();
-        bossHealthBack.color = new Color(0.12f, 0.06f, 0.08f, 1f);
+        bossHealthBack.color = new Color(0.08f, 0.03f, 0.04f, 1f);
 
         GameObject fill = new GameObject("BossHealthFill");
         fill.transform.SetParent(back.transform, false);
@@ -400,7 +405,7 @@ public class BossEncounterHUD : MonoBehaviour
             _ => "PHASE I"
         };
 
-        return $"{phase}  //  {pattern.ToUpperInvariant()}";
+        return $"{phase}  //  {Mathf.RoundToInt(boss.Health01 * 100f)}% HULL  //  {pattern.ToUpperInvariant()}";
     }
 
     private Color GetBossColor(BasicEnemyAI boss, float health01)

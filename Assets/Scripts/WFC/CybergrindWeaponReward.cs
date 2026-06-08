@@ -30,6 +30,7 @@ public class CybergrindWeaponReward : Interactable
     private static Image rewardProgressFill;
     private static Image rewardPanelImage;
     private static CybergrindWeaponReward activeRewardGuide;
+    private static float activeGuideHideAt;
 
     protected override void Start()
     {
@@ -54,8 +55,9 @@ public class CybergrindWeaponReward : Interactable
         base.Start();
     }
 
-    private void Update()
+    protected override void Update()
     {
+        base.Update();
         if (!IsClaimed && revealTimer > 0f)
         {
             revealTimer -= Time.deltaTime;
@@ -79,8 +81,19 @@ public class CybergrindWeaponReward : Interactable
             transform.Rotate(Vector3.up, spinSpeed * Time.deltaTime, Space.World);
         }
 
-        if (guideTimer > 0f)
-            guideTimer -= Time.deltaTime;
+        if (activeRewardGuide == this)
+        {
+            guideTimer = Mathf.Max(0f, activeGuideHideAt - Time.unscaledTime);
+            if (Time.unscaledTime >= activeGuideHideAt)
+            {
+                activeRewardGuide = null;
+                guideTimer = 0f;
+                if (rewardPanel != null)
+                    rewardPanel.SetActive(false);
+            }
+        }
+        else if (guideTimer > 0f)
+            guideTimer = Mathf.Max(0f, guideTimer - Time.unscaledDeltaTime);
     }
 
     public override void OnInteract(PlayerController player)
@@ -99,12 +112,13 @@ public class CybergrindWeaponReward : Interactable
         IsClaimed = true;
         guideTimer = guideDuration;
         activeRewardGuide = this;
-        promptMessage = isBossReward ? "Core variant linked. Inner shell split open." : "Variant claimed. Step into the descent gate.";
+        activeGuideHideAt = Time.unscaledTime + guideDuration;
+        promptMessage = isBossReward ? "Core weapon online. The way down is open." : "Weapon ready. Head for the exit.";
 
         WeaponStatusHUD armoryHud = FindAnyObjectByType<WeaponStatusHUD>();
         if (armoryHud != null)
         {
-            string title = isBossReward ? "CORE VARIANT LINKED" : "VARIANT CLAIMED";
+            string title = isBossReward ? "CORE WEAPON READY" : "WEAPON READY";
             string detail = $"{weaponName.ToUpperInvariant()} // {guideText}";
             armoryHud.ShowArmoryMoment(title, detail, GetRewardColor(presetIndex), isBossReward ? 3.4f : 2.8f);
         }
@@ -113,10 +127,10 @@ public class CybergrindWeaponReward : Interactable
         if (encounterHud != null)
         {
             encounterHud.ShowSystemBanner(
-                isBossReward ? "CORE VARIANT LINKED" : "VARIANT CLAIMED",
+                isBossReward ? "CORE WEAPON READY" : "WEAPON PICKED UP",
                 isBossReward
-                    ? $"{weaponName.ToUpperInvariant()} online. Descent route punched deeper."
-                    : $"{weaponName.ToUpperInvariant()} online. Descent gate is now live.",
+                    ? $"{weaponName.ToUpperInvariant()} is online. The next drop is open."
+                    : $"{weaponName.ToUpperInvariant()} is online. Exit is live.",
                 Color.Lerp(new Color(0.05f, 0.08f, 0.12f, 0.95f), GetRewardColor(presetIndex) * new Color(1f, 1f, 1f, 0.9f), 0.42f),
                 isBossReward ? 3.4f : 2.6f);
         }
@@ -146,7 +160,7 @@ public class CybergrindWeaponReward : Interactable
         }
         else
         {
-            guideText = isBossReward ? "Champion chamber reward linked." : "New weapon equipped.";
+            guideText = isBossReward ? "Boss weapon installed." : "New weapon equipped.";
         }
     }
 
@@ -213,7 +227,11 @@ public class CybergrindWeaponReward : Interactable
     private void LateUpdate()
     {
         if (activeRewardGuide == this && guideTimer <= 0f)
+        {
             activeRewardGuide = null;
+            if (rewardPanel != null)
+                rewardPanel.SetActive(false);
+        }
     }
 
     private static void EnsureRewardGuideUI()
@@ -223,7 +241,7 @@ public class CybergrindWeaponReward : Interactable
         rewardCanvas = ProjectStructureUIRoot.GetOrCreateCanvas();
         if (rewardCanvas == null) return;
 
-        rewardPanel = new GameObject("WeaponRewardGuidePanel");
+        rewardPanel = new GameObject("ArenaWeaponRewardGuidePanel");
         rewardPanel.transform.SetParent(rewardCanvas.transform, false);
         RectTransform panelRect = rewardPanel.AddComponent<RectTransform>();
         panelRect.anchorMin = new Vector2(0.5f, 0f);
@@ -286,8 +304,9 @@ public class CybergrindWeaponReward : Interactable
     {
         if (rewardPanel == null) return;
 
-        if (activeRewardGuide == null || activeRewardGuide.guideTimer <= 0f)
+        if (activeRewardGuide == null || Time.unscaledTime >= activeGuideHideAt || activeRewardGuide.guideTimer <= 0f)
         {
+            activeRewardGuide = null;
             rewardPanel.SetActive(false);
             return;
         }
@@ -299,7 +318,7 @@ public class CybergrindWeaponReward : Interactable
             rewardPanelImage.color = Color.Lerp(new Color(0.02f, 0.04f, 0.055f, 0.94f), accent * new Color(1f, 1f, 1f, 0.92f), activeRewardGuide.isBossReward ? 0.4f : 0.26f);
         if (rewardTitleText != null)
         {
-            rewardTitleText.text = (activeRewardGuide.isBossReward ? "CORE VARIANT ACQUIRED // " : "WEAPON ACQUIRED // ") + activeRewardGuide.weaponName.ToUpperInvariant();
+            rewardTitleText.text = (activeRewardGuide.isBossReward ? "CORE WEAPON // " : "NEW WEAPON // ") + activeRewardGuide.weaponName.ToUpperInvariant();
             rewardTitleText.color = Color.Lerp(Color.white, accent, 0.28f);
         }
         if (rewardBodyText != null)
@@ -307,8 +326,8 @@ public class CybergrindWeaponReward : Interactable
             rewardBodyText.text =
                 activeRewardGuide.guideText + "\n\n" +
                 (activeRewardGuide.isBossReward
-                    ? "Champion chamber broken. Descend deeper.\n1/2 switch family   Q/E cycle variants   Left click fire   Right click special"
-                    : "1/2 switch family   Q/E cycle variants   Left click fire   Right click special");
+                    ? "Boss down. Take the lift deeper.\n1/2 switch guns   Q/E swap variants   Left click fire   Right click special"
+                    : "1/2 switch guns   Q/E swap variants   Left click fire   Right click special");
             rewardBodyText.color = new Color(0.84f, 0.9f, 0.96f);
         }
         if (rewardProgressFill != null)
