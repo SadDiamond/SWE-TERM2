@@ -105,11 +105,16 @@ public class ProjectStructurePresentation : MonoBehaviour
         panelImage = panelRoot.AddComponent<Image>();
         panelImage.color = new Color(0.01f, 0.02f, 0.03f, 0.92f);
 
-        overlayText = CreateText(panelRoot.transform, "OverlayTitle", 54, TextAlignmentOptions.Center, new Vector2(0.5f, 0.68f));
-        rankText = CreateText(panelRoot.transform, "OverlayRank", 28, TextAlignmentOptions.Center, new Vector2(0.5f, 0.54f));
-        subtitleText = CreateText(panelRoot.transform, "OverlaySubtitle", 24, TextAlignmentOptions.Center, new Vector2(0.5f, 0.38f));
-        detailText = CreateText(panelRoot.transform, "OverlayDetail", 18, TextAlignmentOptions.Center, new Vector2(0.5f, 0.23f));
-        footerText = CreateText(panelRoot.transform, "OverlayFooter", 16, TextAlignmentOptions.Center, new Vector2(0.5f, 0.08f));
+        CreateOverlayPanel(panelRoot.transform, "TitleLineTop", new Vector2(0.5f, 0.81f), new Vector2(720f, 2f), new Color(0.42f, 0.9f, 1f, 0.45f));
+        CreateOverlayPanel(panelRoot.transform, "TitleLineBottom", new Vector2(0.5f, 0.57f), new Vector2(720f, 2f), new Color(0.42f, 0.9f, 1f, 0.32f));
+        CreateOverlayPanel(panelRoot.transform, "TitleLeftPanel", new Vector2(0.19f, 0.35f), new Vector2(260f, 180f), new Color(0.02f, 0.045f, 0.06f, 0.5f));
+        CreateOverlayPanel(panelRoot.transform, "TitleRightPanel", new Vector2(0.81f, 0.35f), new Vector2(260f, 180f), new Color(0.02f, 0.045f, 0.06f, 0.5f));
+
+        overlayText = CreateText(panelRoot.transform, "OverlayTitle", 68, TextAlignmentOptions.Center, new Vector2(0.5f, 0.69f), new Vector2(1050f, 120f));
+        rankText = CreateText(panelRoot.transform, "OverlayRank", 20, TextAlignmentOptions.Center, new Vector2(0.5f, 0.54f), new Vector2(720f, 70f));
+        subtitleText = CreateText(panelRoot.transform, "OverlaySubtitle", 20, TextAlignmentOptions.Center, new Vector2(0.5f, 0.36f), new Vector2(720f, 150f));
+        detailText = CreateText(panelRoot.transform, "OverlayDetail", 15, TextAlignmentOptions.Center, new Vector2(0.5f, 0.2f), new Vector2(720f, 90f));
+        footerText = CreateText(panelRoot.transform, "OverlayFooter", 18, TextAlignmentOptions.Center, new Vector2(0.5f, 0.08f), new Vector2(720f, 56f));
         if (rankText != null)
             rankText.color = new Color(0.82f, 0.94f, 1f);
         if (detailText != null)
@@ -121,19 +126,38 @@ public class ProjectStructurePresentation : MonoBehaviour
 
     private TMP_Text CreateText(Transform parent, string name, float size, TextAlignmentOptions alignment, Vector2 anchor)
     {
+        return CreateText(parent, name, size, alignment, anchor, new Vector2(1000f, 180f));
+    }
+
+    private TMP_Text CreateText(Transform parent, string name, float size, TextAlignmentOptions alignment, Vector2 anchor, Vector2 sizeDelta)
+    {
         GameObject go = new GameObject(name);
         go.transform.SetParent(parent, false);
         RectTransform rect = go.AddComponent<RectTransform>();
         rect.anchorMin = anchor;
         rect.anchorMax = anchor;
         rect.pivot = new Vector2(0.5f, 0.5f);
-        rect.sizeDelta = new Vector2(1000f, 180f);
+        rect.sizeDelta = sizeDelta;
         TMP_Text text = go.AddComponent<TextMeshProUGUI>();
         text.fontSize = size;
         text.alignment = alignment;
         text.color = Color.white;
         text.textWrappingMode = TextWrappingModes.Normal;
         return text;
+    }
+
+    private Image CreateOverlayPanel(Transform parent, string name, Vector2 anchor, Vector2 size, Color color)
+    {
+        GameObject go = new GameObject(name);
+        go.transform.SetParent(parent, false);
+        RectTransform rect = go.AddComponent<RectTransform>();
+        rect.anchorMin = anchor;
+        rect.anchorMax = anchor;
+        rect.pivot = new Vector2(0.5f, 0.5f);
+        rect.sizeDelta = size;
+        Image image = go.AddComponent<Image>();
+        image.color = color;
+        return image;
     }
 
     private void ShowTitleScreen()
@@ -152,15 +176,14 @@ public class ProjectStructurePresentation : MonoBehaviour
         overlayText.color = ResolveOverlayAccent();
         CybergrindRunState runState = CybergrindRunState.GetOrCreate();
         if (rankText != null)
-            rankText.text = "STARTING LOADOUT // STANDARD FRAME";
+            rankText.text = "FAST ARENA SHOOTER";
         subtitleText.text =
             BuildTitleIntro() + "\n\n" +
-            "WASD move  SHIFT dash  CTRL/C slide  SPACE jump  E interact\n" +
-            "1/2 switch family  Q/E cycle variants  Right click special  ESC settings";
+            "ENTER / SPACE to start\nESC settings";
         if (detailText != null)
             detailText.text = BuildTitleDetail(runState);
         if (footerText != null)
-            footerText.text = "ENTER / SPACE // START RUN";
+            footerText.text = "WASD move   SHIFT dash   CTRL slide   SPACE jump   E interact   F melee";
 
         Time.timeScale = 0f;
         if (player != null) player.ToggleUIMode(true);
@@ -219,20 +242,20 @@ public class ProjectStructurePresentation : MonoBehaviour
         if (rankText != null)
             rankText.text = $"{summary.rankLabel}  //  {summary.signature}";
         subtitleText.text =
-            "The structure opened, but it did not end.\n" +
+            "You made it to the end of the run.\n" +
             $"{summary.epitaph}";
         if (detailText != null)
         {
             detailText.text =
                 $"{summary.highlightLine}\n\n" +
-                $"Descent score: {summary.score}\n" +
-                $"Floors broken: {runState.floorsClearedThisRun}   Bosses broken: {runState.bossesClearedThisRun}\n" +
-                $"Enemies dismantled: {runState.enemiesDefeatedThisRun}   Terminals solved: {runState.terminalsSolvedThisRun}\n" +
-                $"Interchange syncs: {runState.shopInteractionsThisRun}   Hull loss: {Mathf.RoundToInt(runState.damageTakenThisRun)}\n" +
-                $"Descent time: {FormatTime(duration)}";
+                $"Score: {summary.score}\n" +
+                $"Floors: {runState.floorsClearedThisRun}   Bosses: {runState.bossesClearedThisRun}\n" +
+                $"Kills: {runState.enemiesDefeatedThisRun}   Terminals: {runState.terminalsSolvedThisRun}\n" +
+                $"Shop uses: {runState.shopInteractionsThisRun}   Damage taken: {Mathf.RoundToInt(runState.damageTakenThisRun)}\n" +
+                $"Time: {FormatTime(duration)}";
         }
         if (footerText != null)
-            footerText.text = "ENTER / SPACE // RUN ANOTHER DESCENT";
+            footerText.text = "ENTER / SPACE // PLAY AGAIN";
         Time.timeScale = 0f;
         if (player != null) player.ToggleUIMode(true);
         Cursor.lockState = CursorLockMode.None;
@@ -273,19 +296,19 @@ public class ProjectStructurePresentation : MonoBehaviour
         overlayText.color = new Color(1f, 0.78f, 0.72f);
         CybergrindRunState runState = CybergrindRunState.GetOrCreate();
         if (rankText != null)
-            rankText.text = "DESCENT LOSS // SYSTEM DISENGAGED";
+            rankText.text = "RUN OVER";
         subtitleText.text =
-            "You went down before reaching the core.\n" +
-            "Take another run and push deeper.";
+            "You died before reaching the end.\n" +
+            "Start another run and try again.";
         if (detailText != null && runState != null)
         {
             detailText.text =
                 $"Floor reached: {Mathf.Max(1, arenaDirector != null ? arenaDirector.floor : 1):00}\n" +
-                $"Enemies dismantled: {runState.enemiesDefeatedThisRun}   Terminals solved: {runState.terminalsSolvedThisRun}\n" +
-                $"Interchange syncs: {runState.shopInteractionsThisRun}   Hull loss: {Mathf.RoundToInt(runState.damageTakenThisRun)}";
+                $"Kills: {runState.enemiesDefeatedThisRun}   Terminals: {runState.terminalsSolvedThisRun}\n" +
+                $"Shop uses: {runState.shopInteractionsThisRun}   Damage taken: {Mathf.RoundToInt(runState.damageTakenThisRun)}";
         }
         if (footerText != null)
-            footerText.text = "ENTER / SPACE // RESTART DESCENT    ESC // RETURN TO TITLE";
+            footerText.text = "ENTER / SPACE // RESTART    ESC // TITLE";
 
         Time.timeScale = 0f;
         if (player != null) player.ToggleUIMode(true);
@@ -303,27 +326,26 @@ public class ProjectStructurePresentation : MonoBehaviour
 
     private string BuildCoreEpitaph(CybergrindRunState runState)
     {
-        if (runState == null) return "You reached a living core and forced it to answer.";
+        if (runState == null) return "You reached the core.";
         if (runState.damageTakenThisRun < 80f && runState.bossesClearedThisRun >= 2)
-            return "You reached a living core and carved a clean line through its sentries.";
+            return "You reached the core with a clean run.";
         if (runState.terminalsSolvedThisRun >= 8)
-            return "You reached a living core and bent its machine logic into an open wound.";
+            return "You reached the core after clearing every objective.";
         if (runState.enemiesDefeatedThisRun >= 40)
-            return "You reached the core after tearing through everything it threw at you.";
-        return "You reached a living core and forced it to answer.";
+            return "You reached the core after clearing out the whole arena.";
+        return "You reached the core.";
     }
 
     private string BuildTitleIntro()
     {
         return
-            "Descend through a self-building megastructure.\n" +
-            "Finish the terminals. Break the robots. Grab new weapons and push deeper toward the core.";
+            "Clear rooms. Buy upgrades. Reach the core.";
     }
 
     private string BuildTitleDetail(CybergrindRunState runState)
     {
         int bossTargets = arenaDirector != null ? Mathf.Max(1, arenaDirector.bossFloorsToReachCore) : 3;
-        return $"Each run starts clean. Beat {bossTargets} boss floor{(bossTargets == 1 ? string.Empty : "s")} to reach the core.";
+        return $"Each run starts from scratch. Beat {bossTargets} boss floor{(bossTargets == 1 ? string.Empty : "s")} to reach the core.";
     }
 
     private Color ResolveOverlayAccent()
@@ -420,7 +442,7 @@ public class ProjectStructurePresentation : MonoBehaviour
         Cursor.visible = true;
 
         yield return PlayEndingBeat(
-            "HULL BREACH",
+            "YOU DIED",
             "You lost the run.\nThe structure kept moving without you.",
             "Recording failure.",
             new Color(0.03f, 0.01f, 0.015f, 0.88f),
@@ -488,9 +510,9 @@ public class ProjectStructurePresentation : MonoBehaviour
         RunSummary summary = new RunSummary();
         if (runState == null)
         {
-            summary.rankLabel = "UNRANKED RUN";
-            summary.signature = "NO SIGNAL";
-            summary.epitaph = "You reached a living core and forced it to answer.";
+            summary.rankLabel = "UNRANKED";
+            summary.signature = "NO DATA";
+            summary.epitaph = "You reached the end.";
             summary.highlightLine = "No run data was saved.";
             summary.score = 0;
             return summary;
@@ -515,57 +537,55 @@ public class ProjectStructurePresentation : MonoBehaviour
 
     private string ResolveRankLabel(int score)
     {
-        if (score >= 1000) return "PERFECT RUN";
-        if (score >= 820) return "CORE BREAKER";
-        if (score >= 650) return "DEEP RUN";
-        if (score >= 480) return "STRONG PUSH";
-        return "FIRST CUT";
+        if (score >= 1000) return "S RANK";
+        if (score >= 820) return "A RANK";
+        if (score >= 650) return "B RANK";
+        if (score >= 480) return "C RANK";
+        return "D RANK";
     }
 
     private string BuildRunSignature(CybergrindRunState runState, float duration)
     {
-        if (runState == null) return "NO SIGNAL";
+        if (runState == null) return "NO DATA";
 
         bool clean = runState.damageTakenThisRun <= 90f;
         bool fast = duration > 0f && duration <= 420f;
         bool puzzleHeavy = runState.terminalsSolvedThisRun >= 8;
         bool violent = runState.enemiesDefeatedThisRun >= 45;
 
-        if (clean && fast && violent) return "CLEAN CUT";
-        if (puzzleHeavy && clean) return "LOGIC KNIFE";
-        if (violent && runState.bossesClearedThisRun >= 2) return "SIEGE ENGINE";
-        if (fast) return "HOT DESCENT";
-        if (puzzleHeavy) return "MACHINE WHISPER";
-        return "OPEN WOUND";
+        if (clean && fast && violent) return "FAST CLEAR";
+        if (puzzleHeavy && clean) return "CLEAN CLEAR";
+        if (violent && runState.bossesClearedThisRun >= 2) return "FULL CLEAR";
+        if (fast) return "SPEED RUN";
+        if (puzzleHeavy) return "OBJECTIVE RUN";
+        return "STANDARD RUN";
     }
 
     private string BuildHighlightLine(CybergrindRunState runState, float duration)
     {
-        if (runState == null) return "The structure marked the breach and stayed awake.";
+        if (runState == null) return "No run data was saved.";
 
         if (runState.damageTakenThisRun <= 60f)
-            return "Minimal hull loss. The structure barely touched you.";
+            return "You took very little damage.";
         if (duration > 0f && duration <= 300f)
-            return "Fast breach. You moved faster than the stack could settle.";
+            return "You cleared the run quickly.";
         if (runState.terminalsSolvedThisRun >= 8)
-            return "You kept the terminals under control all the way down.";
+            return "You cleared every terminal on the way down.";
         if (runState.enemiesDefeatedThisRun >= 50)
-            return "You kept the pressure up and broke every line of defense.";
+            return "You cleared out most of the arena.";
         if (runState.shopInteractionsThisRun <= 1)
-            return "You barely slowed down the whole run.";
+            return "You barely stopped moving.";
 
-        return "You opened the way down. The next run can go even deeper.";
+        return "You made it through the run.";
     }
 
     private void EnsureRuntimePresentation()
     {
         Canvas hudCanvas = ProjectStructureUIRoot.GetOrCreateCanvas();
 
-        if (FindAnyObjectByType<ProjectStructureAtmosphereHUD>() == null)
-        {
-            GameObject go = new GameObject("ProjectStructureAtmosphereHUD");
-            go.AddComponent<ProjectStructureAtmosphereHUD>();
-        }
+        ProjectStructureAtmosphereHUD atmosphere = FindAnyObjectByType<ProjectStructureAtmosphereHUD>();
+        if (atmosphere != null)
+            atmosphere.gameObject.SetActive(false);
 
         if (FindAnyObjectByType<ProjectStructureAudioDirector>() == null)
         {
@@ -591,12 +611,6 @@ public class ProjectStructurePresentation : MonoBehaviour
             go.AddComponent<BossEncounterHUD>();
         }
 
-        if (FindAnyObjectByType<CombatFeedbackHUD>() == null)
-        {
-            GameObject go = new GameObject("CombatFeedbackHUD");
-            go.AddComponent<CombatFeedbackHUD>();
-        }
-
         if (FindAnyObjectByType<EnemyPriorityHUD>() == null)
         {
             GameObject go = new GameObject("EnemyPriorityHUD");
@@ -613,6 +627,12 @@ public class ProjectStructurePresentation : MonoBehaviour
         {
             GameObject go = new GameObject("ProjectStructureSettingsMenu");
             go.AddComponent<ProjectStructureSettingsMenu>();
+        }
+
+        if (FindAnyObjectByType<ShopPreviewHUD>() == null)
+        {
+            GameObject go = new GameObject("ShopPreviewHUD");
+            go.AddComponent<ShopPreviewHUD>();
         }
     }
 

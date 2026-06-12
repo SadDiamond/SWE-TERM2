@@ -9,6 +9,9 @@ public class PlayerController : MonoBehaviour, IDamageable
     public TMP_Text interactionPromptText;
     public TMP_Text healthText;
     public TMP_Text currencyText;
+    public Image healthBarFill;
+    public Image healthBarBack;
+    public Image currencyPanel;
     public Color crosshairBaseColor = new Color(0.72f, 0.9f, 1f, 0.9f);
     public Color crosshairFocusColor = new Color(0.64f, 1f, 0.9f, 1f);
     public Color crosshairHostileColor = new Color(1f, 0.68f, 0.48f, 0.98f);
@@ -27,8 +30,8 @@ public class PlayerController : MonoBehaviour, IDamageable
     [Header("Movement (Core)")]
     public float moveSpeed = 13.5f;
     public float groundAcceleration = 24f;
-    public float groundDeceleration = 11f;
-    public float airAcceleration = 10f;
+    public float groundDeceleration = 28f;
+    public float airAcceleration = 13.5f;
     public float gravity = -29f;
     public float jumpHeight = 2.85f;
     public int maxJumps = 2; 
@@ -38,37 +41,49 @@ public class PlayerController : MonoBehaviour, IDamageable
     [Header("Movement (Dash)")]
     public float dashForce = 28f; // Pure momentum burst
     public float dashCooldown = 0.85f;
+    public float dashDuration = 0.09f;
+    public float dashTargetSpeed = 25f;
+    public float dashExitSpeed = 13.5f;
+    public float launchCarrySpeedLimit = 20f;
 
     [Header("Movement (Slide & Slam)")]
     public float slideBaseSpeed = 18f; // Just a bit faster than running
-    public float slideFriction = 1.95f; // How fast you slow down while sliding
+    public float slideFriction = 1.45f; // How fast you slow down while sliding
     public float fallSpeedToSlideBoost = 0.58f; // Hitting the ground hard speeds up your slide
+    public float maxSlideStartSpeed = 22f;
     public float maxSlideJumpCarrySpeed = 26f;
     public float slideHeight = 1f;
     public float slideCooldown = 0.45f;
     public float slamSpeed = 40f; // How fast you plummet downwards
     public float postSlamSlideLockout = 0.25f;
+    public float slamReleaseDelay = 0.12f;
+    public float slideCameraDrop = 0.42f;
+    public float slideGroundGrace = 0.12f;
+    public float slideHoldSpeed = 14f;
+    public float slideSteerStrength = 9f;
     private float defaultHeight;
 
     [Header("Movement (Limits)")]
-    public float maxSpeedLimit = 42f; // Enough headroom for chaining movement
+    public float maxSpeedLimit = 29f; // Enough headroom for chaining movement
+    public float groundedStopSpeed = 0.6f;
 
     [Header("FX & Polish")]
     public Camera playerCamera;
     public ParticleSystem slideDust; // Drag a particle system here!
     public ParticleSystem speedLines;
-    public float maxSpeedFOV = 100f; // Zoom out FOV when going fast!
-    public float slideCameraDrop = 0.5f; // Dip the camera down when sliding
     public float overdriveSpeedThreshold = 24f;
     public float fallRespawnY = -18f;
     public float abyssRecoveryY = -8f;
     public bool enableAbyssRecovery = true;
+    public Color dashBurstColor = new Color(0.58f, 0.9f, 1f, 0.9f);
+    public Color slamBurstColor = new Color(1f, 0.72f, 0.42f, 0.92f);
     private float baseFOV;
     private Vector3 baseCameraLocalPos;
     private Vector3 lastSafePosition;
     private float safePositionTimer;
     private float slideLockoutTimer;
     private float slideCooldownTimer;
+    private float slideGroundGraceTimer;
     private float moveSpeedBonus;
     private float dashForceBonus;
     private float jumpHeightBonus;
@@ -77,12 +92,18 @@ public class PlayerController : MonoBehaviour, IDamageable
     [Header("Damage Feedback")]
     public Color damageFlashColor = new Color(0.9f, 0.12f, 0.08f, 0.22f);
     public float damageFlashDuration = 0.26f;
-    public float damageLookKick = 2.8f;
-    public float damageFovKick = 3.5f;
     public float weaponKickDuration = 0.12f;
-    public float weaponLookKick = 0.7f;
-    public float weaponCameraKickBack = 0.075f;
-    public float weaponCameraKickDown = 0.035f;
+
+    [Header("Melee")]
+    public float meleeRange = 2.1f;
+    public float meleeRadius = 1.15f;
+    public float meleeDamage = 28f;
+    public float meleeCooldown = 0.42f;
+    public float parryWindow = 0.16f;
+    public float parryProjectileSpeed = 85f;
+    public float parryDamageMultiplier = 1.6f;
+    public float meleeHitBoost = 5.5f;
+    public Color meleeBurstColor = new Color(1f, 0.86f, 0.48f, 0.95f);
 
     [Header("Look")]
     public float mouseSensitivity = 100f;
@@ -99,9 +120,12 @@ public class PlayerController : MonoBehaviour, IDamageable
     public bool isGrounded; // Made public so JumpPad can see it if needed
     private int jumpsRemaining;
     private float dashCooldownTimer;
+    private float dashTimer;
     private bool isSliding;
     private bool isSlamming;
+    private bool slideRequiresRelease;
     private Vector3 momentum;
+    private Vector3 dashVelocity;
     private float lastFrameVelocityY;
     private float disableGroundCheckTimer = 0f;
     private bool abyssRecoveredThisAirborneState;
@@ -111,6 +135,8 @@ public class PlayerController : MonoBehaviour, IDamageable
     private float damageFlashTimer;
     private float damageKickTimer;
     private float weaponKickTimer;
+    private float meleeCooldownTimer;
+    private float parryTimer;
     private float crosshairFireTimer;
     private Image damageFlashOverlay;
     private RectTransform crosshairRect;
@@ -119,6 +145,8 @@ public class PlayerController : MonoBehaviour, IDamageable
     private float crosshairHitTimer;
     private float crosshairKillTimer;
     private Color crosshairPulseColor;
+    private Material cachedWorldFxMaterial;
+    private Vector2 moveInputRaw;
 
     private float CurrentMoveSpeed => moveSpeed + moveSpeedBonus;
     private float CurrentDashForce => dashForce + dashForceBonus;
@@ -126,12 +154,18 @@ public class PlayerController : MonoBehaviour, IDamageable
     private float CurrentMaxHealth => maxHealth + maxHealthBonus;
     public float EffectiveMaxHealth => CurrentMaxHealth;
     public float Health01 => CurrentMaxHealth <= 0.01f ? 0f : Mathf.Clamp01(currentHealth / CurrentMaxHealth);
+    public bool DebugIsSliding => isSliding;
+    public bool DebugIsSlamming => isSlamming;
+    public float DebugDashTimer => dashTimer;
+    public Vector3 DebugMomentum => momentum;
+    public Vector3 DebugDashVelocity => dashVelocity;
 
     private const string MouseSensitivityPrefKey = "project_structure.mouse_sensitivity";
     private const string BaseFovPrefKey = "project_structure.base_fov";
     private const string MasterVolumePrefKey = "project_structure.master_volume";
 
     private Interactable currentInteractable;
+    public Interactable FocusedInteractable => currentInteractable;
     public float interactionDistance = 3f;
     public LayerMask interactableLayer;
     private string transientPromptText;
@@ -142,24 +176,41 @@ public class PlayerController : MonoBehaviour, IDamageable
     public bool respawnOnDeath = false;
     public bool isDead = false;
 
+    private float StandingOffset
+    {
+        get
+        {
+            if (controller == null)
+                return 1.15f;
+
+            return Mathf.Max(controller.height * 0.5f, controller.radius + 0.35f) + 0.08f;
+        }
+    }
+
     void Start()
     {
         controller = GetComponent<CharacterController>();
-        defaultHeight = controller.height;
+        if (controller != null)
+            defaultHeight = controller.height;
         Cursor.lockState = CursorLockMode.Locked;
         currentHealth = CurrentMaxHealth;
         currency = 0;
 
-        // Auto-assign camera if we forgot, and log its starting positions for FX
-        if (playerCamera == null && cameraTransform != null) playerCamera = cameraTransform.GetComponent<Camera>();
+        EnsureCameraReferences();
         if (playerCamera != null) baseFOV = playerCamera.fieldOfView;
         if (cameraTransform != null) baseCameraLocalPos = cameraTransform.localPosition;
         lastSafePosition = transform.position;
         EnsureVitalsHud();
         EnsureCrosshair();
-        EnsureSpeedLines();
-        EnsureDamageOverlay();
         LoadSettings();
+        if (playerCamera != null)
+            playerCamera.fieldOfView = baseFOV;
+        if (cameraTransform != null)
+            cameraTransform.localPosition = baseCameraLocalPos;
+        if (speedLines != null)
+            speedLines.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
+        if (damageFlashOverlay != null)
+            damageFlashOverlay.enabled = false;
 
         if (interactionPromptText != null)
         {
@@ -189,6 +240,8 @@ public class PlayerController : MonoBehaviour, IDamageable
 
         UpdateDamageFeedback();
         UpdateCrosshairVisual();
+        if (meleeCooldownTimer > 0f) meleeCooldownTimer -= Time.deltaTime;
+        if (parryTimer > 0f) parryTimer -= Time.deltaTime;
 
         if (isDead) return;
 
@@ -202,6 +255,7 @@ public class PlayerController : MonoBehaviour, IDamageable
 
         HandleMovement();
         HandleLook();
+        HandleMelee();
         HandleInteraction();
     }
 
@@ -228,24 +282,20 @@ public class PlayerController : MonoBehaviour, IDamageable
         transitionLocked = locked;
         if (!locked) return;
 
-        isSliding = false;
-        isSlamming = false;
-        momentum = Vector3.zero;
-        velocity = Vector3.zero;
-        if (controller != null)
-            controller.height = defaultHeight;
+        ClearMovementCarry(true);
     }
 
     // --- External Physics Methods ---
     public void LaunchPlayer(Vector3 launchVelocity)
     {
-        Debug.Log($"[PlayerController] LaunchPlayer called with velocity: {launchVelocity}");
-        
+        CacheControllerDefaults();
+
         // Force the player to be airborne for a split second so friction/gravity doesn't instantly cancel the jump pad
         disableGroundCheckTimer = 0.2f;
         
         // Disable CharacterController snapping by physically pushing the player off the ground first
-        controller.Move(Vector3.up * 0.1f);
+        if (controller != null && controller.enabled)
+            controller.Move(Vector3.up * 0.1f);
 
         // Cancel downward gravity immediately
         if (velocity.y < 0) velocity.y = 0;
@@ -253,12 +303,37 @@ public class PlayerController : MonoBehaviour, IDamageable
         // Add vertical height
         velocity.y = launchVelocity.y; // Override rather than add so double-jumping pads don't compound infinitely
         
-        // Add forward/horizontal momentum
-        momentum += new Vector3(launchVelocity.x, 0, launchVelocity.z);
+        // Carry launch speed without stacking infinite horizontal acceleration.
+        Vector3 launchPlanar = new Vector3(launchVelocity.x, 0f, launchVelocity.z);
+        Vector3 currentPlanar = Vector3.ProjectOnPlane(momentum, Vector3.up);
+        float carryLimit = Mathf.Clamp(launchCarrySpeedLimit + moveSpeedBonus, CurrentMoveSpeed + 4f, maxSpeedLimit);
+        if (launchPlanar.sqrMagnitude > 0.001f)
+        {
+            if (currentPlanar.sqrMagnitude > 0.001f)
+            {
+                Vector3 launchDir = launchPlanar.normalized;
+                float carriedAlongLaunch = Mathf.Max(0f, Vector3.Dot(currentPlanar, launchDir));
+                float targetLaunchSpeed = Mathf.Clamp(Mathf.Max(launchPlanar.magnitude, carriedAlongLaunch), 0f, carryLimit);
+                Vector3 sideways = currentPlanar - launchDir * Vector3.Dot(currentPlanar, launchDir);
+                sideways = Vector3.ClampMagnitude(sideways, CurrentMoveSpeed * 0.35f);
+                currentPlanar = launchDir * targetLaunchSpeed + sideways;
+            }
+            else
+            {
+                currentPlanar = Vector3.ClampMagnitude(launchPlanar, carryLimit);
+            }
+        }
+
+        momentum = Vector3.ClampMagnitude(currentPlanar, carryLimit);
         
         // Put player in falling state so they aren't stuck sliding
         isSliding = false;
-        controller.height = defaultHeight;
+        isSlamming = false;
+        dashTimer = 0f;
+        dashVelocity = Vector3.zero;
+        slideRequiresRelease = true;
+        if (controller != null)
+            controller.height = defaultHeight;
 
         // Force ground state false immediately so unity's CharacterController doesn't snap us back
         lastFrameVelocityY = velocity.y;
@@ -349,6 +424,98 @@ public class PlayerController : MonoBehaviour, IDamageable
         }
     }
 
+    private void HandleMelee()
+    {
+        if (UnityEngine.InputSystem.Keyboard.current == null) return;
+        if (!UnityEngine.InputSystem.Keyboard.current.fKey.wasPressedThisFrame) return;
+        if (meleeCooldownTimer > 0f) return;
+
+        meleeCooldownTimer = meleeCooldown;
+        parryTimer = parryWindow;
+
+        bool parriedProjectile = TryParryProjectile();
+        int hits = PerformMeleeStrike(parriedProjectile ? meleeDamage * 0.6f : meleeDamage);
+        SpawnWorldBurst(
+            transform.position + transform.forward * 1.2f + Vector3.up * 1f,
+            parriedProjectile ? Color.white : meleeBurstColor,
+            parriedProjectile ? 0.26f : 0.18f,
+            0.22f,
+            parriedProjectile ? 0.68f : 0.52f);
+
+        if (!parriedProjectile && hits == 0)
+            momentum += transform.forward * 1.2f;
+    }
+
+    private bool TryParryProjectile()
+    {
+        Vector3 center = cameraTransform.position + cameraTransform.forward * Mathf.Max(0.8f, meleeRange * 0.75f);
+        Collider[] hits = Physics.OverlapSphere(center, meleeRadius, ~0, QueryTriggerInteraction.Ignore);
+        bool parried = false;
+
+        for (int i = 0; i < hits.Length; i++)
+        {
+            if (hits[i] == null) continue;
+            Projectile projectile = hits[i].GetComponentInParent<Projectile>();
+            if (projectile == null || projectile.owner == gameObject) continue;
+
+            if (ReflectProjectile(projectile))
+                parried = true;
+        }
+
+        return parried;
+    }
+
+    public bool TryParryIncomingProjectile(Projectile projectile)
+    {
+        if (projectile == null || projectile.owner == gameObject) return false;
+        if (parryTimer <= 0f) return false;
+
+        return ReflectProjectile(projectile);
+    }
+
+    private bool ReflectProjectile(Projectile projectile)
+    {
+        if (projectile == null || cameraTransform == null) return false;
+
+        projectile.Reflect(gameObject, cameraTransform.forward, parryProjectileSpeed, parryDamageMultiplier);
+        parryTimer = 0f;
+        meleeCooldownTimer = Mathf.Min(meleeCooldownTimer, meleeCooldown * 0.45f);
+        SpawnWorldBurst(cameraTransform.position + cameraTransform.forward * 1.05f, Color.white, 0.22f, 0.18f, 0.72f);
+        ShowTransientStatus("Parried", 0.45f);
+        return true;
+    }
+
+    private int PerformMeleeStrike(float damage)
+    {
+        Vector3 center = cameraTransform.position + cameraTransform.forward * meleeRange;
+        Collider[] hits = Physics.OverlapSphere(center, meleeRadius, ~0, QueryTriggerInteraction.Ignore);
+        int hitCount = 0;
+
+        for (int i = 0; i < hits.Length; i++)
+        {
+            Collider collider = hits[i];
+            if (collider == null) continue;
+            if (collider.transform.IsChildOf(transform)) continue;
+
+            IDamageable damageable = collider.GetComponentInParent<IDamageable>();
+            if (damageable == null || damageable is PlayerController) continue;
+
+            damageable.TakeDamage(damage);
+            if (damageable is BasicEnemyAI enemy)
+                enemy.ApplyMeleeStun(0.35f);
+
+            if (collider.attachedRigidbody != null)
+                collider.attachedRigidbody.AddForce(cameraTransform.forward * 5.5f, ForceMode.Impulse);
+
+            Vector3 boost = Vector3.ProjectOnPlane(cameraTransform.forward, Vector3.up).normalized * meleeHitBoost;
+            momentum = Vector3.ClampMagnitude(momentum + boost, maxSpeedLimit);
+
+            hitCount++;
+        }
+
+        return hitCount;
+    }
+
     private Interactable FindBestInteractable(Ray ray)
     {
         RaycastHit[] hits = Physics.RaycastAll(ray, interactionDistance, interactableLayer);
@@ -435,7 +602,7 @@ public class PlayerController : MonoBehaviour, IDamageable
             return false;
 
         if (message.Equals("DEAD", System.StringComparison.OrdinalIgnoreCase) ||
-            message.Equals("HULL BREACH", System.StringComparison.OrdinalIgnoreCase))
+            message.Equals("YOU DIED", System.StringComparison.OrdinalIgnoreCase))
             return false;
         if (message.StartsWith("Need ", System.StringComparison.OrdinalIgnoreCase))
             return false;
@@ -463,8 +630,8 @@ public class PlayerController : MonoBehaviour, IDamageable
             return string.Empty;
 
         string trimmed = message.Trim();
-        if (trimmed.Equals("HULL BREACH", System.StringComparison.OrdinalIgnoreCase))
-            return "<color=#FF7668><b>HULL BREACH</b></color>";
+        if (trimmed.Equals("YOU DIED", System.StringComparison.OrdinalIgnoreCase))
+            return "<color=#FF7668><b>YOU DIED</b></color>";
         if (trimmed.StartsWith("Need ", System.StringComparison.OrdinalIgnoreCase))
             return emphasize
                 ? $"<color=#FFC766><b>{trimmed}</b></color>"
@@ -503,6 +670,8 @@ public class PlayerController : MonoBehaviour, IDamageable
 
     void HandleMovement()
     {
+        bool wasGrounded = isGrounded;
+
         if (disableGroundCheckTimer > 0)
         {
             disableGroundCheckTimer -= Time.deltaTime;
@@ -521,13 +690,25 @@ public class PlayerController : MonoBehaviour, IDamageable
         {
             velocity.y = -2f;
             jumpsRemaining = maxJumps;
-            isSlamming = false; // FIX: Always reset slam state when touching the ground!
             abyssRecoveredThisAirborneState = false;
         }
 
+        bool landedThisFrame = isGrounded && !wasGrounded;
+        if (landedThisFrame && isSlamming)
+        {
+            isSlamming = false;
+            slideRequiresRelease = true;
+            slideLockoutTimer = Mathf.Max(slideLockoutTimer, slamReleaseDelay);
+            momentum = Vector3.ClampMagnitude(Vector3.ProjectOnPlane(momentum, Vector3.up), Mathf.Max(CurrentMoveSpeed * 0.95f, slideBaseSpeed * 0.75f));
+        }
+
+        float previousDashTimer = dashTimer;
         if (dashCooldownTimer > 0) dashCooldownTimer -= Time.deltaTime;
+        if (dashTimer > 0f) dashTimer = Mathf.Max(0f, dashTimer - Time.deltaTime);
         if (slideLockoutTimer > 0f) slideLockoutTimer -= Time.deltaTime;
         if (slideCooldownTimer > 0f) slideCooldownTimer -= Time.deltaTime;
+        if (isSliding)
+            slideGroundGraceTimer = isGrounded ? slideGroundGrace : Mathf.Max(0f, slideGroundGraceTimer - Time.deltaTime);
         TrackSafePosition();
 
         if (enableAbyssRecovery && transform.position.y < abyssRecoveryY && !abyssRecoveredThisAirborneState)
@@ -549,83 +730,105 @@ public class PlayerController : MonoBehaviour, IDamageable
             UnityEngine.InputSystem.Keyboard.current.wKey.isPressed ? 1 :
             UnityEngine.InputSystem.Keyboard.current.sKey.isPressed ? -1 : 0
         ).normalized;
+        moveInputRaw = input;
 
         Vector3 inputDir = transform.right * input.x + transform.forward * input.y;
+        bool slamPressedThisFrame =
+            UnityEngine.InputSystem.Keyboard.current.ctrlKey.wasPressedThisFrame ||
+            UnityEngine.InputSystem.Keyboard.current.cKey.wasPressedThisFrame;
+        bool wantsToSlide = UnityEngine.InputSystem.Keyboard.current.ctrlKey.isPressed || UnityEngine.InputSystem.Keyboard.current.cKey.isPressed;
+
+        if (previousDashTimer > 0f && dashTimer <= 0f)
+            FinishDash(inputDir);
+
         if (jumpBufferTimer > 0f)
             jumpBufferTimer = Mathf.Max(0f, jumpBufferTimer - Time.deltaTime);
         if (UnityEngine.InputSystem.Keyboard.current.spaceKey.wasPressedThisFrame)
             jumpBufferTimer = jumpBufferTime;
 
-        // --- DASH LOGIC ---
-        // Dash now ADDS a massive burst of momentum rather than overriding control
         if (UnityEngine.InputSystem.Keyboard.current.leftShiftKey.wasPressedThisFrame && dashCooldownTimer <= 0)
         {
             dashCooldownTimer = dashCooldown;
             Vector3 dashDir = inputDir.magnitude > 0.1f ? inputDir : transform.forward;
-            
-            // Add momentum (retaining previous velocity)
-            momentum += dashDir * CurrentDashForce;
-            velocity.y = 0f; // Brief hover effect
+            float dashSpeed = Mathf.Clamp(dashTargetSpeed + dashForceBonus * 0.25f, CurrentMoveSpeed * 1.1f, CurrentMoveSpeed + 10f);
+            dashVelocity = dashDir * dashSpeed;
+            momentum = dashVelocity;
+            dashTimer = dashDuration;
+            ExitSlide(false);
+            isSlamming = false;
+            slideRequiresRelease = wantsToSlide;
+            velocity.y = isGrounded ? Mathf.Min(velocity.y, 0f) : Mathf.Clamp(velocity.y, -4f, 4f);
+            SpawnDashBurst();
         }
 
         // --- SLIDE & SLAM LOGIC ---
-        bool wantsToSlide = UnityEngine.InputSystem.Keyboard.current.ctrlKey.isPressed || UnityEngine.InputSystem.Keyboard.current.cKey.isPressed;
+        if (!wantsToSlide)
+            slideRequiresRelease = false;
 
         // Ground Slam (Mid-air drop)
-        if (wantsToSlide && !isGrounded && !isSlamming)
+        if (slamPressedThisFrame && !isGrounded && !isSlamming && !slideRequiresRelease)
         {
+            ExitSlide(false);
             isSlamming = true;
             velocity.y = -slamSpeed; // Plunge straight down
+            momentum = Vector3.ClampMagnitude(Vector3.ProjectOnPlane(momentum, Vector3.up), Mathf.Max(CurrentMoveSpeed, dashExitSpeed));
         }
 
-        if (wantsToSlide && isGrounded && !isSliding && slideLockoutTimer <= 0f && slideCooldownTimer <= 0f)
+        if (wantsToSlide && isGrounded && !isSliding && !slideRequiresRelease && slideLockoutTimer <= 0f && slideCooldownTimer <= 0f)
         {
             isSliding = true;
             controller.height = slideHeight;
+            slideGroundGraceTimer = slideGroundGrace;
 
-            // If we fell from a great height (or slammed), turn that fall speed into forward slide speed!
+            // If we fell from a great height, turn that fall speed into forward slide speed.
             float fallBoost = 0f;
             if (fallSpeed < -10f && !isSlamming)
             {
-                // Multiplier makes massive slams give crazy slide speed
                 fallBoost = Mathf.Abs(fallSpeed) * fallSpeedToSlideBoost;
-            }
-            if (isSlamming)
-            {
-                slideLockoutTimer = postSlamSlideLockout;
-                isSlamming = false;
-                isSliding = false;
-                controller.height = defaultHeight;
-                momentum *= 0.65f;
-                slideCooldownTimer = Mathf.Max(slideCooldownTimer, postSlamSlideLockout);
-                return;
             }
 
             float currentSpeed = momentum.magnitude;
-            float newSpeed = Mathf.Max(slideBaseSpeed, currentSpeed + fallBoost); 
+            float slideLimit = Mathf.Max(maxSlideStartSpeed, slideBaseSpeed);
+            float newSpeed = Mathf.Clamp(Mathf.Max(slideBaseSpeed, currentSpeed + fallBoost), slideBaseSpeed, slideLimit);
             
             // If we have no input direction, slide wherever we are looking
             Vector3 slideDir = inputDir.magnitude > 0.1f ? inputDir.normalized : transform.forward;
             momentum = slideDir * newSpeed;
             velocity.y = Mathf.Max(velocity.y, 0f);
         }
-        else if ((!wantsToSlide || !isGrounded) && isSliding)
+        else if ((!wantsToSlide || (!isGrounded && slideGroundGraceTimer <= 0f)) && isSliding)
         {
-            // Stop sliding 
             if (!wantsToSlide)
             {
-                isSliding = false;
-                controller.height = defaultHeight;
-                slideCooldownTimer = slideCooldown;
+                ExitSlide(true);
+            }
+            else if (!isGrounded)
+            {
+                ExitSlide(false);
+                slideRequiresRelease = true;
             }
         }
 
         // --- MOMENTUM & FRICTION LOGIC ---
-        if (isGrounded)
+        if (dashTimer > 0f)
+        {
+            momentum = dashVelocity;
+        }
+        else if (isGrounded)
         {
             if (isSliding)
             {
-                momentum = Vector3.Lerp(momentum, Vector3.zero, slideFriction * 0.85f * Time.deltaTime);
+                momentum = Vector3.MoveTowards(momentum, Vector3.zero, slideFriction * CurrentMoveSpeed * 0.72f * Time.deltaTime);
+                if (wantsToSlide)
+                {
+                    Vector3 slideDir = momentum.sqrMagnitude > 0.01f ? momentum.normalized : transform.forward;
+                    if (inputDir.sqrMagnitude > 0.01f)
+                        slideDir = Vector3.Slerp(slideDir, inputDir.normalized, slideSteerStrength * Time.deltaTime).normalized;
+
+                    float sustainedSpeed = inputDir.sqrMagnitude > 0.01f ? slideHoldSpeed : slideHoldSpeed * 0.82f;
+                    float speed = Mathf.Max(momentum.magnitude, Mathf.Min(sustainedSpeed, maxSlideStartSpeed));
+                    momentum = slideDir * speed;
+                }
             }
             else
             {
@@ -653,8 +856,7 @@ public class PlayerController : MonoBehaviour, IDamageable
 
             if (isSliding)
             {
-                isSliding = false; 
-                controller.height = defaultHeight;
+                ExitSlide(false);
                 momentum = Vector3.ClampMagnitude(momentum, maxSlideJumpCarrySpeed);
                 slideCooldownTimer = slideCooldown;
             }
@@ -669,31 +871,22 @@ public class PlayerController : MonoBehaviour, IDamageable
 
         // Apply Final Move
         Vector3 finalMove = momentum + (Vector3.up * velocity.y);
-        controller.Move(finalMove * Time.deltaTime);
+        CollisionFlags collisionFlags = controller.Move(finalMove * Time.deltaTime);
+        if ((collisionFlags & CollisionFlags.Above) != 0 && velocity.y > 0f)
+            velocity.y = 0f;
+        if ((collisionFlags & CollisionFlags.Sides) != 0 && dashTimer > 0f)
+            FinishDash(inputDir);
+        if (dashTimer <= 0f && !isSliding)
+            momentum = Vector3.ClampMagnitude(momentum, Mathf.Max(CurrentMoveSpeed * 1.05f, dashExitSpeed));
 
-        // --- FX & POLISH (FOV, Camera Drop, Particles) ---
         if (playerCamera != null)
         {
-            // Fix: Use actual physical speed (ignoring falling) to calculate FOV scaling. 
-            // This fixes the bug where running into a wall keeps FOV zoomed out!
-            Vector3 actualGroundVel = new Vector3(controller.velocity.x, 0f, controller.velocity.z);
-            float speedRatio = actualGroundVel.magnitude / maxSpeedLimit;
-            
-            float targetFOV = isSlamming ? maxSpeedFOV : Mathf.Lerp(baseFOV, maxSpeedFOV, speedRatio);
-            
-            playerCamera.fieldOfView = Mathf.Lerp(playerCamera.fieldOfView, targetFOV, 10f * Time.deltaTime);
-
-            float targetCamY = isSliding ? baseCameraLocalPos.y - slideCameraDrop : baseCameraLocalPos.y;
-            float weaponKick01 = Mathf.Clamp01(weaponKickTimer / Mathf.Max(0.01f, weaponKickDuration));
-            Vector3 recoilOffset = new Vector3(0f, -weaponCameraKickDown * weaponKick01, -weaponCameraKickBack * weaponKick01);
-            cameraTransform.localPosition = Vector3.Lerp(
-                cameraTransform.localPosition, 
-                new Vector3(baseCameraLocalPos.x, targetCamY, baseCameraLocalPos.z) + recoilOffset, 
-                15f * Time.deltaTime
-            );
+            playerCamera.fieldOfView = baseFOV;
         }
-
-        UpdateSpeedLines();
+        if (cameraTransform != null)
+            cameraTransform.localPosition = isSliding
+                ? baseCameraLocalPos + Vector3.down * slideCameraDrop
+                : baseCameraLocalPos;
 
         if (slideDust != null)
         {
@@ -736,82 +929,180 @@ public class PlayerController : MonoBehaviour, IDamageable
         if (Physics.Raycast(transform.position + Vector3.up * 0.2f, Vector3.down, out RaycastHit hit, 3f))
         {
             if (!hit.collider.isTrigger)
-                lastSafePosition = transform.position;
+                lastSafePosition = ResolveStandingPosition(new Vector3(transform.position.x, hit.point.y, transform.position.z));
         }
     }
 
     private void RespawnAtLastSafePosition()
     {
         controller.enabled = false;
-        transform.position = lastSafePosition + Vector3.up * 1.0f;
+        transform.position = ResolveStandingPosition(lastSafePosition);
         controller.enabled = true;
-        velocity = Vector3.zero;
-        momentum = Vector3.zero;
-        isSliding = false;
-        isSlamming = false;
-        controller.height = defaultHeight;
+        ClearMovementCarry(true);
+        lastSafePosition = transform.position;
     }
 
     private void RecoverFromAbyss()
     {
         abyssRecoveredThisAirborneState = true;
         Vector3 targetPosition = lastSafePosition + Vector3.up * 1.2f;
-        CybergrindArenaGenerator generator = FindAnyObjectByType<CybergrindArenaGenerator>();
-        if (generator != null && generator.TryGetRecoveryPosition(transform.position, out Vector3 recoveryPosition))
-            targetPosition = recoveryPosition;
 
         controller.enabled = false;
-        transform.position = targetPosition;
+        transform.position = ResolveStandingPosition(targetPosition);
         controller.enabled = true;
+        dashTimer = 0f;
+        dashVelocity = Vector3.zero;
+        isSliding = false;
+        isSlamming = false;
+        slideRequiresRelease = false;
+        slideGroundGraceTimer = 0f;
+        if (controller != null)
+            controller.height = defaultHeight;
         velocity = new Vector3(0f, Mathf.Sqrt((CurrentJumpHeight + 1.4f) * -2f * gravity), 0f);
-        momentum *= 0.55f;
+        momentum = Vector3.ClampMagnitude(Vector3.ProjectOnPlane(momentum, Vector3.up), CurrentMoveSpeed * 0.45f);
+        lastSafePosition = transform.position;
+    }
+
+    private void ClearMovementCarry(bool clearCooldowns)
+    {
+        CacheControllerDefaults();
+        velocity = Vector3.zero;
+        momentum = Vector3.zero;
+        dashVelocity = Vector3.zero;
+        dashTimer = 0f;
+        isSliding = false;
+        isSlamming = false;
+        slideRequiresRelease = false;
+        slideGroundGraceTimer = 0f;
+        jumpBufferTimer = 0f;
+        coyoteTimer = 0f;
+        disableGroundCheckTimer = 0f;
+        abyssRecoveredThisAirborneState = false;
+
+        if (clearCooldowns)
+        {
+            dashCooldownTimer = 0f;
+            slideCooldownTimer = 0f;
+            slideLockoutTimer = 0f;
+        }
+
+        if (controller != null)
+            controller.height = defaultHeight;
+    }
+
+    private void CacheControllerDefaults()
+    {
+        if (controller == null)
+            controller = GetComponent<CharacterController>();
+        if (controller != null && defaultHeight <= 0.01f)
+            defaultHeight = controller.height;
+    }
+
+    private void ExitSlide(bool applyCooldown)
+    {
+        if (!isSliding)
+        {
+            if (controller != null)
+                controller.height = defaultHeight;
+            return;
+        }
+
+        isSliding = false;
+        slideGroundGraceTimer = 0f;
+        if (controller != null)
+            controller.height = defaultHeight;
+        momentum = Vector3.ClampMagnitude(Vector3.ProjectOnPlane(momentum, Vector3.up), Mathf.Max(CurrentMoveSpeed * 1.05f, slideBaseSpeed * 0.85f));
+        if (applyCooldown)
+            slideCooldownTimer = slideCooldown;
+    }
+
+    private void FinishDash(Vector3 inputDir)
+    {
+        if (dashVelocity.sqrMagnitude <= 0.0001f)
+        {
+            dashTimer = 0f;
+            return;
+        }
+
+        Vector3 exitDir = dashVelocity.normalized;
+        Vector3 planarMomentum = Vector3.ProjectOnPlane(momentum, Vector3.up);
+        float exitSpeed = Mathf.Min(planarMomentum.magnitude, Mathf.Max(CurrentMoveSpeed, dashExitSpeed));
+        if (inputDir.sqrMagnitude > 0.0001f)
+            exitDir = Vector3.Slerp(exitDir, inputDir.normalized, isGrounded ? 0.25f : 0.12f).normalized;
+
+        momentum = exitDir * exitSpeed;
+        dashVelocity = Vector3.zero;
+        dashTimer = 0f;
     }
 
     private void ApplyGroundMovement(Vector3 inputDir)
     {
+        Vector3 horizontalMomentum = Vector3.ProjectOnPlane(momentum, Vector3.up);
+
         if (inputDir.sqrMagnitude <= 0.0001f)
         {
-            momentum = Vector3.MoveTowards(momentum, Vector3.zero, groundDeceleration * CurrentMoveSpeed * 0.95f * Time.deltaTime);
+            float stopRate = groundDeceleration * Mathf.Max(CurrentMoveSpeed, 1f) * 1.65f * Time.deltaTime;
+            horizontalMomentum = Vector3.MoveTowards(horizontalMomentum, Vector3.zero, stopRate);
+            if (horizontalMomentum.magnitude <= groundedStopSpeed)
+                horizontalMomentum = Vector3.zero;
+
+            momentum = horizontalMomentum;
             return;
         }
 
         Vector3 desiredDir = inputDir.normalized;
         Vector3 desiredVelocity = desiredDir * CurrentMoveSpeed;
-        float forwardSpeed = Vector3.Dot(momentum, desiredDir);
-        bool carryingSpeed = momentum.magnitude > CurrentMoveSpeed && forwardSpeed > CurrentMoveSpeed * 0.9f;
+        float forwardSpeed = Vector3.Dot(horizontalMomentum, desiredDir);
+        float angleDot = horizontalMomentum.sqrMagnitude > 0.01f ? Vector3.Dot(horizontalMomentum.normalized, desiredDir) : 1f;
+        if (angleDot < 0.2f)
+        {
+            float redirectRate = groundDeceleration * CurrentMoveSpeed * (angleDot < -0.35f ? 3.2f : 2.35f) * Time.deltaTime;
+            horizontalMomentum = Vector3.MoveTowards(horizontalMomentum, desiredVelocity, redirectRate);
+            momentum = horizontalMomentum;
+            return;
+        }
+        bool carryingSpeed = horizontalMomentum.magnitude > CurrentMoveSpeed && forwardSpeed > CurrentMoveSpeed * 0.9f;
 
         if (carryingSpeed)
         {
-            Vector3 sideways = Vector3.ProjectOnPlane(momentum, desiredDir);
-            sideways = Vector3.MoveTowards(sideways, Vector3.zero, groundDeceleration * CurrentMoveSpeed * 0.85f * Time.deltaTime);
-            float retainedForward = Mathf.MoveTowards(forwardSpeed, CurrentMoveSpeed, groundDeceleration * CurrentMoveSpeed * 1.2f * Time.deltaTime);
-            momentum = desiredDir * retainedForward + sideways;
+            Vector3 sideways = horizontalMomentum - desiredDir * forwardSpeed;
+            sideways = Vector3.MoveTowards(sideways, Vector3.zero, groundDeceleration * CurrentMoveSpeed * 1.3f * Time.deltaTime);
+            float retainedForward = Mathf.MoveTowards(forwardSpeed, CurrentMoveSpeed, groundDeceleration * CurrentMoveSpeed * 2.3f * Time.deltaTime);
+            horizontalMomentum = desiredDir * retainedForward + sideways;
         }
         else
         {
-            momentum = Vector3.MoveTowards(momentum, desiredVelocity, groundAcceleration * CurrentMoveSpeed * 2.1f * Time.deltaTime);
+            horizontalMomentum = Vector3.MoveTowards(horizontalMomentum, desiredVelocity, groundAcceleration * CurrentMoveSpeed * 3.2f * Time.deltaTime);
         }
+
+        momentum = horizontalMomentum;
     }
 
     private void ApplyAirMovement(Vector3 inputDir)
     {
+        Vector3 horizontalMomentum = Vector3.ProjectOnPlane(momentum, Vector3.up);
+        float airCarryLimit = Mathf.Clamp(launchCarrySpeedLimit + moveSpeedBonus, CurrentMoveSpeed * 1.18f, maxSpeedLimit);
+
         if (inputDir.sqrMagnitude > 0.0001f)
         {
             Vector3 wishDir = inputDir.normalized;
-            float currentSpeed = Vector3.Dot(momentum, wishDir);
-            float targetAirSpeed = Mathf.Max(CurrentMoveSpeed, momentum.magnitude);
+            float currentSpeed = Vector3.Dot(horizontalMomentum, wishDir);
+            float targetAirSpeed = Mathf.Min(Mathf.Max(CurrentMoveSpeed * 1.08f, currentSpeed), CurrentMoveSpeed * 1.2f);
             float addSpeed = Mathf.Max(0f, targetAirSpeed - currentSpeed);
-            float accel = airAcceleration * CurrentMoveSpeed * 1.7f * Time.deltaTime;
+            float accel = airAcceleration * CurrentMoveSpeed * 1.28f * Time.deltaTime;
             accel = Mathf.Min(accel, addSpeed);
-            momentum += wishDir * accel;
+            horizontalMomentum += wishDir * accel;
 
-            Vector3 lateral = Vector3.ProjectOnPlane(momentum, wishDir);
-            momentum = wishDir * Vector3.Dot(momentum, wishDir) + Vector3.MoveTowards(lateral, lateral * 0.92f, airAcceleration * 0.15f * Time.deltaTime);
+            Vector3 lateral = horizontalMomentum - (wishDir * Vector3.Dot(horizontalMomentum, wishDir));
+            lateral = Vector3.MoveTowards(lateral, Vector3.zero, airAcceleration * 0.9f * Time.deltaTime);
+            horizontalMomentum = wishDir * Vector3.Dot(horizontalMomentum, wishDir) + lateral;
         }
         else
         {
-            momentum *= 1f - Mathf.Clamp01(Time.deltaTime * 0.08f);
+            horizontalMomentum = Vector3.MoveTowards(horizontalMomentum, Vector3.zero, airAcceleration * 0.75f * Time.deltaTime);
         }
+
+        momentum = Vector3.ClampMagnitude(horizontalMomentum, airCarryLimit);
     }
 
     private void HandleDefeatAndRespawn()
@@ -841,7 +1132,7 @@ public class PlayerController : MonoBehaviour, IDamageable
         if (crosshair != null) crosshair.SetActive(false);
         if (interactionPromptText != null)
         {
-            interactionPromptText.text = "HULL BREACH";
+            interactionPromptText.text = "YOU DIED";
             interactionPromptText.gameObject.SetActive(true);
         }
         if (controller != null) controller.enabled = false;
@@ -855,11 +1146,7 @@ public class PlayerController : MonoBehaviour, IDamageable
         damageInvulnerabilityTimer = 0f;
         damageFlashTimer = 0f;
         damageKickTimer = 0f;
-        velocity = Vector3.zero;
-        momentum = Vector3.zero;
-        isSliding = false;
-        isSlamming = false;
-        abyssRecoveredThisAirborneState = false;
+        ClearMovementCarry(true);
         if (controller != null)
         {
             controller.enabled = true;
@@ -867,7 +1154,7 @@ public class PlayerController : MonoBehaviour, IDamageable
         }
 
         currentHealth = CurrentMaxHealth;
-        lastSafePosition = transform.position;
+        lastSafePosition = ResolveStandingPosition(transform.position);
         safePositionTimer = 0f;
         RefreshVitalsUI();
         ClearFocus();
@@ -877,20 +1164,14 @@ public class PlayerController : MonoBehaviour, IDamageable
         EnsureCrosshair();
         if (crosshair != null) crosshair.SetActive(true);
         if (interactionPromptText != null) interactionPromptText.gameObject.SetActive(false);
-        if (damageFlashOverlay != null)
-        {
-            damageFlashOverlay.enabled = false;
-            damageFlashOverlay.color = new Color(damageFlashColor.r, damageFlashColor.g, damageFlashColor.b, 0f);
-        }
     }
 
     public void NotifySpawnPlacement(Vector3 spawnPosition)
     {
-        velocity = Vector3.zero;
-        momentum = Vector3.zero;
-        lastSafePosition = spawnPosition;
+        ClearMovementCarry(true);
+        lastSafePosition = ResolveStandingPosition(spawnPosition);
         safePositionTimer = 0f;
-        abyssRecoveredThisAirborneState = false;
+        transform.position = lastSafePosition;
     }
 
     public void NotifyWeaponHit(Color accentColor, bool kill)
@@ -904,15 +1185,18 @@ public class PlayerController : MonoBehaviour, IDamageable
 
     public void NotifyWeaponFired(bool heavy)
     {
-        weaponKickTimer = Mathf.Max(weaponKickTimer, weaponKickDuration * (heavy ? 1.15f : 1f));
         crosshairFireTimer = Mathf.Max(crosshairFireTimer, heavy ? 0.14f : 0.1f);
-        xRotation = Mathf.Clamp(xRotation - (heavy ? weaponLookKick * 1.35f : weaponLookKick), -80f, 80f);
     }
 
-    private void RefreshVitalsUI()
+    public void RefreshVitalsUI()
     {
         if (healthText != null)
-            healthText.text = $"HULL {Mathf.CeilToInt(currentHealth)}/{Mathf.CeilToInt(CurrentMaxHealth)}";
+            healthText.text = $"HP {Mathf.CeilToInt(currentHealth)}/{Mathf.CeilToInt(CurrentMaxHealth)}";
+        if (healthBarFill != null)
+        {
+            healthBarFill.fillAmount = Health01;
+            healthBarFill.color = Color.Lerp(new Color(1f, 0.3f, 0.26f), new Color(0.34f, 1f, 0.6f), Health01);
+        }
 
         if (currencyText != null)
             currencyText.text = $"COINS {currency}";
@@ -920,7 +1204,7 @@ public class PlayerController : MonoBehaviour, IDamageable
 
     private void EnsureVitalsHud()
     {
-        if (healthText != null && currencyText != null)
+        if (healthText != null && currencyText != null && healthBarFill != null)
             return;
 
         Canvas canvas = ProjectStructureUIRoot.GetOrCreateCanvas();
@@ -936,23 +1220,103 @@ public class PlayerController : MonoBehaviour, IDamageable
             rect.anchorMin = new Vector2(0f, 1f);
             rect.anchorMax = new Vector2(0f, 1f);
             rect.pivot = new Vector2(0f, 1f);
-            rect.anchoredPosition = new Vector2(22f, -18f);
-            rect.sizeDelta = new Vector2(240f, 88f);
+            rect.anchoredPosition = new Vector2(14f, -12f);
+            rect.sizeDelta = new Vector2(178f, 62f);
 
             Image panel = hud.AddComponent<Image>();
             panel.color = new Color(0.02f, 0.035f, 0.05f, 0.72f);
 
+            GameObject healthBackObject = new GameObject("HealthBarBack");
+            healthBackObject.transform.SetParent(hud.transform, false);
+            RectTransform healthBackRect = healthBackObject.AddComponent<RectTransform>();
+            healthBackRect.anchorMin = new Vector2(0f, 1f);
+            healthBackRect.anchorMax = new Vector2(0f, 1f);
+            healthBackRect.pivot = new Vector2(0f, 1f);
+            healthBackRect.anchoredPosition = new Vector2(12f, -10f);
+            healthBackRect.sizeDelta = new Vector2(148f, 10f);
+            healthBarBack = healthBackObject.AddComponent<Image>();
+            healthBarBack.color = new Color(0.14f, 0.18f, 0.22f, 0.96f);
+
+            GameObject healthFillObject = new GameObject("HealthBarFill");
+            healthFillObject.transform.SetParent(healthBackObject.transform, false);
+            RectTransform healthFillRect = healthFillObject.AddComponent<RectTransform>();
+            healthFillRect.anchorMin = new Vector2(0f, 0f);
+            healthFillRect.anchorMax = new Vector2(1f, 1f);
+            healthFillRect.offsetMin = new Vector2(2f, 2f);
+            healthFillRect.offsetMax = new Vector2(-2f, -2f);
+            healthBarFill = healthFillObject.AddComponent<Image>();
+            healthBarFill.type = Image.Type.Filled;
+            healthBarFill.fillMethod = Image.FillMethod.Horizontal;
+
+            GameObject currencyBackObject = new GameObject("CurrencyBack");
+            currencyBackObject.transform.SetParent(hud.transform, false);
+            RectTransform currencyBackRect = currencyBackObject.AddComponent<RectTransform>();
+            currencyBackRect.anchorMin = new Vector2(0f, 1f);
+            currencyBackRect.anchorMax = new Vector2(0f, 1f);
+            currencyBackRect.pivot = new Vector2(0f, 1f);
+            currencyBackRect.anchoredPosition = new Vector2(12f, -42f);
+            currencyBackRect.sizeDelta = new Vector2(94f, 18f);
+            currencyPanel = currencyBackObject.AddComponent<Image>();
+            currencyPanel.color = new Color(0.18f, 0.14f, 0.08f, 0.92f);
+
             if (healthText == null)
-                healthText = CreateVitalsText(hud.transform, "HullText", new Vector2(0f, 1f), new Vector2(18f, -16f), 26f, new Color(0.92f, 0.97f, 1f));
+                healthText = CreateVitalsText(hud.transform, "HealthText", new Vector2(0f, 1f), new Vector2(12f, -24f), 13f, new Color(0.92f, 0.97f, 1f));
             if (currencyText == null)
-                currencyText = CreateVitalsText(hud.transform, "CoinsText", new Vector2(0f, 1f), new Vector2(18f, -48f), 22f, new Color(1f, 0.87f, 0.46f));
+                currencyText = CreateVitalsText(hud.transform, "CoinsText", new Vector2(0f, 1f), new Vector2(22f, -44f), 12f, new Color(1f, 0.87f, 0.46f));
             return;
         }
 
         if (healthText == null)
+            healthText = root.Find("HealthText")?.GetComponent<TMP_Text>();
+        if (healthText == null)
             healthText = root.Find("HullText")?.GetComponent<TMP_Text>();
         if (currencyText == null)
             currencyText = root.Find("CoinsText")?.GetComponent<TMP_Text>();
+        if (healthBarBack == null)
+            healthBarBack = root.Find("HealthBarBack")?.GetComponent<Image>();
+        if (healthBarFill == null)
+            healthBarFill = root.Find("HealthBarBack/HealthBarFill")?.GetComponent<Image>();
+        if (currencyPanel == null)
+            currencyPanel = root.Find("CurrencyBack")?.GetComponent<Image>();
+
+        if (healthBarBack == null || healthBarFill == null)
+        {
+            GameObject healthBackObject = new GameObject("HealthBarBack");
+            healthBackObject.transform.SetParent(root, false);
+            RectTransform healthBackRect = healthBackObject.AddComponent<RectTransform>();
+            healthBackRect.anchorMin = new Vector2(0f, 1f);
+            healthBackRect.anchorMax = new Vector2(0f, 1f);
+            healthBackRect.pivot = new Vector2(0f, 1f);
+            healthBackRect.anchoredPosition = new Vector2(12f, -10f);
+            healthBackRect.sizeDelta = new Vector2(148f, 10f);
+            healthBarBack = healthBackObject.AddComponent<Image>();
+            healthBarBack.color = new Color(0.14f, 0.18f, 0.22f, 0.96f);
+
+            GameObject healthFillObject = new GameObject("HealthBarFill");
+            healthFillObject.transform.SetParent(healthBackObject.transform, false);
+            RectTransform healthFillRect = healthFillObject.AddComponent<RectTransform>();
+            healthFillRect.anchorMin = new Vector2(0f, 0f);
+            healthFillRect.anchorMax = new Vector2(1f, 1f);
+            healthFillRect.offsetMin = new Vector2(2f, 2f);
+            healthFillRect.offsetMax = new Vector2(-2f, -2f);
+            healthBarFill = healthFillObject.AddComponent<Image>();
+            healthBarFill.type = Image.Type.Filled;
+            healthBarFill.fillMethod = Image.FillMethod.Horizontal;
+        }
+
+        if (currencyPanel == null)
+        {
+            GameObject currencyBackObject = new GameObject("CurrencyBack");
+            currencyBackObject.transform.SetParent(root, false);
+            RectTransform currencyBackRect = currencyBackObject.AddComponent<RectTransform>();
+            currencyBackRect.anchorMin = new Vector2(0f, 1f);
+            currencyBackRect.anchorMax = new Vector2(0f, 1f);
+            currencyBackRect.pivot = new Vector2(0f, 1f);
+            currencyBackRect.anchoredPosition = new Vector2(12f, -42f);
+            currencyBackRect.sizeDelta = new Vector2(94f, 18f);
+            currencyPanel = currencyBackObject.AddComponent<Image>();
+            currencyPanel.color = new Color(0.18f, 0.14f, 0.08f, 0.92f);
+        }
     }
 
     private TMP_Text CreateVitalsText(Transform parent, string name, Vector2 anchor, Vector2 position, float fontSize, Color color)
@@ -964,7 +1328,7 @@ public class PlayerController : MonoBehaviour, IDamageable
         rect.anchorMax = anchor;
         rect.pivot = anchor;
         rect.anchoredPosition = position;
-        rect.sizeDelta = new Vector2(210f, 28f);
+        rect.sizeDelta = new Vector2(156f, 20f);
 
         TMP_Text text = go.AddComponent<TextMeshProUGUI>();
         text.fontSize = fontSize;
@@ -976,68 +1340,27 @@ public class PlayerController : MonoBehaviour, IDamageable
 
     private void TriggerDamageFeedback()
     {
-        damageFlashTimer = damageFlashDuration;
-        damageKickTimer = damageFlashDuration;
-        xRotation = Mathf.Clamp(xRotation - damageLookKick, -80f, 80f);
+        damageFlashTimer = 0f;
+        damageKickTimer = 0f;
     }
 
     private void UpdateDamageFeedback()
     {
         if (weaponKickTimer > 0f)
             weaponKickTimer -= Time.deltaTime;
-
-        if (playerCamera != null && damageKickTimer > 0f)
-        {
+        if (damageKickTimer > 0f)
             damageKickTimer -= Time.deltaTime;
-            float normalized = Mathf.Clamp01(damageKickTimer / Mathf.Max(0.01f, damageFlashDuration));
-            float target = baseFOV + damageFovKick * normalized;
-            playerCamera.fieldOfView = Mathf.Max(playerCamera.fieldOfView, target);
-        }
-
-        if (damageFlashOverlay == null) return;
-
         if (damageFlashTimer > 0f)
-        {
             damageFlashTimer -= Time.deltaTime;
-            float normalized = Mathf.Clamp01(damageFlashTimer / Mathf.Max(0.01f, damageFlashDuration));
-            Color color = damageFlashColor;
-            color.a *= normalized;
-            damageFlashOverlay.color = color;
-            damageFlashOverlay.enabled = color.a > 0.001f;
-            return;
-        }
-
-        if (!damageFlashOverlay.enabled) return;
-        damageFlashOverlay.color = new Color(damageFlashColor.r, damageFlashColor.g, damageFlashColor.b, 0f);
-        damageFlashOverlay.enabled = false;
     }
 
     private void EnsureDamageOverlay()
     {
-        if (damageFlashOverlay != null) return;
-
-        Canvas canvas = ProjectStructureUIRoot.GetOrCreateCanvas();
-        if (canvas == null) return;
-
-        Transform existing = canvas.transform.Find("DamageFlashOverlay");
-        if (existing != null)
-        {
-            damageFlashOverlay = existing.GetComponent<Image>();
+        if (damageFlashOverlay == null)
             return;
-        }
 
-        GameObject overlay = new GameObject("DamageFlashOverlay");
-        overlay.transform.SetParent(canvas.transform, false);
-        RectTransform rect = overlay.AddComponent<RectTransform>();
-        rect.anchorMin = Vector2.zero;
-        rect.anchorMax = Vector2.one;
-        rect.offsetMin = Vector2.zero;
-        rect.offsetMax = Vector2.zero;
-
-        damageFlashOverlay = overlay.AddComponent<Image>();
-        damageFlashOverlay.color = new Color(damageFlashColor.r, damageFlashColor.g, damageFlashColor.b, 0f);
-        damageFlashOverlay.raycastTarget = false;
         damageFlashOverlay.enabled = false;
+        damageFlashOverlay.color = new Color(damageFlashColor.r, damageFlashColor.g, damageFlashColor.b, 0f);
     }
 
     public void ApplySettings(float sensitivity, float desiredBaseFov, float masterVolume, bool persist = true)
@@ -1076,84 +1399,146 @@ public class PlayerController : MonoBehaviour, IDamageable
 
     private void EnsureSpeedLines()
     {
-        if (speedLines != null || cameraTransform == null) return;
-
-        GameObject go = new GameObject("SpeedLines");
-        go.transform.SetParent(cameraTransform, false);
-        go.transform.localPosition = Vector3.zero;
-        go.transform.localRotation = Quaternion.identity;
-
-        speedLines = go.AddComponent<ParticleSystem>();
-        var main = speedLines.main;
-        main.loop = true;
-        main.startLifetime = 0.18f;
-        main.startSpeed = 13f;
-        main.startSize = 0.018f;
-        main.maxParticles = 140;
-        main.simulationSpace = ParticleSystemSimulationSpace.Local;
-        main.startColor = new Color(0.45f, 0.75f, 0.85f, 0.18f);
-
-        var emission = speedLines.emission;
-        emission.rateOverTime = 0f;
-
-        var shape = speedLines.shape;
-        shape.shapeType = ParticleSystemShapeType.Cone;
-        shape.angle = 38f;
-        shape.radius = 0.9f;
-        shape.position = new Vector3(0f, 0f, 0.55f);
-
-        var renderer = speedLines.GetComponent<ParticleSystemRenderer>();
-        renderer.renderMode = ParticleSystemRenderMode.Stretch;
-        renderer.lengthScale = 4.0f;
-        renderer.velocityScale = 0.08f;
-        renderer.material = CreateSpeedLineMaterial();
+        if (speedLines != null && speedLines.isPlaying)
+            speedLines.Stop();
     }
 
     private Material CreateSpeedLineMaterial()
     {
-        Shader shader = Shader.Find("Universal Render Pipeline/Unlit");
-        if (shader == null) shader = Shader.Find("Sprites/Default");
-
-        Material material = new Material(shader) { name = "SpeedLines_URP_Unlit" };
-        if (material.HasProperty("_BaseColor"))
-            material.SetColor("_BaseColor", new Color(0.45f, 0.75f, 0.85f, 0.18f));
-        if (material.HasProperty("_Color"))
-            material.SetColor("_Color", new Color(0.45f, 0.75f, 0.85f, 0.18f));
-        return material;
+        return null;
     }
 
     private void UpdateSpeedLines()
     {
-        if (speedLines == null || controller == null) return;
-
-        Vector3 groundVelocity = new Vector3(controller.velocity.x, 0f, controller.velocity.z);
-        float speed01 = Mathf.InverseLerp(overdriveSpeedThreshold, maxSpeedLimit, groundVelocity.magnitude);
-        var emission = speedLines.emission;
-        emission.rateOverTime = Mathf.Lerp(0f, 120f, speed01);
-
-        if (speed01 > 0.05f && !speedLines.isPlaying)
-            speedLines.Play();
-        else if (speed01 <= 0.01f && speedLines.isPlaying)
+        if (speedLines != null && speedLines.isPlaying)
             speedLines.Stop();
+    }
+
+    private void SpawnDashBurst()
+    {
+        SpawnWorldBurst(transform.position + Vector3.up * 0.08f, dashBurstColor, 0.09f, 0.28f, 0.92f);
+    }
+
+    private void SpawnSlamBurst(float strength)
+    {
+        return;
+    }
+
+    private void SpawnWorldBurst(Vector3 center, Color color, float duration, float startRadius, float endRadius)
+    {
+        if (!gameObject.activeInHierarchy)
+            return;
+
+        StartCoroutine(WorldBurstRoutine(center, color, duration, startRadius, endRadius));
+    }
+
+    private System.Collections.IEnumerator WorldBurstRoutine(Vector3 center, Color color, float duration, float startRadius, float endRadius)
+    {
+        GameObject ring = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+        ring.name = "MoveBurst";
+        ring.transform.position = center;
+        ring.transform.localScale = new Vector3(startRadius, 0.035f, startRadius);
+
+        Collider col = ring.GetComponent<Collider>();
+        if (col != null)
+            Destroy(col);
+
+        Renderer renderer = ring.GetComponent<Renderer>();
+        if (renderer != null)
+            renderer.sharedMaterial = GetWorldFxMaterial(color);
+
+        float elapsed = 0f;
+        while (elapsed < duration && ring != null)
+        {
+            elapsed += Time.deltaTime;
+            float t = Mathf.Clamp01(elapsed / Mathf.Max(0.01f, duration));
+            float radius = Mathf.Lerp(startRadius, endRadius, t);
+            ring.transform.localScale = new Vector3(radius, 0.035f, radius);
+
+            if (renderer != null)
+            {
+                Color frameColor = color;
+                frameColor.a *= 1f - t;
+                ApplyWorldFxColor(renderer, frameColor);
+            }
+
+            yield return null;
+        }
+
+        if (ring != null)
+            Destroy(ring);
+    }
+
+    private Material GetWorldFxMaterial(Color color)
+    {
+        if (cachedWorldFxMaterial == null)
+        {
+            Shader shader = Shader.Find("Universal Render Pipeline/Unlit");
+            if (shader == null)
+                shader = Shader.Find("Unlit/Color");
+            if (shader == null)
+                shader = Shader.Find("Sprites/Default");
+
+            cachedWorldFxMaterial = new Material(shader)
+            {
+                name = "PlayerMoveBurst_Mat"
+            };
+        }
+
+        Material mat = new Material(cachedWorldFxMaterial);
+        ApplyWorldFxColor(mat, color);
+        return mat;
+    }
+
+    private void ApplyWorldFxColor(Renderer renderer, Color color)
+    {
+        if (renderer == null || renderer.sharedMaterial == null)
+            return;
+
+        ApplyWorldFxColor(renderer.sharedMaterial, color);
+    }
+
+    private void ApplyWorldFxColor(Material material, Color color)
+    {
+        if (material == null)
+            return;
+
+        if (material.HasProperty("_BaseColor"))
+            material.SetColor("_BaseColor", color);
+        if (material.HasProperty("_Color"))
+            material.SetColor("_Color", color);
+        if (material.HasProperty("_EmissionColor"))
+            material.SetColor("_EmissionColor", color * 1.5f);
     }
 
     private void EnsureCrosshair()
     {
+        Canvas canvas = ProjectStructureUIRoot.GetOrCreateCanvas();
+        if (canvas == null) return;
+
         if (crosshair == null)
         {
-            Canvas canvas = ProjectStructureUIRoot.GetOrCreateCanvas();
-            if (canvas == null) return;
+            bool createdNewCrosshair = false;
+            Transform existingRoot = canvas.transform.Find("RuntimeCrosshair");
+            if (existingRoot != null)
+            {
+                crosshair = existingRoot.gameObject;
+                crosshairRect = crosshair.GetComponent<RectTransform>();
+            }
+            else
+            {
+                crosshair = new GameObject("RuntimeCrosshair");
+                crosshair.transform.SetParent(canvas.transform, false);
+                crosshairRect = crosshair.AddComponent<RectTransform>();
+                crosshairRect.anchorMin = new Vector2(0.5f, 0.5f);
+                crosshairRect.anchorMax = new Vector2(0.5f, 0.5f);
+                crosshairRect.pivot = new Vector2(0.5f, 0.5f);
+                crosshairRect.sizeDelta = new Vector2(84f, 84f);
+                createdNewCrosshair = true;
+            }
 
-            crosshair = new GameObject("RuntimeCrosshair");
-            crosshair.transform.SetParent(canvas.transform, false);
-            crosshairRect = crosshair.AddComponent<RectTransform>();
-            crosshairRect.anchorMin = new Vector2(0.5f, 0.5f);
-            crosshairRect.anchorMax = new Vector2(0.5f, 0.5f);
-            crosshairRect.pivot = new Vector2(0.5f, 0.5f);
-            crosshairRect.sizeDelta = new Vector2(84f, 84f);
-
-            BuildCrosshairSegments(crosshair.transform);
-            return;
+            if (createdNewCrosshair)
+                BuildCrosshairSegments(crosshair.transform);
         }
 
         if (crosshairRect == null)
@@ -1161,6 +1546,14 @@ public class PlayerController : MonoBehaviour, IDamageable
 
         if (crosshairRect == null)
             return;
+
+        for (int i = canvas.transform.childCount - 1; i >= 0; i--)
+        {
+            Transform child = canvas.transform.GetChild(i);
+            if (child == null || child == crosshair.transform) continue;
+            if (!child.name.Contains("Crosshair")) continue;
+            child.gameObject.SetActive(false);
+        }
 
         bool needsSegments = false;
         for (int i = 0; i < crosshairSegmentRects.Length; i++)
@@ -1236,8 +1629,6 @@ public class PlayerController : MonoBehaviour, IDamageable
         if (crosshairFireTimer > 0f)
             crosshairFireTimer -= Time.deltaTime;
 
-        float speed = controller != null ? new Vector3(controller.velocity.x, 0f, controller.velocity.z).magnitude : 0f;
-        float speed01 = Mathf.InverseLerp(0f, maxSpeedLimit, speed);
         float hit01 = Mathf.Clamp01(crosshairHitTimer / 0.11f);
         float kill01 = Mathf.Clamp01(crosshairKillTimer / 0.26f);
         float fire01 = Mathf.Clamp01(crosshairFireTimer / 0.14f);
@@ -1250,10 +1641,10 @@ public class PlayerController : MonoBehaviour, IDamageable
         if (hit01 > 0.01f || kill01 > 0.01f)
             targetColor = Color.Lerp(targetColor, crosshairPulseColor == default ? crosshairHitColor : crosshairPulseColor, Mathf.Max(hit01, kill01));
 
-        float gap = 12f + speed01 * 8f + fire01 * 4.5f + hit01 * 5f + kill01 * 9f;
-        float length = 11f + speed01 * 3.5f + fire01 * 1.6f + kill01 * 3f;
-        float thickness = 3f + fire01 * 0.7f + hit01 * 1.2f + kill01 * 1.4f;
-        float scale = 1f + speed01 * 0.05f + fire01 * 0.05f + hit01 * 0.08f + kill01 * 0.12f;
+        float gap = 12f + fire01 * 2.5f + hit01 * 5f + kill01 * 8f;
+        float length = 11f + fire01 * 1.2f + kill01 * 2.4f;
+        float thickness = 3f + hit01 * 1.1f + kill01 * 1.3f;
+        float scale = 1f + hit01 * 0.08f + kill01 * 0.1f;
         crosshairRect.localScale = Vector3.one * scale;
 
         Vector2[] positions =
@@ -1336,6 +1727,10 @@ public class PlayerController : MonoBehaviour, IDamageable
 
     void HandleLook()
     {
+        EnsureCameraReferences();
+        if (cameraTransform == null || UnityEngine.InputSystem.Mouse.current == null)
+            return;
+
         Vector2 mouseDelta = UnityEngine.InputSystem.Mouse.current.delta.ReadValue();
 
         // Removed the "SmoothDamp" because it often adds "Input Lag", making it feel floaty/slippery.
@@ -1346,8 +1741,54 @@ public class PlayerController : MonoBehaviour, IDamageable
 
         xRotation -= mouseY;
         xRotation = Mathf.Clamp(xRotation, -80f, 80f);
-        cameraTransform.localRotation = Quaternion.Euler(xRotation, 0f, 0f);
+        float sideTilt = -moveInputRaw.x * (isGrounded ? 0.9f : 0.45f);
+        cameraTransform.localRotation = Quaternion.Euler(xRotation, 0f, sideTilt);
 
         transform.Rotate(Vector3.up * mouseX);
+    }
+
+    private void EnsureCameraReferences()
+    {
+        if (cameraTransform == null)
+        {
+            if (playerCamera != null)
+                cameraTransform = playerCamera.transform;
+            else
+            {
+                Camera childCamera = GetComponentInChildren<Camera>(true);
+                if (childCamera != null)
+                {
+                    playerCamera = childCamera;
+                    cameraTransform = childCamera.transform;
+                }
+                else if (Camera.main != null && Camera.main.transform.IsChildOf(transform))
+                {
+                    playerCamera = Camera.main;
+                    cameraTransform = Camera.main.transform;
+                }
+            }
+        }
+
+        if (playerCamera == null && cameraTransform != null)
+            playerCamera = cameraTransform.GetComponent<Camera>();
+    }
+
+    private Vector3 ResolveStandingPosition(Vector3 referencePosition)
+    {
+        Vector3 resolved = referencePosition;
+        float originLift = Mathf.Max(3f, StandingOffset + 1.5f);
+        float rayDistance = Mathf.Max(8f, originLift + 8f);
+        Vector3 rayOrigin = new Vector3(referencePosition.x, referencePosition.y + originLift, referencePosition.z);
+
+        if (Physics.Raycast(rayOrigin, Vector3.down, out RaycastHit hit, rayDistance, ~0, QueryTriggerInteraction.Ignore) && !hit.collider.isTrigger)
+        {
+            resolved.y = hit.point.y + StandingOffset;
+        }
+        else
+        {
+            resolved.y = referencePosition.y + StandingOffset;
+        }
+
+        return resolved;
     }
 }

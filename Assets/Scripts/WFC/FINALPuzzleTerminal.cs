@@ -27,6 +27,10 @@ public class CybergrindPuzzleTerminal : Terminal
     [Min(0.1f)] public float holdDuration = 1.35f;
     [Min(0.1f)] public float pulseSpeed = 2.5f;
     [Min(0.05f)] public float calibrationDelay = 0.75f;
+    [Header("Pressure")]
+    public bool enablePressureTimer = true;
+    [Min(4f)] public float pressureDuration = 14f;
+    [Range(1, 4)] public int pressureEnemyCount = 2;
 
     [Header("UI")]
     public CybergrindTerminalUI terminalUI;
@@ -37,6 +41,7 @@ public class CybergrindPuzzleTerminal : Terminal
     private float lastPrimaryPressTimer;
     private float holdTimer;
     private float pulseTimer;
+    private float pressureTimer;
     private int progressStep;
     private int calibrationValue;
     private int calibrationTarget;
@@ -61,6 +66,7 @@ public class CybergrindPuzzleTerminal : Terminal
         puzzleTimer += dt;
         lastPrimaryPressTimer += dt;
         pulseTimer += dt;
+        UpdatePressureTimer(dt);
 
         if (challengeMode == ChallengeMode.Hold)
         {
@@ -78,6 +84,23 @@ public class CybergrindPuzzleTerminal : Terminal
 
         if (terminalUI != null)
             terminalUI.RefreshFromTerminal(this);
+    }
+
+    private void UpdatePressureTimer(float dt)
+    {
+        if (!enablePressureTimer || pressureDuration <= 0.01f)
+            return;
+
+        pressureTimer += dt;
+        if (pressureTimer < pressureDuration)
+            return;
+
+        pressureTimer = 0f;
+        CybergrindArenaGenerator generator = FindAnyObjectByType<CybergrindArenaGenerator>();
+        int spawned = generator != null ? generator.SpawnPressureEnemiesNear(transform.position, pressureEnemyCount) : 0;
+
+        if (terminalUI != null)
+            terminalUI.SetTransientMessage(spawned > 0 ? $"+{spawned} enemies" : "Pressure rising");
     }
 
     public override void TriggerPuzzle(PlayerController player)
@@ -124,7 +147,7 @@ public class CybergrindPuzzleTerminal : Terminal
 
             case ChallengeMode.Burst:
                 if (lastPrimaryPressTimer > timingWindow && progressStep > 0)
-                    ResetProgress("Burst sequence lost.");
+            ResetProgress("Too slow.");
                 else
                     progressStep++;
 
@@ -142,7 +165,7 @@ public class CybergrindPuzzleTerminal : Terminal
                 }
                 else
                 {
-                    ResetProgress("Missed the beat.");
+                    ResetProgress("Missed.");
                 }
                 break;
 
@@ -165,7 +188,7 @@ public class CybergrindPuzzleTerminal : Terminal
                 }
                 else
                 {
-                    ResetProgress("Double tap window expired.");
+                    ResetProgress("Too slow.");
                 }
                 break;
 
@@ -191,7 +214,7 @@ public class CybergrindPuzzleTerminal : Terminal
                 }
                 else
                 {
-                    ResetProgress("Wrong lane.");
+                    ResetProgress("Wrong input.");
                 }
                 break;
 
@@ -208,7 +231,7 @@ public class CybergrindPuzzleTerminal : Terminal
                 }
                 else
                 {
-                    ResetProgress("Pulse missed.");
+                    ResetProgress("Missed.");
                 }
                 break;
 
@@ -237,7 +260,7 @@ public class CybergrindPuzzleTerminal : Terminal
                 }
                 else
                 {
-                    ResetProgress("Wrong lane.");
+                    ResetProgress("Wrong input.");
                 }
                 break;
 
@@ -284,7 +307,7 @@ public class CybergrindPuzzleTerminal : Terminal
             if (calibrationValue == calibrationTarget)
                 CompletePuzzle();
             else
-                ResetProgress("Calibration mismatch.");
+                ResetProgress("Wrong number.");
         }
         else if (challengeMode == ChallengeMode.Delay && puzzleTimer >= requiredDelay)
         {
@@ -311,7 +334,7 @@ public class CybergrindPuzzleTerminal : Terminal
 
     public string GetTerminalTitle()
     {
-        return $"NODE {sequenceIndex + 1:00}";
+        return $"TERMINAL {sequenceIndex + 1:00}";
     }
 
     public string GetModeLabel()
@@ -319,42 +342,42 @@ public class CybergrindPuzzleTerminal : Terminal
         return challengeMode switch
         {
             ChallengeMode.DoubleTap => "DOUBLE TAP",
-            ChallengeMode.Hold => "HOLD LOCK",
-            ChallengeMode.Delay => "DELAY LOCK",
-            ChallengeMode.Alternating => "LANE SWITCH",
+            ChallengeMode.Hold => "HOLD",
+            ChallengeMode.Delay => "WAIT",
+            ChallengeMode.Alternating => "SWITCH",
             _ => challengeMode.ToString().ToUpperInvariant()
         };
     }
 
     public string GetStatusLine()
     {
-        if (isSolved) return "STATUS: ROUTE OPEN";
-        if (!puzzleOpen) return "STATUS: NODE STANDBY";
+        if (isSolved) return "DONE";
+        if (!puzzleOpen) return "READY";
 
         switch (challengeMode)
         {
             case ChallengeMode.Relay:
-                return $"STATUS: RELAY {progressStep}/{requiredPresses}";
+                return $"PRESS {progressStep}/{requiredPresses}";
             case ChallengeMode.Burst:
-                return $"STATUS: BURST {progressStep}/{requiredPresses}";
+                return $"BURST {progressStep}/{requiredPresses}";
             case ChallengeMode.Rhythm:
-                return $"STATUS: RHYTHM {progressStep}/{requiredPresses}";
+                return $"RHYTHM {progressStep}/{requiredPresses}";
             case ChallengeMode.Delay:
-                return $"STATUS: ARM IN {Mathf.Max(0f, requiredDelay - puzzleTimer):0.00}s";
+                return $"WAIT {Mathf.Max(0f, requiredDelay - puzzleTimer):0.00}s";
             case ChallengeMode.DoubleTap:
-                return progressStep == 0 ? "STATUS: FIRST STRIKE" : "STATUS: FOLLOW THROUGH";
+                return progressStep == 0 ? "FIRST TAP" : "SECOND TAP";
             case ChallengeMode.Hold:
-                return $"STATUS: HOLD {holdTimer:0.00}/{holdDuration:0.00}s";
+                return $"HOLD {holdTimer:0.00}/{holdDuration:0.00}s";
             case ChallengeMode.Alternating:
-                return $"STATUS: ALTERNATE {alternatingStep}/{requiredPresses * 2}";
+                return $"SWITCH {alternatingStep}/{requiredPresses * 2}";
             case ChallengeMode.Calibration:
-                return $"STATUS: TUNE {calibrationValue:0} / {calibrationTarget:0}";
+                return $"MATCH {calibrationValue:0} / {calibrationTarget:0}";
             case ChallengeMode.Pulse:
-                return $"STATUS: PULSE {progressStep}/{requiredPresses}";
+                return $"PULSE {progressStep}/{requiredPresses}";
             case ChallengeMode.Lockstep:
-                return $"STATUS: SEQUENCE {lockstepIndex}/{lockstepSequence.Length}";
+                return $"SEQUENCE {lockstepIndex}/{lockstepSequence.Length}";
             default:
-                return "STATUS: NODE ACTIVE";
+                return "ACTIVE";
         }
     }
 
@@ -363,25 +386,25 @@ public class CybergrindPuzzleTerminal : Terminal
         switch (challengeMode)
         {
             case ChallengeMode.Relay:
-                return $"Chain {requiredPresses} clean strikes without dropping the relay.";
+                return $"Press primary {requiredPresses} times.";
             case ChallengeMode.Burst:
-                return $"Build the burst chain inside {timingWindow:0.00}s.";
+                return $"Press quickly. Gap under {timingWindow:0.00}s.";
             case ChallengeMode.Rhythm:
-                return "Strike on the beat when the meter peaks.";
+                return "Press when the bar is bright.";
             case ChallengeMode.Delay:
-                return $"Hold through {requiredDelay:0.00}s, then lock the node.";
+                return $"Wait {requiredDelay:0.00}s, then confirm.";
             case ChallengeMode.DoubleTap:
-                return "Strike twice before the lock window collapses.";
+                return "Tap twice quickly.";
             case ChallengeMode.Hold:
-                return $"Hold the channel for {holdDuration:0.00}s without breaking contact.";
+                return $"Hold E or SPACE for {holdDuration:0.00}s.";
             case ChallengeMode.Alternating:
-                return "Swap lanes between primary and secondary inputs.";
+                return "Alternate primary and secondary.";
             case ChallengeMode.Calibration:
-                return "Tune the node until it matches, then lock it.";
+                return "Match the number, then confirm.";
             case ChallengeMode.Pulse:
-                return "Strike only during the bright pulse.";
+                return "Press during the bright pulse.";
             case ChallengeMode.Lockstep:
-                return "Mirror the highlighted sequence cleanly.";
+                return "Copy the sequence.";
             default:
                 return overridePrompt;
         }
@@ -389,33 +412,57 @@ public class CybergrindPuzzleTerminal : Terminal
 
     public string GetDetailLine()
     {
-        if (isSolved) return "Node broken open. Route rerouted.";
+        if (isSolved) return "Exit progress updated.";
 
+        string pressure = GetPressureLine();
+        string detail;
         switch (challengeMode)
         {
             case ChallengeMode.Relay:
-                return $"Relay chain {progressStep} of {requiredPresses}.";
+                detail = $"{progressStep} of {requiredPresses}.";
+                break;
             case ChallengeMode.Burst:
-                return $"Burst gap {lastPrimaryPressTimer:0.00}s.";
+                detail = $"Gap {lastPrimaryPressTimer:0.00}s.";
+                break;
             case ChallengeMode.Rhythm:
-                return IsBeatWindow() ? "Beat locked." : "Wait for the peak.";
+                detail = IsBeatWindow() ? "Press now." : "Wait.";
+                break;
             case ChallengeMode.Delay:
-                return puzzleTimer >= requiredDelay ? "Lock window open." : "Node warming up.";
+                detail = puzzleTimer >= requiredDelay ? "Confirm now." : "Wait.";
+                break;
             case ChallengeMode.DoubleTap:
-                return progressStep == 0 ? "First strike armed." : $"Follow-through window {timingWindow:0.00}s.";
+                detail = progressStep == 0 ? "First tap ready." : $"Tap again within {timingWindow:0.00}s.";
+                break;
             case ChallengeMode.Hold:
-                return $"Channel hold {holdTimer / Mathf.Max(0.01f, holdDuration):P0}.";
+                detail = $"Held {holdTimer / Mathf.Max(0.01f, holdDuration):P0}.";
+                break;
             case ChallengeMode.Alternating:
-                return alternatingStep % 2 == 0 ? "Primary lane active." : "Secondary lane active.";
+                detail = alternatingStep % 2 == 0 ? "Use primary." : "Use secondary.";
+                break;
             case ChallengeMode.Calibration:
-                return calibrationValue == calibrationTarget ? "Tuning matched." : "Adjust until the node matches.";
+                detail = calibrationValue == calibrationTarget ? "Matched." : "Adjust the number.";
+                break;
             case ChallengeMode.Pulse:
-                return IsPulseWindow() ? "Pulse window open." : "Pulse window closed.";
+                detail = IsPulseWindow() ? "Press now." : "Wait.";
+                break;
             case ChallengeMode.Lockstep:
-                return lockstepSequence.Length == 0 ? "Sequence pending." : $"Echo step {lockstepIndex + 1}/{lockstepSequence.Length}.";
+                detail = lockstepSequence.Length == 0 ? "Waiting." : $"Step {lockstepIndex + 1}/{lockstepSequence.Length}.";
+                break;
             default:
-                return string.Empty;
+                detail = string.Empty;
+                break;
         }
+
+        return string.IsNullOrEmpty(pressure) ? detail : $"{detail} {pressure}";
+    }
+
+    private string GetPressureLine()
+    {
+        if (!puzzleOpen || !enablePressureTimer || pressureDuration <= 0.01f)
+            return string.Empty;
+
+        float remaining = Mathf.Max(0f, pressureDuration - pressureTimer);
+        return $"Reinforcements in {remaining:0}s.";
     }
 
     public string GetPrimaryActionLabel()
@@ -466,7 +513,7 @@ public class CybergrindPuzzleTerminal : Terminal
         if (generator != null)
             return generator.GetThemeLabel();
 
-        return "Null Channel";
+        return "Null Sector";
     }
 
     public float GetProgress01()
@@ -518,6 +565,7 @@ public class CybergrindPuzzleTerminal : Terminal
         lastPrimaryPressTimer = 999f;
         holdTimer = 0f;
         pulseTimer = 0f;
+        pressureTimer = 0f;
         progressStep = 0;
         calibrationValue = rng.Next(0, 10);
         calibrationTarget = rng.Next(0, 10);
@@ -543,13 +591,13 @@ public class CybergrindPuzzleTerminal : Terminal
     {
         if (lockstepSequence == null || lockstepSequence.Length == 0)
         {
-            ResetProgress("Sequence unavailable.");
+            ResetProgress("No sequence.");
             return;
         }
 
         if (lockstepSequence[lockstepIndex] != action)
         {
-            ResetProgress("Sequence mismatch.");
+            ResetProgress("Wrong input.");
             return;
         }
 
@@ -582,7 +630,7 @@ public class CybergrindPuzzleTerminal : Terminal
             if (terminal == null || terminal == this) continue;
             if (terminal.sequenceIndex < sequenceIndex && !terminal.isSolved)
             {
-                overridePrompt = $"Solve node {terminal.sequenceIndex + 1} first";
+                overridePrompt = $"Finish terminal {terminal.sequenceIndex + 1} first";
                 break;
             }
         }
@@ -593,7 +641,7 @@ public class CybergrindPuzzleTerminal : Terminal
     {
         if (isSolved)
         {
-            overridePrompt = "Node sealed";
+            overridePrompt = "Terminal done";
             UpdatePrompt();
             return;
         }
@@ -603,7 +651,7 @@ public class CybergrindPuzzleTerminal : Terminal
         else if (!CanOpenThisTerminal())
             overridePrompt = GetBlockedPrompt();
         else
-            overridePrompt = $"Access node {sequenceIndex + 1}";
+            overridePrompt = $"Use terminal {sequenceIndex + 1}";
 
         UpdatePrompt();
     }
@@ -616,10 +664,10 @@ public class CybergrindPuzzleTerminal : Terminal
             CybergrindPuzzleTerminal terminal = terminals[i];
             if (terminal == null || terminal == this) continue;
             if (terminal.sequenceIndex < sequenceIndex && !terminal.isSolved)
-                return $"Unlock node {terminal.sequenceIndex + 1} first";
+                return $"Finish terminal {terminal.sequenceIndex + 1} first";
         }
 
-        return $"Access node {sequenceIndex + 1}";
+        return $"Use terminal {sequenceIndex + 1}";
     }
 
     private bool IsBeatWindow()
@@ -652,6 +700,7 @@ public class CybergrindPuzzleTerminal : Terminal
     {
         if (isSolved) return;
 
+        pressureTimer = 0f;
         CybergrindRunState.GetOrCreate().RegisterTerminalSolved();
         SolvePuzzle(activePlayer);
         if (terminalUI != null)

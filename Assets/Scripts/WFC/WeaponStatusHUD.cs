@@ -18,6 +18,8 @@ public class WeaponStatusHUD : MonoBehaviour
     private TMP_Text momentText;
     private TMP_Text momentDetailText;
     private GameObject momentRoot;
+    private Image momentProgressFill;
+    private float momentDurationActive;
     private string lastVariantDisplay = string.Empty;
     private string lastModifierStatus = string.Empty;
     private bool hasPrimedState;
@@ -64,14 +66,14 @@ public class WeaponStatusHUD : MonoBehaviour
             if (!string.Equals(currentVariantDisplay, lastVariantDisplay))
             {
                 ShowArmoryMoment(
-                    "VARIANT LINKED",
-                    $"{currentVariantDisplay.ToUpperInvariant()} online // {gun.GetActiveDescriptorLine()}",
+                    "WEAPON READY",
+                    $"{currentVariantDisplay.ToUpperInvariant()} // {gun.GetActiveDescriptorLine()}",
                     ResolveAccentColor());
             }
-            else if (!string.Equals(modifierStatus, lastModifierStatus) && modifierStatus != "Bus state nominal.")
+            else if (!string.Equals(modifierStatus, lastModifierStatus) && modifierStatus != "No active boosts.")
             {
                 ShowArmoryMoment(
-                    "BUS OVERCLOCKED",
+                    "BOOST APPLIED",
                     modifierStatus,
                     new Color(1f, 0.68f, 0.2f, 1f));
             }
@@ -93,16 +95,16 @@ public class WeaponStatusHUD : MonoBehaviour
         rootRect.anchorMin = new Vector2(1f, 1f);
         rootRect.anchorMax = new Vector2(1f, 1f);
         rootRect.pivot = new Vector2(1f, 1f);
-        rootRect.anchoredPosition = new Vector2(-18f, -18f);
-        rootRect.sizeDelta = new Vector2(430f, 174f);
+        rootRect.anchoredPosition = new Vector2(-12f, -10f);
+        rootRect.sizeDelta = new Vector2(268f, 96f);
 
         panelImage = root.AddComponent<Image>();
         panelImage.color = new Color(0.025f, 0.04f, 0.055f, 0.88f);
 
-        familyText = CreateText(root.transform, "WeaponFamilyText", 22f, new Vector2(0.5f, 0.82f), new Vector2(380f, 28f), TextAlignmentOptions.Center, Color.white);
-        variantText = CreateText(root.transform, "WeaponVariantText", 20f, new Vector2(0.5f, 0.64f), new Vector2(390f, 28f), TextAlignmentOptions.Center, new Color(0.78f, 0.94f, 1f));
-        detailText = CreateText(root.transform, "WeaponDetailText", 16f, new Vector2(0.5f, 0.42f), new Vector2(390f, 58f), TextAlignmentOptions.Center, new Color(0.86f, 0.92f, 0.97f));
-        modifierText = CreateText(root.transform, "WeaponModifierText", 15f, new Vector2(0.5f, 0.22f), new Vector2(390f, 26f), TextAlignmentOptions.Center, new Color(0.74f, 0.98f, 0.82f));
+        familyText = CreateText(root.transform, "WeaponFamilyText", 12f, new Vector2(0.5f, 0.83f), new Vector2(240f, 18f), TextAlignmentOptions.Center, Color.white);
+        variantText = CreateText(root.transform, "WeaponVariantText", 11.5f, new Vector2(0.5f, 0.66f), new Vector2(246f, 18f), TextAlignmentOptions.Center, new Color(0.78f, 0.94f, 1f));
+        detailText = CreateText(root.transform, "WeaponDetailText", 9f, new Vector2(0.5f, 0.43f), new Vector2(246f, 34f), TextAlignmentOptions.Center, new Color(0.86f, 0.92f, 0.97f));
+        modifierText = CreateText(root.transform, "WeaponModifierText", 8.5f, new Vector2(0.5f, 0.2f), new Vector2(246f, 16f), TextAlignmentOptions.Center, new Color(0.74f, 0.98f, 0.82f));
 
         momentRoot = new GameObject("WeaponMomentPanel");
         momentRoot.transform.SetParent(root.transform, false);
@@ -114,8 +116,19 @@ public class WeaponStatusHUD : MonoBehaviour
         Image momentImage = momentRoot.AddComponent<Image>();
         momentImage.color = new Color(0.08f, 0.12f, 0.16f, 0.94f);
 
-        momentText = CreateText(momentRoot.transform, "WeaponMomentText", 16f, new Vector2(0.5f, 0.68f), new Vector2(320f, 22f), TextAlignmentOptions.Center, new Color(0.9f, 0.96f, 1f));
-        momentDetailText = CreateText(momentRoot.transform, "WeaponMomentDetailText", 13f, new Vector2(0.5f, 0.28f), new Vector2(330f, 22f), TextAlignmentOptions.Center, new Color(0.8f, 0.9f, 0.96f));
+        momentText = CreateText(momentRoot.transform, "WeaponMomentText", 9.5f, new Vector2(0.5f, 0.68f), new Vector2(210f, 14f), TextAlignmentOptions.Center, new Color(0.9f, 0.96f, 1f));
+        momentDetailText = CreateText(momentRoot.transform, "WeaponMomentDetailText", 8f, new Vector2(0.5f, 0.28f), new Vector2(218f, 14f), TextAlignmentOptions.Center, new Color(0.8f, 0.9f, 0.96f));
+        GameObject progress = new GameObject("WeaponMomentProgress");
+        progress.transform.SetParent(momentRoot.transform, false);
+        RectTransform progressRect = progress.AddComponent<RectTransform>();
+        progressRect.anchorMin = new Vector2(0f, 0f);
+        progressRect.anchorMax = new Vector2(1f, 0.05f);
+        progressRect.offsetMin = Vector2.zero;
+        progressRect.offsetMax = Vector2.zero;
+        momentProgressFill = progress.AddComponent<Image>();
+        momentProgressFill.type = Image.Type.Filled;
+        momentProgressFill.fillMethod = Image.FillMethod.Horizontal;
+        momentProgressFill.color = new Color(0.76f, 0.94f, 1f, 0.95f);
         momentRoot.SetActive(false);
     }
 
@@ -140,6 +153,12 @@ public class WeaponStatusHUD : MonoBehaviour
         momentRoot.SetActive(true);
         ProjectStructureUIRoot.BringToFront(momentRoot.transform);
         momentTimer = duration > 0f ? duration : momentDuration;
+        momentDurationActive = momentTimer;
+        if (momentProgressFill != null)
+        {
+            momentProgressFill.fillAmount = 1f;
+            momentProgressFill.color = Color.Lerp(new Color(0.76f, 0.94f, 1f, 0.95f), accent, 0.35f);
+        }
     }
 
     private void UpdateMomentState(float deltaTime)
@@ -149,6 +168,8 @@ public class WeaponStatusHUD : MonoBehaviour
         if (momentTimer > 0f)
         {
             momentTimer -= deltaTime;
+            if (momentProgressFill != null)
+                momentProgressFill.fillAmount = Mathf.Clamp01(momentTimer / Mathf.Max(0.01f, momentDurationActive));
             if (momentTimer <= 0f)
             {
                 momentRoot.SetActive(false);

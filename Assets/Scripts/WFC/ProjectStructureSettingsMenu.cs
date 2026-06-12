@@ -18,16 +18,18 @@ public class ProjectStructureSettingsMenu : MonoBehaviour
     private float sensitivity;
     private float baseFov;
     private float masterVolume;
+    private float uiScale;
     private float previousTimeScale = 1f;
     private bool previousUiState;
     private ProjectStructurePresentation presentation;
 
     private readonly string[] optionLabels =
     {
-        "Mouse Sensitivity",
+        "Sensitivity",
         "Field of View",
         "Volume",
-        "Reset Defaults",
+        "UI Scale",
+        "Reset",
         "Restart Run",
         "Back to Title"
     };
@@ -104,6 +106,7 @@ public class ProjectStructureSettingsMenu : MonoBehaviour
     {
         if (player != null)
             player.ApplySettings(sensitivity, baseFov, masterVolume);
+        ProjectStructureUIRoot.SetUIScale(uiScale);
 
         isOpen = false;
         Time.timeScale = previousTimeScale;
@@ -118,6 +121,7 @@ public class ProjectStructureSettingsMenu : MonoBehaviour
         sensitivity = player.mouseSensitivity;
         baseFov = player.GetBaseFov();
         masterVolume = player.GetMasterVolume();
+        uiScale = ProjectStructureUIRoot.GetUIScale();
     }
 
     private void AdjustSelected(float direction)
@@ -135,6 +139,10 @@ public class ProjectStructureSettingsMenu : MonoBehaviour
             case 2:
                 masterVolume = Mathf.Clamp01(masterVolume + direction * 0.05f);
                 break;
+            case 3:
+                uiScale = Mathf.Clamp(uiScale + direction * 0.05f, ProjectStructureUIRoot.MinUIScale, ProjectStructureUIRoot.MaxUIScale);
+                ProjectStructureUIRoot.SetUIScale(uiScale, false);
+                break;
         }
 
         if (player != null)
@@ -145,20 +153,22 @@ public class ProjectStructureSettingsMenu : MonoBehaviour
     {
         switch (selectedIndex)
         {
-            case 3:
+            case 4:
                 sensitivity = 100f;
                 baseFov = 90f;
                 masterVolume = 1f;
+                uiScale = 1f;
                 if (player != null)
                     player.ApplySettings(sensitivity, baseFov, masterVolume, false);
+                ProjectStructureUIRoot.SetUIScale(uiScale, false);
                 break;
-            case 4:
+            case 5:
                 if (presentation != null)
                     presentation.RestartRunFromMenu();
                 isOpen = false;
                 SetVisible(false);
                 break;
-            case 5:
+            case 6:
                 if (presentation != null)
                     presentation.ReturnToTitleFromMenu();
                 isOpen = false;
@@ -230,21 +240,22 @@ public class ProjectStructureSettingsMenu : MonoBehaviour
         if (panelImage != null)
             panelImage.color = ResolvePanelColor();
 
-        bool actionLine = selectedIndex >= 3;
-        string footer = selectedIndex == 3
-            ? "UP / DOWN move   LEFT / RIGHT adjust   ENTER reset   ESC close"
+        bool actionLine = selectedIndex >= 4;
+        string footer = selectedIndex == 4
+            ? "UP / DOWN select   LEFT / RIGHT change   ENTER reset   ESC close"
             : actionLine
-                ? "UP / DOWN move   ENTER confirm   ESC close"
-                : "UP / DOWN move   LEFT / RIGHT adjust   ESC close";
+                ? "UP / DOWN select   ENTER confirm   ESC close"
+                : "UP / DOWN select   LEFT / RIGHT change   ESC close";
         string restartLabel = presentation != null && presentation.IsTitleVisible ? "Start Run" : "Restart Run";
         bodyText.text =
             BuildStatusLine() + "\n\n" +
-            $"{GetLine(0, $"Mouse Sensitivity  {Mathf.RoundToInt(sensitivity),3}   {BuildMeter(Mathf.InverseLerp(20f, 220f, sensitivity), 12)}")}\n" +
+            $"{GetLine(0, $"Sensitivity     {Mathf.RoundToInt(sensitivity),3}   {BuildMeter(Mathf.InverseLerp(20f, 220f, sensitivity), 12)}")}\n" +
             $"{GetLine(1, $"Field of View      {Mathf.RoundToInt(baseFov),3}   {BuildMeter(Mathf.InverseLerp(70f, 120f, baseFov), 12)}")}\n" +
             $"{GetLine(2, $"Volume             {Mathf.RoundToInt(masterVolume * 100f),3}%  {BuildMeter(masterVolume, 12)}")}\n" +
-            $"{GetLine(3, "Reset Defaults")}\n" +
-            $"{GetLine(4, restartLabel)}\n" +
-            $"{GetLine(5, "Back to Title")}\n\n" +
+            $"{GetLine(3, $"UI Scale           {Mathf.RoundToInt(uiScale * 100f),3}%  {BuildMeter(Mathf.InverseLerp(ProjectStructureUIRoot.MinUIScale, ProjectStructureUIRoot.MaxUIScale, uiScale), 12)}")}\n" +
+            $"{GetLine(4, "Reset")}\n" +
+            $"{GetLine(5, restartLabel)}\n" +
+            $"{GetLine(6, "Back to Title")}\n\n" +
             footer;
     }
 
@@ -266,9 +277,9 @@ public class ProjectStructureSettingsMenu : MonoBehaviour
     {
         CybergrindArenaDirector director = FindAnyObjectByType<CybergrindArenaDirector>();
         if (presentation != null && presentation.IsTitleVisible)
-            return "Set things how you like, then start the run.";
+            return "Set things how you like, then start.";
         if (director == null || director.generator == null)
-            return "Change your settings and jump back in when you're ready.";
+            return "Change your settings and get back in.";
 
         string mode = director.generator.arenaMode switch
         {
@@ -276,7 +287,7 @@ public class ProjectStructureSettingsMenu : MonoBehaviour
             CybergrindArenaGenerator.ArenaMode.Boss => "BOSS",
             _ => $"FLOOR {director.floor:00}"
         };
-        return $"{director.CurrentThemeLabel.ToUpperInvariant()} // {mode} // {director.CurrentDirectiveTitle}";
+        return $"{director.CurrentThemeLabel.ToUpperInvariant()} // {mode}";
     }
 
     private Color ResolveAccentColor()

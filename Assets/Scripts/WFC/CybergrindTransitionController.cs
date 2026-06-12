@@ -48,6 +48,11 @@ public class CybergrindTransitionController : MonoBehaviour
     public float latticeColumnHeight = 10f;
     public float latticeFxDuration = 0.75f;
     public float shockwaveScale = 9f;
+    [Range(6, 18)] public int reclaimerSlabCount = 12;
+    public float reclaimerSlabRadius = 7.8f;
+    public float reclaimerSlabTravel = 8.5f;
+    public Vector3 reclaimerSlabSize = new Vector3(3.6f, 0.2f, 2.8f);
+    public float reclaimerFxDuration = 1.15f;
 
     [Header("Overlay FX")]
     public Color flashColor = new Color(0.72f, 0.95f, 1f, 0.28f);
@@ -125,6 +130,8 @@ public class CybergrindTransitionController : MonoBehaviour
             StartCoroutine(EmitAnchorLattice(rig.anchor.position, coverColor, latticeFxDuration));
         if (rig.anchor != null)
             StartCoroutine(EmitSegmentCascade(rig.anchor.position, coverColor, latticeFxDuration * 1.2f, false));
+        if (rig.anchor != null)
+            StartCoroutine(EmitReclaimerSlabs(rig.anchor.position, coverColor, reclaimerFxDuration, false));
 
         if (rig.anchor != null)
         {
@@ -145,6 +152,8 @@ public class CybergrindTransitionController : MonoBehaviour
             StartCoroutine(EmitAnchorLattice(rig.anchor.position + Vector3.up * 1.2f, exitHighlightColor, latticeFxDuration * 0.9f));
         if (rig.anchor != null)
             StartCoroutine(EmitSegmentCascade(rig.anchor.position + Vector3.up * 0.6f, exitHighlightColor, latticeFxDuration * 1.25f, true));
+        if (rig.anchor != null)
+            StartCoroutine(EmitReclaimerSlabs(rig.anchor.position + Vector3.up * 0.5f, exitHighlightColor, reclaimerFxDuration * 1.15f, true));
         onSwapMoment?.Invoke();
         swapAction?.Invoke();
 
@@ -215,22 +224,47 @@ public class CybergrindTransitionController : MonoBehaviour
         Transform existing = exit.Find("ExitHighlight");
         if (existing != null) return existing.gameObject;
 
-        GameObject ring = GameObject.CreatePrimitive(PrimitiveType.Cube);
-        ring.name = "ExitHighlight";
+        GameObject ring = new GameObject("ExitHighlight");
         ring.transform.SetParent(exit, false);
-        ring.transform.localPosition = new Vector3(0f, exitHighlightHeight, 0f);
+        ring.transform.localPosition = Vector3.zero;
         ring.transform.localRotation = Quaternion.identity;
-        ring.transform.localScale = new Vector3(exitHighlightScale, 0.04f, exitHighlightScale);
 
         Material mat = BuildTransparentMaterial(exitHighlightColor, false);
-        if (ring.TryGetComponent(out Renderer renderer))
-            renderer.material = mat;
-
-        Collider col = ring.GetComponent<Collider>();
-        if (col != null)
-            Destroy(col);
+        CreateHighlightPiece(ring.transform, "ExitHighlightPad", new Vector3(0f, exitHighlightHeight, 0f), new Vector3(exitHighlightScale, 0.04f, exitHighlightScale), mat, new Vector3(0f, 18f, 0f), 0.08f);
+        CreateHighlightPiece(ring.transform, "ExitHighlightLineA", new Vector3(0f, exitHighlightHeight + 0.04f, 0f), new Vector3(exitHighlightScale * 1.2f, 0.035f, 0.08f), mat, new Vector3(0f, -36f, 0f), 0.18f);
+        CreateHighlightPiece(ring.transform, "ExitHighlightLineB", new Vector3(0f, exitHighlightHeight + 0.045f, 0f), new Vector3(0.08f, 0.035f, exitHighlightScale * 1.2f), mat, new Vector3(0f, 36f, 0f), 0.18f);
+        CreateHighlightPiece(ring.transform, "ExitHighlightNeedle", new Vector3(0f, 1.65f, 0f), new Vector3(0.055f, 3.25f, 0.055f), mat, new Vector3(0f, 70f, 0f), 0.24f);
 
         return ring;
+    }
+
+    private void CreateHighlightPiece(Transform parent, string name, Vector3 localPosition, Vector3 scale, Material material, Vector3 rotationSpeed, float pulse)
+    {
+        GameObject piece = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        piece.name = name;
+        piece.transform.SetParent(parent, false);
+        piece.transform.localPosition = localPosition;
+        piece.transform.localScale = scale;
+        Renderer renderer = piece.GetComponent<Renderer>();
+        if (renderer != null)
+        {
+            if (Application.isPlaying) renderer.material = material;
+            else renderer.sharedMaterial = material;
+        }
+        Collider col = piece.GetComponent<Collider>();
+        if (col != null)
+        {
+            if (Application.isPlaying) Destroy(col);
+            else DestroyImmediate(col);
+        }
+
+        ArenaPulseFx fx = piece.AddComponent<ArenaPulseFx>();
+        fx.SetBaseScale(scale);
+        fx.scalePulse = pulse;
+        fx.pulseSpeed = 2.8f;
+        fx.rotationDegreesPerSecond = rotationSpeed;
+        fx.emissionColor = exitHighlightColor;
+        fx.emissionStrength = 0.75f;
     }
 
     public GameObject HighlightExitInGenerator(CybergrindArenaGenerator generator)
@@ -813,6 +847,70 @@ public class CybergrindTransitionController : MonoBehaviour
         {
             if (segments[i] != null)
                 Destroy(segments[i].gameObject);
+        }
+    }
+
+    private IEnumerator EmitReclaimerSlabs(Vector3 center, Color color, float duration, bool rising)
+    {
+        Material material = BuildTransparentMaterial(new Color(color.r, color.g, color.b, 0.16f), true);
+        List<Transform> slabs = new List<Transform>();
+        int slabCount = Mathf.Max(4, reclaimerSlabCount);
+        Vector3 slabScale = new Vector3(
+            Mathf.Max(1.2f, reclaimerSlabSize.x),
+            Mathf.Max(0.08f, reclaimerSlabSize.y),
+            Mathf.Max(1.2f, reclaimerSlabSize.z));
+
+        for (int i = 0; i < slabCount; i++)
+        {
+            float angle = (Mathf.PI * 2f * i) / slabCount;
+            Vector3 radial = new Vector3(Mathf.Cos(angle), 0f, Mathf.Sin(angle));
+            float ring = ((i & 1) == 0) ? reclaimerSlabRadius : reclaimerSlabRadius * 0.62f;
+
+            GameObject slab = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            slab.name = "TransitionReclaimerSlab";
+            slab.transform.position = center + radial * ring + Vector3.up * (rising ? -reclaimerSlabTravel : 1.6f);
+            slab.transform.rotation = Quaternion.LookRotation(radial, Vector3.up);
+            slab.transform.localScale = slabScale;
+            Renderer renderer = slab.GetComponent<Renderer>();
+            if (renderer != null) renderer.material = material;
+            Collider collider = slab.GetComponent<Collider>();
+            if (collider != null) Destroy(collider);
+            slabs.Add(slab.transform);
+        }
+
+        float start = Time.realtimeSinceStartup;
+        while (Time.realtimeSinceStartup - start < duration)
+        {
+            float t = Mathf.Clamp01((Time.realtimeSinceStartup - start) / Mathf.Max(0.01f, duration));
+            float eased = shiftCurve != null ? shiftCurve.Evaluate(t) : Mathf.SmoothStep(0f, 1f, t);
+
+            for (int i = 0; i < slabs.Count; i++)
+            {
+                Transform slab = slabs[i];
+                if (slab == null) continue;
+
+                Vector3 radial = slab.position - center;
+                radial.y = 0f;
+                radial = radial.sqrMagnitude > 0.001f ? radial.normalized : Vector3.forward;
+                float ring = ((i & 1) == 0) ? reclaimerSlabRadius : reclaimerSlabRadius * 0.62f;
+                float spread = Mathf.Lerp(ring * (rising ? 0.7f : 1f), ring * (rising ? 1.08f : 1.32f), eased);
+                float height = rising
+                    ? Mathf.Lerp(-reclaimerSlabTravel, 2.1f, eased)
+                    : Mathf.Lerp(1.6f, -reclaimerSlabTravel, eased);
+                slab.position = center + radial * spread + Vector3.up * height;
+                slab.localScale = new Vector3(
+                    Mathf.Lerp(slabScale.x * 0.8f, slabScale.x * (rising ? 1.15f : 0.95f), eased),
+                    slabScale.y,
+                    Mathf.Lerp(slabScale.z * 0.85f, slabScale.z * (rising ? 1.2f : 1.4f), eased));
+            }
+
+            yield return null;
+        }
+
+        for (int i = 0; i < slabs.Count; i++)
+        {
+            if (slabs[i] != null)
+                Destroy(slabs[i].gameObject);
         }
     }
 

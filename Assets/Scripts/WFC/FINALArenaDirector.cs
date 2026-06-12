@@ -5,7 +5,8 @@ public class CybergrindArenaDirector : MonoBehaviour
 {
     public CybergrindArenaGenerator generator;
     public int floor = 1;
-    [Min(1)] public int combatFloorsPerTheme = 5;
+    [Min(1)] public int combatFloorsBeforeShop = 2;
+    [Min(1)] public int combatFloorsAfterShop = 2;
     public float exitActivationRange = 5f;
     public Transform player;
     public CybergrindRunState runState;
@@ -16,10 +17,16 @@ public class CybergrindArenaDirector : MonoBehaviour
     private bool shopInteractionThisFloor;
     private bool bossRewardRevealActive;
     private bool bossRewardRevealQueued;
+    private bool coreAccessActive;
+    private ArenaCoreBeacon currentCoreBeacon;
     public bool RunComplete { get; private set; }
     public bool IsBossRewardRevealActive => bossRewardRevealActive;
+    public bool IsCoreAccessActive => coreAccessActive;
+    public int combatFloorsPerTheme => combatFloorsBeforeShop + combatFloorsAfterShop;
+    public int CycleLength => combatFloorsBeforeShop + combatFloorsAfterShop + 2;
+    public int CyclePosition => (floor - 1) % CycleLength;
 
-    public int CurrentThemeIndex => Mathf.Max(0, (floor - 1) / (combatFloorsPerTheme + 2));
+    public int CurrentThemeIndex => Mathf.Max(0, (floor - 1) / CycleLength);
     public string CurrentThemeLabel => generator != null
         ? generator.GetThemeLabel()
         : CybergrindArenaGenerator.GetThemeLabel(CurrentThemeIndex);
@@ -80,6 +87,12 @@ public class CybergrindArenaDirector : MonoBehaviour
         if (!terminalsSolved) return;
         if (!enemiesCleared) return;
         if (generator.arenaMode != CybergrindArenaGenerator.ArenaMode.Shop && currentReward != null && !currentReward.IsClaimed) return;
+        if (ShouldOpenCoreAccess())
+        {
+            ActivateCoreAccess();
+            return;
+        }
+        if (coreAccessActive) return;
         if (!IsPlayerAtExit()) return;
 
         if (transitionController != null)
@@ -201,6 +214,8 @@ public class CybergrindArenaDirector : MonoBehaviour
         shopInteractionThisFloor = false;
         bossRewardRevealActive = false;
         bossRewardRevealQueued = false;
+        coreAccessActive = false;
+        currentCoreBeacon = null;
         ApplyFloorMode();
         PrepareFloorSeed();
         bool previousClearSetting = generator.clearBeforeGenerate;
@@ -225,6 +240,8 @@ public class CybergrindArenaDirector : MonoBehaviour
         shopInteractionThisFloor = false;
         bossRewardRevealActive = false;
         bossRewardRevealQueued = false;
+        coreAccessActive = false;
+        currentCoreBeacon = null;
         RunComplete = false;
         runState.ResetRunStats();
         runState.SetRunSeed(unchecked(System.Environment.TickCount ^ (int)System.DateTime.UtcNow.Ticks));
@@ -242,17 +259,22 @@ public class CybergrindArenaDirector : MonoBehaviour
     {
         if (generator == null) return;
 
-        int cycleLength = combatFloorsPerTheme + 2;
-        int position = (floor - 1) % cycleLength;
-
-        if (position < combatFloorsPerTheme)
-            generator.arenaMode = CybergrindArenaGenerator.ArenaMode.Combat;
-        else if (position == combatFloorsPerTheme)
-            generator.arenaMode = CybergrindArenaGenerator.ArenaMode.Shop;
-        else
-            generator.arenaMode = CybergrindArenaGenerator.ArenaMode.Boss;
-
+        generator.arenaMode = GetArenaModeForFloor(floor);
         generator.themeIndex = CurrentThemeIndex;
+    }
+
+    public CybergrindArenaGenerator.ArenaMode GetArenaModeForFloor(int targetFloor)
+    {
+        int cycleLength = Mathf.Max(1, CycleLength);
+        int position = Mathf.Abs(targetFloor - 1) % cycleLength;
+
+        if (position < combatFloorsBeforeShop)
+            return CybergrindArenaGenerator.ArenaMode.Combat;
+        if (position == combatFloorsBeforeShop)
+            return CybergrindArenaGenerator.ArenaMode.Shop;
+        if (position < combatFloorsBeforeShop + 1 + combatFloorsAfterShop)
+            return CybergrindArenaGenerator.ArenaMode.Combat;
+        return CybergrindArenaGenerator.ArenaMode.Boss;
     }
 
     private void PrepareFloorSeed()
@@ -285,20 +307,23 @@ public class CybergrindArenaDirector : MonoBehaviour
         BossEncounterHUD hud = FindAnyObjectByType<BossEncounterHUD>();
         yield return new WaitForSecondsRealtime(0.35f);
 
-        if (transitionController != null)
+        bool finalBoss = IsFinalBossFloor();
+        if (!finalBoss && transitionController != null)
             transitionController.HighlightExitInGenerator(generator);
 
         if (hud != null)
         {
             hud.ShowSystemBanner(
-                "WEAPON DROP INBOUND",
-                "Core weapon aligning. Grab it, then take the exit.",
+                finalBoss ? "CORE READY" : "WEAPON DROP",
+                finalBoss
+                    ? "Take the weapon, then enter the core."
+                    : "Grab the weapon, then take the exit.",
                 new Color(0.18f, 0.08f, 0.03f, 0.95f),
                 2.8f);
         }
 
         yield return new WaitForSecondsRealtime(0.3f);
-        exitHighlighted = true;
+        exitHighlighted = !finalBoss;
         bossRewardRevealActive = false;
         bossRewardRevealQueued = false;
     }
@@ -414,18 +439,58 @@ public class CybergrindArenaDirector : MonoBehaviour
         if (runState == null) runState = CybergrindRunState.GetOrCreate();
 
         if (generator != null && generator.arenaMode == CybergrindArenaGenerator.ArenaMode.Boss)
-            return Mathf.Clamp(CurrentThemeIndex + 1, 1, Mathf.Max(1, runState.maxTrackedWeaponPresets - 1));
+            return runState.heavyUnlockedThisRun
+                ? Mathf.Clamp(6 + Mathf.Abs((CurrentThemeIndex + floor) % 3), 6, Mathf.Max(6, runState.maxTrackedWeaponPresets - 1))
+                : 6;
 
-        int cycleLength = combatFloorsPerTheme + 2;
-        int position = (floor - 1) % cycleLength;
-        int familyOffset = position % 2 == 0 ? 0 : 3;
-        int variant = Mathf.Abs((floor + CurrentThemeIndex) % 3);
-        return Mathf.Clamp(familyOffset + variant, 0, Mathf.Max(0, runState.maxTrackedWeaponPresets - 1));
+        int position = CyclePosition;
+        if (position == 0)
+        {
+            if (!runState.shotgunUnlockedThisRun)
+                return 3;
+            return 1 + Mathf.Abs(CurrentThemeIndex % 2);
+        }
+
+        if (position == 1)
+            return runState.shotgunUnlockedThisRun
+                ? Mathf.Clamp(3 + Mathf.Abs((CurrentThemeIndex + floor) % 3), 3, 5)
+                : 3;
+
+        if (position == combatFloorsBeforeShop + 1)
+            return runState.heavyUnlockedThisRun
+                ? Mathf.Clamp(6 + Mathf.Abs((CurrentThemeIndex + floor + 1) % 3), 6, 8)
+                : 6;
+
+        if (position == combatFloorsBeforeShop + 2)
+        {
+            if (runState.heavyUnlockedThisRun)
+                return Mathf.Clamp(6 + Mathf.Abs((CurrentThemeIndex + floor + 2) % 3), 6, 8);
+            if (runState.shotgunUnlockedThisRun)
+                return Mathf.Clamp(3 + Mathf.Abs((CurrentThemeIndex + floor + 1) % 3), 3, 5);
+        }
+
+        return runState.GetFirstUnlockedPreset();
+    }
+
+    public int PreviewCurrentFloorRewardPresetIndex()
+    {
+        return GetFloorRewardPresetIndex();
     }
 
     public bool HasPendingReward()
     {
         return currentReward != null && !currentReward.IsClaimed;
+    }
+
+    public bool IsFinalBossFloor()
+    {
+        if (generator == null || generator.arenaMode != CybergrindArenaGenerator.ArenaMode.Boss)
+            return false;
+
+        if (runState == null)
+            runState = CybergrindRunState.GetOrCreate();
+
+        return runState.bossesClearedThisRun + 1 >= bossFloorsToReachCore;
     }
 
     public bool HasShopInteractionThisFloor()
@@ -451,8 +516,8 @@ public class CybergrindArenaDirector : MonoBehaviour
         if (hud != null)
         {
             hud.ShowSystemBanner(
-                "CHAMBER OPEN",
-                "The boss shell is breaking apart. Hold for the weapon drop.",
+                "BOSS DOWN",
+                "Weapon drop incoming.",
                 new Color(0.14f, 0.05f, 0.04f, 0.94f),
                 2.6f);
         }
@@ -462,6 +527,33 @@ public class CybergrindArenaDirector : MonoBehaviour
         SpawnExitReward(true, rewardAnchor);
 
         StartCoroutine(BossRewardRevealSequence());
+    }
+
+    public void NotifyCoreReached()
+    {
+        if (!coreAccessActive || RunComplete)
+            return;
+
+        if (runState == null)
+            runState = CybergrindRunState.GetOrCreate();
+
+        int unlockedPreset = runState.RegisterBossDefeated(CurrentThemeIndex);
+        runState.RegisterFloorCleared();
+        Debug.Log($"[ArenaDirector] Core reached. Final boss unlock awarded: preset {unlockedPreset}.");
+
+        BossEncounterHUD hud = FindAnyObjectByType<BossEncounterHUD>();
+        if (hud != null)
+        {
+            hud.ShowSystemBanner(
+                "CORE OPEN",
+                "Run complete.",
+                new Color(0.08f, 0.14f, 0.16f, 0.96f),
+                3.4f);
+        }
+
+        coreAccessActive = false;
+        currentCoreBeacon = null;
+        RunComplete = true;
     }
 
     public void NotifyShopInteraction()
@@ -489,5 +581,89 @@ public class CybergrindArenaDirector : MonoBehaviour
         Gun gun = FindAnyObjectByType<Gun>();
         if (gun != null)
             gun.ResetRunModifiers();
+    }
+
+    private bool ShouldOpenCoreAccess()
+    {
+        return IsFinalBossFloor() &&
+               currentReward != null &&
+               currentReward.IsClaimed &&
+               !coreAccessActive &&
+               !RunComplete;
+    }
+
+    private void ActivateCoreAccess()
+    {
+        if (generator == null || generator.CurrentArenaRoot == null || coreAccessActive)
+            return;
+
+        Vector3 beaconPosition = ResolveBossRewardAnchor() + Vector3.up * 0.2f;
+        GameObject beacon = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+        beacon.name = "CoreBeacon";
+        beacon.transform.SetParent(generator.CurrentArenaRoot, true);
+        beacon.transform.position = beaconPosition;
+        beacon.transform.localScale = new Vector3(0.9f, 0.5f, 0.9f);
+
+        ArenaCoreBeacon coreBeacon = beacon.AddComponent<ArenaCoreBeacon>();
+        coreBeacon.director = this;
+        coreBeacon.highlightRenderer = beacon.GetComponent<Renderer>();
+        currentCoreBeacon = coreBeacon;
+        coreAccessActive = true;
+
+        BuildCoreBeaconModel(beacon.transform);
+
+        BossEncounterHUD hud = FindAnyObjectByType<BossEncounterHUD>();
+        if (hud != null)
+        {
+            hud.ShowSystemBanner(
+                "CORE OPEN",
+                "Step in to finish the run.",
+                new Color(0.05f, 0.13f, 0.16f, 0.96f),
+                3.5f);
+        }
+    }
+
+    private void BuildCoreBeaconModel(Transform root)
+    {
+        Renderer baseRenderer = root.GetComponent<Renderer>();
+        Material baseMaterial = baseRenderer != null ? baseRenderer.sharedMaterial : null;
+        if (baseMaterial == null && generator != null)
+            baseMaterial = generator.accentMaterial;
+        if (baseRenderer != null && baseMaterial != null)
+            baseRenderer.sharedMaterial = baseMaterial;
+
+        CreateCorePart(root, "CoreSpire", PrimitiveType.Cube, new Vector3(0f, 1.4f, 0f), new Vector3(0.24f, 2.4f, 0.24f), generator != null ? generator.darkMaterial : baseMaterial);
+        CreateCorePart(root, "CoreRingA", PrimitiveType.Cylinder, new Vector3(0f, 1.1f, 0f), new Vector3(0.95f, 0.035f, 0.95f), baseMaterial);
+        CreateCorePart(root, "CoreRingB", PrimitiveType.Cylinder, new Vector3(0f, 2.05f, 0f), new Vector3(0.68f, 0.03f, 0.68f), baseMaterial);
+        CreateCorePart(root, "CoreLens", PrimitiveType.Sphere, new Vector3(0f, 2.35f, 0f), new Vector3(0.52f, 0.52f, 0.52f), baseMaterial);
+
+        for (int i = 0; i < 4; i++)
+        {
+            float yaw = i * 90f;
+            Vector3 offset = Quaternion.Euler(0f, yaw, 0f) * new Vector3(0f, 0.72f, 0.88f);
+            CreateCorePart(root, "CoreBlade_" + i, PrimitiveType.Cube, offset, new Vector3(0.12f, 1.2f, 0.42f), baseMaterial, new Vector3(0f, yaw, 28f));
+        }
+    }
+
+    private void CreateCorePart(Transform parent, string name, PrimitiveType primitive, Vector3 localPosition, Vector3 localScale, Material material, Vector3? localEuler = null)
+    {
+        GameObject part = GameObject.CreatePrimitive(primitive);
+        part.name = name;
+        part.transform.SetParent(parent, false);
+        part.transform.localPosition = localPosition;
+        part.transform.localScale = localScale;
+        if (localEuler.HasValue)
+            part.transform.localRotation = Quaternion.Euler(localEuler.Value);
+
+        Renderer renderer = part.GetComponent<Renderer>();
+        if (renderer != null && material != null)
+            renderer.sharedMaterial = material;
+
+        Collider collider = part.GetComponent<Collider>();
+        if (collider != null)
+        {
+            if (Application.isPlaying) Destroy(collider);
+            else DestroyImmediate(collider);
+        }
     }
 }

@@ -12,9 +12,7 @@ public class ProjectStructureAtmosphereHUD : MonoBehaviour
 
     private float refreshTimer;
     private Image vignetteOverlay;
-    private Image scanlineOverlay;
     private Image modeTintOverlay;
-    private Texture2D scanlineTexture;
 
     private void Start()
     {
@@ -43,12 +41,9 @@ public class ProjectStructureAtmosphereHUD : MonoBehaviour
 
         vignetteOverlay = EnsureImage(canvas.transform, "ProjectStructureVignette", 0);
         modeTintOverlay = EnsureImage(canvas.transform, "ProjectStructureModeTint", 1);
-        scanlineOverlay = EnsureImage(canvas.transform, "ProjectStructureScanlines", 2);
-
-        if (scanlineTexture == null)
-            scanlineTexture = BuildScanlineTexture();
-        if (scanlineOverlay != null && scanlineTexture != null)
-            scanlineOverlay.sprite = Sprite.Create(scanlineTexture, new Rect(0f, 0f, scanlineTexture.width, scanlineTexture.height), new Vector2(0.5f, 0.5f));
+        Transform oldScanlines = canvas.transform.Find("ProjectStructureScanlines");
+        if (oldScanlines != null)
+            Destroy(oldScanlines.gameObject);
     }
 
     private Image EnsureImage(Transform parent, string name, int siblingIndex)
@@ -80,7 +75,7 @@ public class ProjectStructureAtmosphereHUD : MonoBehaviour
 
     private void RefreshOverlay()
     {
-        if (vignetteOverlay == null || scanlineOverlay == null || modeTintOverlay == null)
+        if (vignetteOverlay == null || modeTintOverlay == null)
             return;
 
         float health01 = 1f;
@@ -120,34 +115,6 @@ public class ProjectStructureAtmosphereHUD : MonoBehaviour
                 : new Color(sectorTint.r, sectorTint.g, sectorTint.b, 0.03f + speed01 * 0.04f);
         modeTintOverlay.color = tint;
 
-        float scanAlpha = lowHealth > 0.72f ? Mathf.Lerp(0f, 0.008f, Mathf.InverseLerp(0.72f, 1f, lowHealth)) : 0f;
-        scanlineOverlay.color = new Color(0.7f, 0.86f, 0.92f, Mathf.Clamp01(scanAlpha));
-        RectTransform rect = scanlineOverlay.rectTransform;
-        if (rect != null)
-            rect.anchoredPosition = new Vector2(0f, Mathf.Repeat(Time.unscaledTime * 3f, 24f));
-    }
-
-    private Texture2D BuildScanlineTexture()
-    {
-        const int width = 8;
-        const int height = 64;
-        Texture2D texture = new Texture2D(width, height, TextureFormat.RGBA32, false)
-        {
-            wrapMode = TextureWrapMode.Repeat,
-            filterMode = FilterMode.Point,
-            name = "ProjectStructureScanlineTexture"
-        };
-
-        for (int y = 0; y < height; y++)
-        {
-            float alpha = y % 4 == 0 ? 0.35f : (y % 2 == 0 ? 0.12f : 0.03f);
-            Color color = new Color(1f, 1f, 1f, alpha);
-            for (int x = 0; x < width; x++)
-                texture.SetPixel(x, y, color);
-        }
-
-        texture.Apply();
-        return texture;
     }
 
     private Color ResolveSectorTint(int themeIndex)

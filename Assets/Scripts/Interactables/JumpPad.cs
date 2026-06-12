@@ -20,7 +20,6 @@ public class JumpPad : MonoBehaviour
         
         if (player != null)
         {
-            Debug.Log("[JumpPad] Launched player!");
             // Play FX
             if (launchFX != null) launchFX.Play();
             if (audioSource != null && bounceSound != null) audioSource.PlayOneShot(bounceSound);

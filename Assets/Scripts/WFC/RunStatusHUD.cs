@@ -50,7 +50,7 @@ public class RunStatusHUD : MonoBehaviour
     private void RefreshUI()
     {
         if (arenaDirector != null && floorText != null)
-            floorText.text = $"FLOOR // {arenaDirector.floor:00}";
+            floorText.text = $"Floor {arenaDirector.floor:00}";
 
         RefreshCycleText();
         RefreshDirectiveText();
@@ -66,6 +66,7 @@ public class RunStatusHUD : MonoBehaviour
         bool isShop = arenaDirector != null && arenaDirector.generator != null && arenaDirector.generator.arenaMode == CybergrindArenaGenerator.ArenaMode.Shop;
         bool isBoss = arenaDirector != null && arenaDirector.generator != null && arenaDirector.generator.arenaMode == CybergrindArenaGenerator.ArenaMode.Boss;
         bool bossRewardRevealActive = arenaDirector != null && arenaDirector.IsBossRewardRevealActive;
+        bool coreAccessActive = arenaDirector != null && arenaDirector.IsCoreAccessActive;
 
         if (runComplete)
         {
@@ -98,12 +99,12 @@ public class RunStatusHUD : MonoBehaviour
                     1 => "PHASE II",
                     _ => "PHASE I"
                 } : "BOSS";
-                objectiveText.text = $"Beat the boss // {phase}";
+                objectiveText.text = $"Beat the boss - {phase}";
             }
             else
             {
                 objectiveText.text = livingEnemies <= 2
-                    ? $"Clear enemies: {livingEnemies} left // marked"
+                    ? $"Clear enemies: {livingEnemies} left - marked"
                     : $"Clear enemies: {livingEnemies} left";
             }
             return;
@@ -115,10 +116,18 @@ public class RunStatusHUD : MonoBehaviour
             return;
         }
 
+        if (coreAccessActive)
+        {
+            objectiveText.text = "Enter the core";
+            return;
+        }
+
         if (pendingReward)
         {
             objectiveText.text = isBoss
-                ? "Grab the boss weapon to open the next floor"
+                ? (arenaDirector != null && arenaDirector.IsFinalBossFloor()
+                    ? "Grab the boss weapon to wake the core"
+                    : "Grab the boss weapon to open the next floor")
                 : "Grab the weapon to open the exit";
             return;
         }
@@ -130,37 +139,40 @@ public class RunStatusHUD : MonoBehaviour
     {
         if (arenaDirector == null || cycleText == null) return;
 
-        int combatFloorsPerTheme = Mathf.Max(1, arenaDirector.combatFloorsPerTheme);
-        int cycleLength = combatFloorsPerTheme + 2;
-        int position = (arenaDirector.floor - 1) % cycleLength;
+        int position = arenaDirector.CyclePosition;
         string themeLabel = arenaDirector.generator != null
             ? arenaDirector.generator.GetThemeLabel()
             : CybergrindArenaGenerator.GetThemeLabel(arenaDirector.CurrentThemeIndex);
 
-        if (position < combatFloorsPerTheme)
+        if (position < arenaDirector.combatFloorsBeforeShop)
         {
-            cycleText.text = $"{themeLabel} // Combat {position + 1}/{combatFloorsPerTheme}";
+            cycleText.text = $"{themeLabel} - Combat {position + 1}/2";
         }
-        else if (position == combatFloorsPerTheme)
+        else if (position == arenaDirector.combatFloorsBeforeShop)
         {
-            cycleText.text = $"{themeLabel} // Shop";
+            cycleText.text = $"{themeLabel} - Shop";
+        }
+        else if (position < arenaDirector.combatFloorsBeforeShop + 1 + arenaDirector.combatFloorsAfterShop)
+        {
+            int backHalfIndex = position - arenaDirector.combatFloorsBeforeShop;
+            cycleText.text = $"{themeLabel} - Combat {backHalfIndex + 2}/4";
         }
         else
         {
-            cycleText.text = $"{themeLabel} // Boss";
+            cycleText.text = $"{themeLabel} - Boss";
         }
     }
 
     private void RefreshDirectiveText()
     {
         if (arenaDirector == null || directiveText == null) return;
-        directiveText.text = $"{arenaDirector.CurrentDirectiveTitle} // {arenaDirector.CurrentDirectiveDetail}";
+        directiveText.text = $"{arenaDirector.CurrentDirectiveTitle}: {arenaDirector.CurrentDirectiveDetail}";
     }
 
     private void RefreshSeedText()
     {
         if (seedText == null || runState == null) return;
-        seedText.text = $"Seed: {runState.currentRunSeed} / {runState.currentFloorSeed}";
+        seedText.text = $"Seed {runState.currentRunSeed} / {runState.currentFloorSeed}";
     }
 
     private void RefreshCoreProgress()
@@ -168,7 +180,7 @@ public class RunStatusHUD : MonoBehaviour
         if (arenaDirector == null || runState == null) return;
 
         if (coreProgressText != null)
-            coreProgressText.text = $"Bosses Beaten: {runState.bossesClearedThisRun}/{arenaDirector.bossFloorsToReachCore}";
+            coreProgressText.text = $"Bosses: {runState.bossesClearedThisRun}/{arenaDirector.bossFloorsToReachCore}";
 
         if (coreProgressFill != null)
             coreProgressFill.fillAmount = Mathf.Clamp01((float)runState.bossesClearedThisRun / Mathf.Max(1, arenaDirector.bossFloorsToReachCore));
@@ -250,20 +262,20 @@ public class RunStatusHUD : MonoBehaviour
         EnsurePanels();
         if (floorText != null && cycleText != null && directiveText != null && objectiveText != null && seedText != null && coreProgressText != null && coreProgressFill != null) return;
 
-        floorText = floorText != null ? floorText : CreateHudText("FloorText", new Vector2(20f, -18f), 30f);
-        cycleText = cycleText != null ? cycleText : CreateHudText("CycleText", new Vector2(20f, -56f), 24f);
-        directiveText = directiveText != null ? directiveText : CreateHudText("DirectiveText", new Vector2(20f, -88f), 17f);
+        floorText = floorText != null ? floorText : CreateHudText("FloorText", new Vector2(14f, -84f), 18f);
+        cycleText = cycleText != null ? cycleText : CreateHudText("CycleText", new Vector2(14f, -108f), 14f);
+        directiveText = directiveText != null ? directiveText : CreateHudText("DirectiveText", new Vector2(14f, -128f), 10.5f);
         if (directiveText != null)
         {
             directiveText.textWrappingMode = TextWrappingModes.Normal;
             if (directiveText.rectTransform != null)
-                directiveText.rectTransform.sizeDelta = new Vector2(580f, 42f);
+                directiveText.rectTransform.sizeDelta = new Vector2(340f, 30f);
         }
-        objectiveText = objectiveText != null ? objectiveText : CreateHudText("ObjectiveText", new Vector2(20f, -124f), 24f);
-        seedText = seedText != null ? seedText : CreateHudText("SeedText", new Vector2(20f, -166f), 18f);
-        coreProgressText = coreProgressText != null ? coreProgressText : CreateHudText("CoreProgressText", new Vector2(20f, -206f), 18f);
+        objectiveText = objectiveText != null ? objectiveText : CreateHudText("ObjectiveText", new Vector2(14f, -160f), 14f);
+        seedText = seedText != null ? seedText : CreateHudText("SeedText", new Vector2(14f, -184f), 10f);
+        coreProgressText = coreProgressText != null ? coreProgressText : CreateHudText("CoreProgressText", new Vector2(14f, -204f), 10f);
         if (coreProgressFill == null)
-            coreProgressFill = CreateProgressBar("CoreProgressBar", new Vector2(20f, -240f));
+            coreProgressFill = CreateProgressBar("CoreProgressBar", new Vector2(14f, -224f));
     }
 
     private TMP_Text CreateHudText(string name, Vector2 anchoredPos, float fontSize)
@@ -282,7 +294,7 @@ public class RunStatusHUD : MonoBehaviour
         rect.anchorMax = new Vector2(0f, 1f);
         rect.pivot = new Vector2(0f, 1f);
         rect.anchoredPosition = anchoredPos;
-        rect.sizeDelta = new Vector2(920f, 36f);
+        rect.sizeDelta = new Vector2(360f, 22f);
 
         TMP_Text text = go.AddComponent<TextMeshProUGUI>();
         text.fontSize = fontSize;
@@ -297,8 +309,8 @@ public class RunStatusHUD : MonoBehaviour
         RectTransform parentRect = transform as RectTransform;
         if (parentRect == null) return;
 
-        headerPanel = headerPanel != null ? headerPanel : CreatePanel("HeaderPanel", new Vector2(12f, -10f), new Vector2(620f, 118f));
-        objectivePanel = objectivePanel != null ? objectivePanel : CreatePanel("ObjectivePanel", new Vector2(12f, -120f), new Vector2(620f, 156f));
+        headerPanel = headerPanel != null ? headerPanel : CreatePanel("HeaderPanel", new Vector2(8f, -78f), new Vector2(370f, 70f));
+        objectivePanel = objectivePanel != null ? objectivePanel : CreatePanel("ObjectivePanel", new Vector2(8f, -146f), new Vector2(370f, 94f));
     }
 
     private Image CreatePanel(string name, Vector2 anchoredPos, Vector2 size)
@@ -335,7 +347,7 @@ public class RunStatusHUD : MonoBehaviour
         backRect.anchorMax = new Vector2(0f, 1f);
         backRect.pivot = new Vector2(0f, 1f);
         backRect.anchoredPosition = anchoredPos;
-        backRect.sizeDelta = new Vector2(280f, 14f);
+        backRect.sizeDelta = new Vector2(170f, 7f);
 
         Image backImage = back.AddComponent<Image>();
         backImage.color = new Color(0.08f, 0.09f, 0.12f, 0.95f);

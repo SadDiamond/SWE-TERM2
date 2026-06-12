@@ -42,7 +42,8 @@ public class CybergrindTerminalUI : MonoBehaviour
 
         GameObject go = new GameObject("RuntimeArenaTerminalUI");
         Instance = go.AddComponent<CybergrindTerminalUI>();
-        DontDestroyOnLoad(go);
+        if (Application.isPlaying)
+            DontDestroyOnLoad(go);
         return Instance;
     }
 
@@ -55,7 +56,8 @@ public class CybergrindTerminalUI : MonoBehaviour
         }
 
         Instance = this;
-        DontDestroyOnLoad(gameObject);
+        if (Application.isPlaying)
+            DontDestroyOnLoad(gameObject);
         BuildUI();
         EnsureEventSystem();
         HideUI();
@@ -69,6 +71,7 @@ public class CybergrindTerminalUI : MonoBehaviour
 
     public void OpenTerminal(CybergrindPuzzleTerminal terminal, PlayerController player)
     {
+        EnsureBuilt();
         activeTerminal = terminal;
         activePlayer = player;
         transientMessage = string.Empty;
@@ -93,7 +96,7 @@ public class CybergrindTerminalUI : MonoBehaviour
             var controller = player.GetComponent<CharacterController>();
             if (controller != null)
                 controller.enabled = true;
-            player.SendMessage("RefreshVitalsUI", SendMessageOptions.DontRequireReceiver);
+            player.RefreshVitalsUI();
         }
     }
 
@@ -160,6 +163,7 @@ public class CybergrindTerminalUI : MonoBehaviour
 
     public void RefreshFromTerminal(CybergrindPuzzleTerminal terminal)
     {
+        EnsureBuilt();
         if (terminal == null)
         {
             HideUI();
@@ -186,7 +190,7 @@ public class CybergrindTerminalUI : MonoBehaviour
         increaseButton.GetComponentInChildren<TextMeshProUGUI>().text = "+";
         decreaseButton.GetComponentInChildren<TextMeshProUGUI>().text = "-";
         submitButton.GetComponentInChildren<TextMeshProUGUI>().text = terminal.GetSubmitLabel();
-        closeButton.GetComponentInChildren<TextMeshProUGUI>().text = "DISCONNECT";
+        closeButton.GetComponentInChildren<TextMeshProUGUI>().text = "CLOSE";
 
         increaseButton.gameObject.SetActive(terminal.challengeMode == CybergrindPuzzleTerminal.ChallengeMode.Calibration);
         decreaseButton.gameObject.SetActive(terminal.challengeMode == CybergrindPuzzleTerminal.ChallengeMode.Calibration);
@@ -195,12 +199,16 @@ public class CybergrindTerminalUI : MonoBehaviour
 
     private void BuildUI()
     {
+        if (canvas != null && titleText != null && window != null)
+            return;
+
         GameObject canvasObject = new GameObject("ArenaTerminalCanvas");
         canvasObject.transform.SetParent(transform, false);
         canvas = canvasObject.AddComponent<Canvas>();
         canvas.renderMode = RenderMode.ScreenSpaceOverlay;
         canvas.sortingOrder = 5000;
-        canvasObject.AddComponent<CanvasScaler>();
+        CanvasScaler scaler = canvasObject.AddComponent<CanvasScaler>();
+        ProjectStructureUIRoot.ConfigureScaler(scaler);
         canvasObject.AddComponent<GraphicRaycaster>();
 
         RectTransform canvasRect = canvas.GetComponent<RectTransform>();
@@ -212,7 +220,7 @@ public class CybergrindTerminalUI : MonoBehaviour
         GameObject backdrop = new GameObject("Backdrop");
         backdrop.transform.SetParent(canvasObject.transform, false);
         backdropImage = backdrop.AddComponent<Image>();
-        backdropImage.color = new Color(0f, 0f, 0f, 0.72f);
+        backdropImage.color = new Color(0f, 0f, 0f, 0.28f);
         RectTransform backdropRect = backdrop.GetComponent<RectTransform>();
         backdropRect.anchorMin = Vector2.zero;
         backdropRect.anchorMax = Vector2.one;
@@ -224,8 +232,8 @@ public class CybergrindTerminalUI : MonoBehaviour
         windowImage = window.AddComponent<Image>();
         windowImage.color = new Color(0.04f, 0.07f, 0.09f, 0.96f);
         RectTransform windowRect = window.GetComponent<RectTransform>();
-        windowRect.anchorMin = new Vector2(0.17f, 0.12f);
-        windowRect.anchorMax = new Vector2(0.83f, 0.88f);
+        windowRect.anchorMin = new Vector2(0.25f, 0.18f);
+        windowRect.anchorMax = new Vector2(0.75f, 0.78f);
         windowRect.offsetMin = Vector2.zero;
         windowRect.offsetMax = Vector2.zero;
 
@@ -285,6 +293,16 @@ public class CybergrindTerminalUI : MonoBehaviour
         decreaseButton.onClick.AddListener(() => activeTerminal?.SubmitDecrease());
         submitButton.onClick.AddListener(() => activeTerminal?.SubmitConfirm());
         closeButton.onClick.AddListener(() => activeTerminal?.CancelPuzzle());
+    }
+
+    private void EnsureBuilt()
+    {
+        if (canvas != null && titleText != null && window != null)
+            return;
+
+        BuildUI();
+        EnsureEventSystem();
+        HideUI();
     }
 
     private Button CreateButton(Transform parent, string label, Vector2 anchorMin, Vector2 anchorMax, Color color)
@@ -349,7 +367,8 @@ public class CybergrindTerminalUI : MonoBehaviour
             return;
 
         GameObject eventSystem = new GameObject("RuntimeEventSystem");
-        DontDestroyOnLoad(eventSystem);
+        if (Application.isPlaying)
+            DontDestroyOnLoad(eventSystem);
         eventSystem.AddComponent<EventSystem>();
         eventSystem.AddComponent<InputSystemUIInputModule>();
     }
@@ -374,9 +393,9 @@ public class CybergrindTerminalUI : MonoBehaviour
         if (terminal == null) return string.Empty;
 
         if (terminal.challengeMode == CybergrindPuzzleTerminal.ChallengeMode.Calibration)
-            return "UP / DOWN or +/- tunes the node    ENTER locks the value    ESC disconnects";
+            return "UP / DOWN or +/- adjust    ENTER confirm    ESC close";
 
-        return "E / SPACE engage    Q / LEFT alternate    ENTER lock-in    ESC disconnect";
+        return "E / SPACE primary    Q / LEFT secondary    ENTER confirm    ESC close";
     }
 
     private Color ResolveProgressColor(CybergrindPuzzleTerminal terminal)
@@ -399,9 +418,9 @@ public class CybergrindTerminalUI : MonoBehaviour
         Color accent = ResolveProgressColor(terminal);
 
         if (windowImage != null)
-            windowImage.color = Color.Lerp(new Color(0.04f, 0.07f, 0.09f, 0.96f), accent * new Color(1f, 1f, 1f, 0.94f), 0.14f);
+            windowImage.color = Color.Lerp(new Color(0.04f, 0.07f, 0.09f, 0.9f), accent * new Color(1f, 1f, 1f, 0.9f), 0.12f);
         if (backdropImage != null)
-            backdropImage.color = Color.Lerp(new Color(0f, 0f, 0f, 0.72f), accent * new Color(1f, 1f, 1f, 0.72f), 0.06f);
+            backdropImage.color = Color.Lerp(new Color(0f, 0f, 0f, 0.28f), accent * new Color(1f, 1f, 1f, 0.28f), 0.04f);
         if (titleText != null)
             titleText.color = Color.Lerp(new Color(0.58f, 0.96f, 1f), accent, 0.35f);
         if (modeText != null)

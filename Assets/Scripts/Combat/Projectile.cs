@@ -6,6 +6,8 @@ public class Projectile : MonoBehaviour
     public float lifetime = 3f;
     public float impactScalePulse = 1.35f;
     public float impactLifetime = 0.08f;
+    public float ownerIgnoreGraceTime = 0.16f;
+    public float ownerClearanceRadius = 2.2f;
     [HideInInspector] public GameObject owner; // Tells the bullet who shot it so they don't shoot themselves
     
     [Header("Impact FX")]
@@ -15,10 +17,15 @@ public class Projectile : MonoBehaviour
     public AudioClip impactSound;
     public float impactVolume = 0.9f;
 
+    private float spawnedAtTime;
+    private Vector3 spawnPosition;
+
     public void Initialize(GameObject projectileOwner, float projectileDamage)
     {
         owner = projectileOwner;
         damage = projectileDamage;
+        spawnedAtTime = Time.time;
+        spawnPosition = transform.position;
         IgnoreOwnerColliders();
 
         Rigidbody rb = GetComponent<Rigidbody>();
@@ -28,25 +35,40 @@ public class Projectile : MonoBehaviour
 
     void Start()
     {
+        if (spawnedAtTime <= 0f)
+        {
+            spawnedAtTime = Time.time;
+            spawnPosition = transform.position;
+        }
+
         IgnoreOwnerColliders();
 
         Rigidbody rb = GetComponent<Rigidbody>();
         if (rb != null)
         {
             rb.useGravity = false;
-            // Mark as kinematic if spawned too close to avoid stuck geometry
-            if (Vector3.Distance(transform.position, owner != null ? owner.transform.position : Vector3.zero) < 1.5f)
-                rb.isKinematic = true;
+            rb.detectCollisions = true;
         }
 
         // Automatically destroy bullet after a few seconds so it doesn't clutter the game
         Destroy(gameObject, lifetime);
     }
 
+    void FixedUpdate()
+    {
+        if (owner == null) return;
+        if (!ShouldKeepIgnoringOwner()) return;
+        IgnoreOwnerColliders();
+    }
+
     void OnCollisionEnter(Collision collision)
     {
         // Don't hit the person who shot this!
-        if (IsOwnerCollision(collision.collider)) return;
+        if (ShouldIgnoreCollision(collision.collider)) return;
+
+        PlayerController player = collision.collider.GetComponentInParent<PlayerController>();
+        if (player != null && player.TryParryIncomingProjectile(this))
+            return;
 
         // Check if what we hit can take damage
         IDamageable damageable = collision.collider.GetComponentInParent<IDamageable>();
@@ -87,24 +109,87 @@ public class Projectile : MonoBehaviour
         Destroy(gameObject, impactLifetime);
     }
 
+    public void Reflect(GameObject newOwner, Vector3 direction, float speed, float damageMultiplier)
+    {
+        owner = newOwner;
+        damage *= Mathf.Max(1f, damageMultiplier);
+        spawnedAtTime = Time.time;
+        spawnPosition = transform.position;
+        transform.rotation = Quaternion.LookRotation(direction.normalized);
+        IgnoreOwnerColliders();
+
+        Rigidbody rb = GetComponent<Rigidbody>();
+        if (rb != null)
+        {
+            rb.useGravity = false;
+#pragma warning disable 0618
+            rb.velocity = direction.normalized * speed;
+#pragma warning restore 0618
+        }
+    }
+
     private void IgnoreOwnerColliders()
     {
         if (owner == null) return;
 
-        Collider ownCollider = GetComponent<Collider>();
-        if (ownCollider == null) return;
+        Collider[] ownColliders = GetComponentsInChildren<Collider>(true);
+        if (ownColliders == null || ownColliders.Length == 0) return;
 
         Collider[] ownerColliders = owner.GetComponentsInChildren<Collider>(true);
-        for (int i = 0; i < ownerColliders.Length; i++)
+        for (int i = 0; i < ownColliders.Length; i++)
         {
-            if (ownerColliders[i] != null)
-                Physics.IgnoreCollision(ownCollider, ownerColliders[i], true);
+            Collider ownCollider = ownColliders[i];
+            if (ownCollider == null) continue;
+
+            for (int j = 0; j < ownerColliders.Length; j++)
+            {
+                if (ownerColliders[j] != null)
+                    Physics.IgnoreCollision(ownCollider, ownerColliders[j], true);
+            }
         }
     }
 
     private bool IsOwnerCollision(Collider other)
     {
         if (owner == null || other == null) return false;
-        return other.gameObject == owner || other.transform.IsChildOf(owner.transform);
+        return other.gameObject == owner ||
+               other.transform.IsChildOf(owner.transform) ||
+               transform.IsChildOf(owner.transform) ||
+               other.GetComponentInParent<PlayerController>() != null && owner.GetComponentInParent<PlayerController>() != null;
+    }
+
+    private bool ShouldIgnoreCollision(Collider other)
+    {
+        if (IsOwnerCollision(other)) return true;
+
+        if (!ShouldKeepIgnoringOwner())
+            return false;
+
+        if (other != null && other.GetComponentInParent<PlayerController>() != null)
+            return true;
+
+        if (owner != null)
+        {
+            Vector3 ownerPoint = owner.transform.position + Vector3.up * 0.9f;
+            if (Vector3.Distance(transform.position, ownerPoint) <= ownerClearanceRadius)
+                return true;
+        }
+
+        return Vector3.Distance(transform.position, spawnPosition) <= ownerClearanceRadius * 0.55f;
+    }
+
+    private bool ShouldKeepIgnoringOwner()
+    {
+        if (Time.time - spawnedAtTime <= ownerIgnoreGraceTime)
+            return true;
+
+        if (owner != null)
+        {
+            Vector3 ownerPoint = owner.transform.position + Vector3.up * 0.9f;
+            if (Vector3.Distance(transform.position, ownerPoint) <= ownerClearanceRadius)
+                return true;
+        }
+
+        return Vector3.Distance(transform.position, spawnPosition) <= ownerClearanceRadius * 0.55f;
     }
 }

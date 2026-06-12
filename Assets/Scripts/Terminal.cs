@@ -8,7 +8,7 @@ public class Terminal : Interactable
 {
     [Header("Terminal State")]
     public bool isSolved = false;
-    public string overridePrompt = "Breach terminal node";
+    public string overridePrompt = "Use terminal";
     [Min(0.5f)] public float terminalInteractRange = 4.5f;
 
     [Header("Connected Systems")]
@@ -21,6 +21,7 @@ public class Terminal : Interactable
 
     private Renderer screenRenderer;
     private Renderer statusLightRenderer;
+    private Renderer beaconRenderer;
     private LineRenderer circuitLineRenderer;
     private TextMeshPro statusLabel;
 
@@ -73,6 +74,12 @@ public class Terminal : Interactable
         CreatePart(model.transform, "KeyboardDeck", new Vector3(0f, -0.02f, 0.14f), new Vector3(0.64f, 0.12f, 0.28f), panelMat);
         GameObject statusLight = CreatePart(model.transform, "StatusLight", new Vector3(0f, 0.48f, 0.14f), new Vector3(0.09f, 0.09f, 0.04f), accentMat);
         statusLightRenderer = statusLight.GetComponent<Renderer>();
+        ArenaPulseFx statusPulse = statusLight.AddComponent<ArenaPulseFx>();
+        statusPulse.SetBaseScale(statusLight.transform.localScale);
+        statusPulse.scalePulse = 0.18f;
+        statusPulse.pulseSpeed = 3.8f;
+        statusPulse.emissionColor = new Color(0.1f, 0.9f, 1f);
+        statusPulse.emissionStrength = 0.85f;
 
         for (int i = -2; i <= 2; i++)
         {
@@ -85,6 +92,25 @@ public class Terminal : Interactable
         CreatePart(model.transform, "AntennaLeft", new Vector3(-0.25f, 0.74f, -0.03f), new Vector3(0.03f, 0.28f, 0.03f), accentMat);
         CreatePart(model.transform, "AntennaRight", new Vector3(0.25f, 0.74f, -0.03f), new Vector3(0.03f, 0.24f, 0.03f), accentMat);
         CreatePart(model.transform, "CableBundle", new Vector3(0f, -0.42f, -0.22f), new Vector3(0.16f, 0.08f, 0.16f), frameMat);
+
+        GameObject floorRing = CreatePart(model.transform, "FloorSignal", new Vector3(0f, -0.47f, 0f), new Vector3(1.2f, 0.025f, 1.2f), accentMat);
+        beaconRenderer = floorRing.GetComponent<Renderer>();
+        ArenaPulseFx floorPulse = floorRing.AddComponent<ArenaPulseFx>();
+        floorPulse.SetBaseScale(floorRing.transform.localScale);
+        floorPulse.scalePulse = 0.16f;
+        floorPulse.pulseSpeed = 2.25f;
+        floorPulse.rotationDegreesPerSecond = new Vector3(0f, 24f, 0f);
+        floorPulse.emissionColor = new Color(0.1f, 0.9f, 1f);
+        floorPulse.emissionStrength = 0.7f;
+
+        GameObject beacon = CreatePart(model.transform, "VerticalSignal", new Vector3(0f, 0.68f, -0.18f), new Vector3(0.055f, 1.35f, 0.055f), accentMat);
+        ArenaPulseFx beaconPulse = beacon.AddComponent<ArenaPulseFx>();
+        beaconPulse.SetBaseScale(beacon.transform.localScale);
+        beaconPulse.scalePulse = 0.22f;
+        beaconPulse.pulseSpeed = 3.2f;
+        beaconPulse.emissionColor = new Color(0.1f, 0.9f, 1f);
+        beaconPulse.emissionStrength = 0.9f;
+
         highlightRenderer = screenRenderer;
     }
 
@@ -101,6 +127,13 @@ public class Terminal : Interactable
         {
             statusLightRenderer.material = CreateTerminalMaterial(
                 isSolved ? new Color(0.12f, 0.3f, 0.12f) : new Color(0.08f, 0.5f, 0.65f),
+                isSolved ? new Color(0.2f, 1f, 0.25f) : new Color(0.1f, 0.9f, 1f));
+        }
+
+        if (beaconRenderer != null)
+        {
+            beaconRenderer.material = CreateTerminalMaterial(
+                isSolved ? new Color(0.06f, 0.22f, 0.08f) : new Color(0.02f, 0.22f, 0.28f),
                 isSolved ? new Color(0.2f, 1f, 0.25f) : new Color(0.1f, 0.9f, 1f));
         }
 
@@ -121,9 +154,17 @@ public class Terminal : Interactable
         part.transform.localPosition = localPosition;
         part.transform.localScale = localScale;
         Collider collider = part.GetComponent<Collider>();
-        if (collider != null) Destroy(collider);
+        if (collider != null)
+        {
+            if (Application.isPlaying) Destroy(collider);
+            else DestroyImmediate(collider);
+        }
         Renderer renderer = part.GetComponent<Renderer>();
-        if (renderer != null) renderer.material = material;
+        if (renderer != null)
+        {
+            if (Application.isPlaying) renderer.material = material;
+            else renderer.sharedMaterial = material;
+        }
         return part;
     }
 
@@ -172,21 +213,55 @@ public class Terminal : Interactable
             yield break;
         }
 
-        // Fallback: try to find the exit pit (goal marker tile location)
         Vector3 exitPos = FindExitWorldPosition();
-        if (exitPos != Vector3.zero)
+        if (exitPos != Vector3.zero && TryBuildGroundCircuitFallback(transform.position, exitPos, out List<Vector3> fallbackPath))
         {
             lineRenderer.useWorldSpace = true;
-            lineRenderer.positionCount = 4;
-            Vector3 start = transform.position + Vector3.up * 0.08f;
-            Vector3 midA = Vector3.Lerp(start, exitPos, 0.33f) + Vector3.up * 0.15f;
-            Vector3 midB = Vector3.Lerp(start, exitPos, 0.66f) + Vector3.up * 0.15f;
-            lineRenderer.SetPosition(0, start);
-            lineRenderer.SetPosition(1, midA);
-            lineRenderer.SetPosition(2, midB);
-            lineRenderer.SetPosition(3, exitPos + Vector3.up * 0.08f);
+            lineRenderer.positionCount = fallbackPath.Count;
+            for (int i = 0; i < fallbackPath.Count; i++)
+                lineRenderer.SetPosition(i, fallbackPath[i] + Vector3.up * 0.03f);
             RefreshCircuitLineVisual();
         }
+    }
+
+    private bool TryBuildGroundCircuitFallback(Vector3 startWorld, Vector3 endWorld, out List<Vector3> path)
+    {
+        path = new List<Vector3>();
+
+        Vector3 start = SampleGroundPoint(startWorld, 0.08f);
+        Vector3 end = SampleGroundPoint(endWorld, 0.08f);
+        Vector3 midA = new Vector3(end.x, start.y, start.z);
+        Vector3 midB = new Vector3(end.x, end.y, start.z);
+        AddGroundPathSegment(path, start, midA);
+        AddGroundPathSegment(path, midA, midB);
+        AddGroundPathSegment(path, midB, end);
+
+        return path.Count >= 2;
+    }
+
+    private void AddGroundPathSegment(List<Vector3> path, Vector3 start, Vector3 end)
+    {
+        if (path.Count == 0)
+            path.Add(SampleGroundPoint(start, 0.08f));
+
+        int steps = Mathf.Clamp(Mathf.RoundToInt(Vector3.Distance(start, end) / 1.35f), 3, 18);
+        for (int i = 1; i <= steps; i++)
+        {
+            float t = i / (float)steps;
+            Vector3 sample = Vector3.Lerp(start, end, t);
+            sample = SampleGroundPoint(sample, 0.05f);
+            if (path.Count == 0 || Vector3.Distance(path[path.Count - 1], sample) > 0.35f)
+                path.Add(sample);
+        }
+    }
+
+    private Vector3 SampleGroundPoint(Vector3 worldPoint, float verticalOffset)
+    {
+        Vector3 origin = worldPoint + Vector3.up * 6f;
+        if (Physics.Raycast(origin, Vector3.down, out RaycastHit hit, 16f, ~0, QueryTriggerInteraction.Ignore))
+            return hit.point + Vector3.up * verticalOffset;
+
+        return worldPoint + Vector3.up * verticalOffset;
     }
 
     private Vector3 FindExitWorldPosition()

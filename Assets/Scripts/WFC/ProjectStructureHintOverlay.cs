@@ -64,7 +64,6 @@ public class ProjectStructureHintOverlay : MonoBehaviour
         string title = string.Empty;
         string body = string.Empty;
         string sectorLabel = arenaDirector != null ? arenaDirector.CurrentThemeLabel.ToUpperInvariant() : "ARENA";
-        string directiveTitle = arenaDirector != null ? arenaDirector.CurrentDirectiveTitle : "Directive";
 
         CharacterController controller = player != null ? player.GetComponent<CharacterController>() : null;
         float speed = controller != null ? new Vector3(controller.velocity.x, 0f, controller.velocity.z).magnitude : 0f;
@@ -72,40 +71,40 @@ public class ProjectStructureHintOverlay : MonoBehaviour
         if (!sawMovementHint && speed < 2f)
         {
             nextKey = "movement";
-            title = "KEEP MOVING";
-            body = "Dash with SHIFT, slide with CTRL/C, and chain your jumps. The faster you move, the easier this arena is to read.";
+            title = "MOVEMENT";
+            body = "Dash with SHIFT, slide with CTRL/C, and keep chaining jumps. Staying in motion makes fights much easier.";
         }
         else if (!sawWeaponHint && arenaDirector != null && arenaDirector.floor <= 2)
         {
             nextKey = "weapons";
-            title = "WEAPON CONTROLS";
-            body = "1/2 swaps weapon family. Q/E cycles variants. Right click uses the special move on your current weapon.";
+            title = "WEAPONS";
+            body = "1/2/3 changes weapons. Q/E changes the current variant. Right click uses the alt shot. F is melee/parry.";
         }
         else if (!sawTerminalHint && CountUnsolvedTerminals() > 0)
         {
             nextKey = "terminal";
             title = $"{sectorLabel} // TERMINALS";
-            body = $"{directiveTitle} is active here. Finish the terminals, then clear the enemies to open the exit.";
+            body = $"Finish the terminals, then clear the enemies to open the exit.";
         }
         else if (!sawRewardHint && arenaDirector != null && arenaDirector.HasPendingReward())
         {
             nextKey = "reward";
-            title = "GRAB THE WEAPON";
-            body = "A floor reward is more than a pickup. Take it before you leave so the next floor starts stronger.";
+            title = "NEW WEAPON";
+            body = "Pick up the weapon before you leave. You do not keep it between runs.";
         }
         else if (!sawShopHint && arenaDirector != null && arenaDirector.generator != null &&
                  arenaDirector.generator.arenaMode == CybergrindArenaGenerator.ArenaMode.Shop)
         {
             nextKey = "shop";
             title = $"{sectorLabel} // SHOP";
-            body = $"{directiveTitle} keeps going between floors. Use at least one station: Refit swaps weapons, Overclock boosts damage, Surge improves movement, and Repair heals you.";
+            body = $"Use at least one station. Refit changes weapons, Overclock boosts damage, Surge improves movement, and Repair heals you.";
         }
         else if (!sawBossHint && arenaDirector != null && arenaDirector.generator != null &&
                  arenaDirector.generator.arenaMode == CybergrindArenaGenerator.ArenaMode.Boss)
         {
             nextKey = "boss";
             title = $"{sectorLabel} // BOSS";
-            body = "Bosses are pattern fights. Watch the tells, keep moving, and punish the gaps after each big attack.";
+            body = "Watch the attack pattern, stay moving, and hit during the gaps.";
         }
 
         if (nextKey == currentHintKey) return;
@@ -156,11 +155,11 @@ public class ProjectStructureHintOverlay : MonoBehaviour
         GameObject root = new GameObject("ProjectStructureHintOverlay");
         root.transform.SetParent(canvas.transform, false);
         RectTransform rootRect = root.AddComponent<RectTransform>();
-        rootRect.anchorMin = new Vector2(1f, 0f);
-        rootRect.anchorMax = new Vector2(1f, 0f);
-        rootRect.pivot = new Vector2(1f, 0f);
-        rootRect.anchoredPosition = new Vector2(-18f, 22f);
-        rootRect.sizeDelta = new Vector2(430f, 150f);
+        rootRect.anchorMin = new Vector2(0f, 0f);
+        rootRect.anchorMax = new Vector2(0f, 0f);
+        rootRect.pivot = new Vector2(0f, 0f);
+        rootRect.anchoredPosition = new Vector2(14f, 14f);
+        rootRect.sizeDelta = new Vector2(260f, 78f);
 
         Image panel = root.AddComponent<Image>();
         panel.color = new Color(0.02f, 0.045f, 0.06f, 0.9f);
@@ -168,8 +167,8 @@ public class ProjectStructureHintOverlay : MonoBehaviour
         hintGroup = root.AddComponent<CanvasGroup>();
         hintGroup.alpha = 0f;
 
-        hintTitleText = CreateText(root.transform, "HintTitle", 23f, new Vector2(0.5f, 0.73f), new Vector2(380f, 28f), TextAlignmentOptions.Center, Color.white);
-        hintBodyText = CreateText(root.transform, "HintBody", 17f, new Vector2(0.5f, 0.4f), new Vector2(380f, 76f), TextAlignmentOptions.Center, new Color(0.82f, 0.9f, 0.96f));
+        hintTitleText = CreateText(root.transform, "HintTitle", 11.5f, new Vector2(0.5f, 0.72f), new Vector2(232f, 18f), TextAlignmentOptions.Center, Color.white);
+        hintBodyText = CreateText(root.transform, "HintBody", 8.5f, new Vector2(0.5f, 0.38f), new Vector2(232f, 42f), TextAlignmentOptions.Center, new Color(0.82f, 0.9f, 0.96f));
     }
 
     private TMP_Text CreateText(Transform parent, string name, float fontSize, Vector2 anchor, Vector2 boxSize, TextAlignmentOptions alignment, Color color)

@@ -6,11 +6,19 @@ using UnityEngine.UI;
 public static class ProjectStructureUIRoot
 {
     public const string CanvasName = "ProjectStructureCanvas";
+    public const string UIScalePrefKey = "ProjectStructure_UIScale";
+    public const float MinUIScale = 0.75f;
+    public const float MaxUIScale = 1.35f;
+    private static float cachedUIScale = -1f;
 
     public static Canvas GetOrCreateCanvas()
     {
         Canvas canvas = FindCanvas();
-        if (canvas != null) return canvas;
+        if (canvas != null)
+        {
+            ApplyCanvasScale(canvas);
+            return canvas;
+        }
 
         GameObject canvasGo = new GameObject(CanvasName);
         canvas = canvasGo.AddComponent<Canvas>();
@@ -18,15 +26,64 @@ public static class ProjectStructureUIRoot
         canvas.pixelPerfect = false;
         canvas.sortingOrder = 0;
 
-        CanvasScaler scaler = canvasGo.AddComponent<CanvasScaler>();
-        scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-        scaler.referenceResolution = new Vector2(1920f, 1080f);
-        scaler.screenMatchMode = CanvasScaler.ScreenMatchMode.MatchWidthOrHeight;
-        scaler.matchWidthOrHeight = 0.5f;
+        canvasGo.AddComponent<CanvasScaler>();
+        ApplyCanvasScale(canvas);
 
         canvasGo.AddComponent<GraphicRaycaster>();
         EnsureEventSystem();
         return canvas;
+    }
+
+    public static float GetUIScale()
+    {
+        if (cachedUIScale < 0f)
+            cachedUIScale = Mathf.Clamp(PlayerPrefs.GetFloat(UIScalePrefKey, 1f), MinUIScale, MaxUIScale);
+        return cachedUIScale;
+    }
+
+    public static void SetUIScale(float scale, bool persist = true)
+    {
+        cachedUIScale = Mathf.Clamp(scale, MinUIScale, MaxUIScale);
+        if (persist)
+        {
+            PlayerPrefs.SetFloat(UIScalePrefKey, cachedUIScale);
+            PlayerPrefs.Save();
+        }
+
+        ApplyUIScaleToAllCanvases();
+    }
+
+    public static void ApplyUIScaleToAllCanvases()
+    {
+        Canvas[] canvases = Object.FindObjectsByType<Canvas>(FindObjectsInactive.Include);
+        for (int i = 0; i < canvases.Length; i++)
+        {
+            Canvas canvas = canvases[i];
+            if (canvas == null) continue;
+            ApplyCanvasScale(canvas);
+        }
+    }
+
+    public static void ApplyCanvasScale(Canvas canvas)
+    {
+        if (canvas == null) return;
+
+        CanvasScaler scaler = canvas.GetComponent<CanvasScaler>();
+        if (scaler == null)
+            scaler = canvas.gameObject.AddComponent<CanvasScaler>();
+
+        ConfigureScaler(scaler);
+    }
+
+    public static void ConfigureScaler(CanvasScaler scaler)
+    {
+        if (scaler == null) return;
+
+        float uiScale = GetUIScale();
+        scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+        scaler.referenceResolution = new Vector2(2560f / uiScale, 1440f / uiScale);
+        scaler.screenMatchMode = CanvasScaler.ScreenMatchMode.MatchWidthOrHeight;
+        scaler.matchWidthOrHeight = 0.5f;
     }
 
     public static Canvas FindCanvas()

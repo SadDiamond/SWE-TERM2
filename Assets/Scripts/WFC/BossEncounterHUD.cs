@@ -25,6 +25,7 @@ public class BossEncounterHUD : MonoBehaviour
     private bool lastBossVisible;
     private bool lastRewardPending;
     private bool lastBossRewardRevealActive;
+    private bool lastCoreAccessActive;
     private GameObject bannerRoot;
     private GameObject bossRoot;
     private Image bannerPanelImage;
@@ -74,6 +75,7 @@ public class BossEncounterHUD : MonoBehaviour
             lastShopReady = arenaDirector.HasShopInteractionThisFloor();
             lastRewardPending = arenaDirector.HasPendingReward();
             lastBossRewardRevealActive = arenaDirector.IsBossRewardRevealActive;
+            lastCoreAccessActive = arenaDirector.IsCoreAccessActive;
             lastBossVisible = false;
             lastBossPhase = -1;
         }
@@ -106,6 +108,7 @@ public class BossEncounterHUD : MonoBehaviour
         BasicEnemyAI boss = FindCurrentBoss();
         bool rewardPending = arenaDirector.HasPendingReward();
         bool rewardRevealActive = arenaDirector.IsBossRewardRevealActive;
+        bool coreAccessActive = arenaDirector.IsCoreAccessActive;
 
         if (boss == null)
         {
@@ -113,23 +116,35 @@ public class BossEncounterHUD : MonoBehaviour
             {
                 ShowEncounterBanner(
                     "BOSS DOWN",
-                    "The boss is falling apart. Your reward is on the way.",
+                    "Reward incoming.",
                     new Color(0.12f, 0.05f, 0.03f, 0.92f),
                     bannerDuration + 0.3f);
             }
             if (rewardPending && !lastRewardPending)
             {
                 ShowEncounterBanner(
-                    "REWARD READY",
-                    "Your boss weapon is ready. Grab it before you leave.",
+                    arenaDirector.IsFinalBossFloor() ? "CORE WEAPON READY" : "REWARD READY",
+                    arenaDirector.IsFinalBossFloor()
+                        ? "Take the weapon, then enter the core."
+                        : "Grab the weapon before you leave.",
                     new Color(0.14f, 0.08f, 0.03f, 0.94f),
                     bannerDuration + 0.55f);
+            }
+            if (coreAccessActive && !lastCoreAccessActive)
+            {
+                ShowEncounterBanner(
+                    "CORE OPEN",
+                    "Step in to finish the run.",
+                    new Color(0.03f, 0.11f, 0.13f, 0.94f),
+                    bannerDuration + 0.75f);
             }
             if (lastBossVisible)
             {
                 ShowEncounterBanner(
-                    "BOSS DEFEATED",
-                    "The floor is clear. Take your reward and move on.",
+                    arenaDirector.IsFinalBossFloor() ? "CORE OPEN" : "BOSS DEFEATED",
+                    arenaDirector.IsFinalBossFloor()
+                        ? "Take the weapon, then enter the core."
+                        : "The floor is clear. Take your reward and move on.",
                     new Color(0.16f, 0.06f, 0.04f, 0.92f),
                     bannerDuration + 0.55f);
             }
@@ -140,6 +155,7 @@ public class BossEncounterHUD : MonoBehaviour
             lastBossPhase = -1;
             lastRewardPending = rewardPending;
             lastBossRewardRevealActive = rewardRevealActive;
+            lastCoreAccessActive = coreAccessActive;
             return;
         }
 
@@ -170,6 +186,7 @@ public class BossEncounterHUD : MonoBehaviour
             bossPanelImage.color = Color.Lerp(new Color(0.05f, 0.02f, 0.03f, 0.88f), GetBossColor(boss, boss.Health01) * new Color(1f, 1f, 1f, 0.38f), 0.35f);
         lastRewardPending = rewardPending;
         lastBossRewardRevealActive = rewardRevealActive;
+        lastCoreAccessActive = coreAccessActive;
     }
 
     private BasicEnemyAI FindCurrentBoss()
@@ -264,13 +281,13 @@ public class BossEncounterHUD : MonoBehaviour
         bannerRect.anchorMin = new Vector2(0.5f, 1f);
         bannerRect.anchorMax = new Vector2(0.5f, 1f);
         bannerRect.pivot = new Vector2(0.5f, 1f);
-        bannerRect.anchoredPosition = new Vector2(0f, -18f);
-        bannerRect.sizeDelta = new Vector2(760f, 78f);
+        bannerRect.anchoredPosition = new Vector2(0f, -14f);
+        bannerRect.sizeDelta = new Vector2(560f, 56f);
         bannerPanelImage = bannerRoot.AddComponent<Image>();
         bannerPanelImage.color = new Color(0.01f, 0.05f, 0.08f, 0.88f);
-        bannerText = CreateText(bannerRoot.transform, "BannerText", 24f, TextAlignmentOptions.Center, new Vector2(0.5f, 0.67f), new Vector2(700f, 34f));
+        bannerText = CreateText(bannerRoot.transform, "BannerText", 17f, TextAlignmentOptions.Center, new Vector2(0.5f, 0.67f), new Vector2(520f, 24f));
         bannerText.color = new Color(0.72f, 0.95f, 1f);
-        bannerDetailText = CreateText(bannerRoot.transform, "BannerDetailText", 16f, TextAlignmentOptions.Center, new Vector2(0.5f, 0.28f), new Vector2(700f, 30f));
+        bannerDetailText = CreateText(bannerRoot.transform, "BannerDetailText", 11f, TextAlignmentOptions.Center, new Vector2(0.5f, 0.28f), new Vector2(520f, 22f));
         bannerDetailText.color = new Color(0.82f, 0.9f, 0.95f);
         bannerDetailText.textWrappingMode = TextWrappingModes.Normal;
 
@@ -280,16 +297,16 @@ public class BossEncounterHUD : MonoBehaviour
         bossRect.anchorMin = new Vector2(0.5f, 1f);
         bossRect.anchorMax = new Vector2(0.5f, 1f);
         bossRect.pivot = new Vector2(0.5f, 1f);
-        bossRect.anchoredPosition = new Vector2(0f, -80f);
-        bossRect.sizeDelta = new Vector2(760f, 88f);
+        bossRect.anchoredPosition = new Vector2(0f, -62f);
+        bossRect.sizeDelta = new Vector2(560f, 64f);
         bossPanelImage = bossRoot.AddComponent<Image>();
         bossPanelImage.color = new Color(0.05f, 0.02f, 0.03f, 0.88f);
 
-        bossNameText = CreateText(bossRoot.transform, "BossNameText", 28f, TextAlignmentOptions.Center, new Vector2(0.5f, 0.73f), new Vector2(680f, 36f));
+        bossNameText = CreateText(bossRoot.transform, "BossNameText", 19f, TextAlignmentOptions.Center, new Vector2(0.5f, 0.73f), new Vector2(510f, 26f));
         bossNameText.color = new Color(1f, 0.82f, 0.7f);
-        bossPhaseText = CreateText(bossRoot.transform, "BossPhaseText", 18f, TextAlignmentOptions.Center, new Vector2(0.5f, 0.5f), new Vector2(680f, 28f));
+        bossPhaseText = CreateText(bossRoot.transform, "BossPhaseText", 12f, TextAlignmentOptions.Center, new Vector2(0.5f, 0.5f), new Vector2(510f, 20f));
         bossPhaseText.color = new Color(0.86f, 0.92f, 0.96f);
-        bossHealthValueText = CreateText(bossRoot.transform, "BossHealthValueText", 17f, TextAlignmentOptions.Center, new Vector2(0.5f, 0.28f), new Vector2(680f, 24f));
+        bossHealthValueText = CreateText(bossRoot.transform, "BossHealthValueText", 11f, TextAlignmentOptions.Center, new Vector2(0.5f, 0.28f), new Vector2(510f, 18f));
         bossHealthValueText.color = new Color(0.98f, 0.88f, 0.76f);
 
         GameObject back = new GameObject("BossHealthBack");
@@ -447,10 +464,10 @@ public class BossEncounterHUD : MonoBehaviour
 
         return boss.bossArchetype switch
         {
-            BasicEnemyAI.BossArchetype.Warden => "Expect expanding rings and lane-denial crossfire.",
-            BasicEnemyAI.BossArchetype.Striker => "Expect dash chains, gap closes, and slam pressure.",
-            BasicEnemyAI.BossArchetype.Sentinel => "Expect strafe volleys, dive runs, and air-control feints.",
-            _ => "Expect a full threat-pattern shift."
+            BasicEnemyAI.BossArchetype.Warden => "Expanding rings and crossfire.",
+            BasicEnemyAI.BossArchetype.Striker => "Dash chains and slam attacks.",
+            BasicEnemyAI.BossArchetype.Sentinel => "Strafe volleys and dive runs.",
+            _ => "Pattern shift incoming."
         };
     }
 }

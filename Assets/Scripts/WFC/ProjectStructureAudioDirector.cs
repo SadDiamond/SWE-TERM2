@@ -16,6 +16,7 @@ public class ProjectStructureAudioDirector : MonoBehaviour
     private bool lastPlayerDead;
     private bool lastRunComplete;
     private bool lastBossRewardRevealActive;
+    private bool lastCoreAccessActive;
     private int lastBossPhase = -1;
     private string lastBossName = string.Empty;
     private Coroutine sequenceRoutine;
@@ -81,6 +82,7 @@ public class ProjectStructureAudioDirector : MonoBehaviour
             lastShopReady = arenaDirector.HasShopInteractionThisFloor();
             lastRunComplete = arenaDirector.RunComplete;
             lastBossRewardRevealActive = arenaDirector.IsBossRewardRevealActive;
+            lastCoreAccessActive = arenaDirector.IsCoreAccessActive;
         }
 
         if (player != null)
@@ -127,6 +129,11 @@ public class ProjectStructureAudioDirector : MonoBehaviour
         if (bossRewardRevealActive && !lastBossRewardRevealActive)
             PlayBossChamberUnlockCue();
         lastBossRewardRevealActive = bossRewardRevealActive;
+
+        bool coreAccessActive = arenaDirector.IsCoreAccessActive;
+        if (coreAccessActive && !lastCoreAccessActive)
+            PlayCoreLinkOpenCue();
+        lastCoreAccessActive = coreAccessActive;
 
         bool shopReady = arenaDirector.HasShopInteractionThisFloor();
         if (shopReady && !lastShopReady)
@@ -368,6 +375,14 @@ public class ProjectStructureAudioDirector : MonoBehaviour
             Tone(320f, 0.08f, 0.34f, Waveform.Sine),
             Tone(480f, 0.08f, 0.40f, Waveform.Sine),
             Tone(720f, 0.14f, 0.52f, Waveform.Sine));
+    }
+
+    private void PlayCoreLinkOpenCue()
+    {
+        PlaySequence(
+            Tone(240f, 0.06f, 0.28f, Waveform.Sine),
+            Tone(360f, 0.07f, 0.34f, Waveform.Sine),
+            Tone(540f, 0.12f, 0.4f, Waveform.Saw));
     }
 
     private void PlaySequence(params AudioClip[] clips)

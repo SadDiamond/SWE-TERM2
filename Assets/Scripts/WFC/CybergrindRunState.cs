@@ -3,10 +3,13 @@ using UnityEngine;
 public class CybergrindRunState : MonoBehaviour
 {
     public const int StartingWeaponPreset = 0;
+    public const int WeaponFamilySize = 3;
     public static CybergrindRunState Instance { get; private set; }
 
     [Header("Run")]
     public int bossesClearedThisRun;
+    public bool shotgunUnlockedThisRun;
+    public bool heavyUnlockedThisRun;
     public int currentRunSeed;
     public int currentFloorSeed;
     public int floorsClearedThisRun;
@@ -18,7 +21,7 @@ public class CybergrindRunState : MonoBehaviour
 
     [Header("Persistence")]
     public bool persistBossUnlocks = false;
-    public int maxTrackedWeaponPresets = 6;
+    public int maxTrackedWeaponPresets = 9;
 
     private void Awake()
     {
@@ -48,18 +51,19 @@ public class CybergrindRunState : MonoBehaviour
 
     public bool IsWeaponUnlocked(int presetIndex)
     {
-        if (presetIndex <= StartingWeaponPreset) return true;
-        return presetIndex <= bossesClearedThisRun;
+        if (presetIndex < WeaponFamilySize) return true;
+        if (presetIndex < WeaponFamilySize * 2) return shotgunUnlockedThisRun;
+        return heavyUnlockedThisRun;
     }
 
     public int RegisterBossDefeated(int themeIndex)
     {
         bossesClearedThisRun++;
-
-        int unlockIndex = Mathf.Clamp(themeIndex + 1, 1, maxTrackedWeaponPresets - 1);
+        int unlockIndex = heavyUnlockedThisRun
+            ? Mathf.Clamp(6 + (themeIndex % WeaponFamilySize), 6, maxTrackedWeaponPresets - 1)
+            : 6;
         UnlockWeapon(unlockIndex);
-
-        Debug.Log($"[ArenaRunState] Boss cleared. Weapon preset {unlockIndex} is now unlocked.");
+        Debug.Log($"[ArenaRunState] Boss cleared. Reward preset {unlockIndex} is available.");
         return unlockIndex;
     }
 
@@ -92,6 +96,8 @@ public class CybergrindRunState : MonoBehaviour
     public void ResetRunStats()
     {
         bossesClearedThisRun = 0;
+        shotgunUnlockedThisRun = false;
+        heavyUnlockedThisRun = false;
         floorsClearedThisRun = 0;
         enemiesDefeatedThisRun = 0;
         terminalsSolvedThisRun = 0;
@@ -109,31 +115,39 @@ public class CybergrindRunState : MonoBehaviour
     public void UnlockWeapon(int presetIndex)
     {
         if (presetIndex < 0) return;
+
+        if (presetIndex >= WeaponFamilySize * 2)
+            heavyUnlockedThisRun = true;
+        else if (presetIndex >= WeaponFamilySize)
+            shotgunUnlockedThisRun = true;
     }
 
     public int GetFirstUnlockedPreset()
     {
-        for (int i = 0; i < maxTrackedWeaponPresets; i++)
-        {
-            if (IsWeaponUnlocked(i)) return i;
-        }
-
         return StartingWeaponPreset;
     }
 
     public int CountUnlockedWeapons()
     {
-        int unlocked = 0;
-        for (int i = 0; i < maxTrackedWeaponPresets; i++)
-        {
-            if (IsWeaponUnlocked(i))
-                unlocked++;
-        }
-
-        return unlocked;
+        return 1 + (shotgunUnlockedThisRun ? 1 : 0) + (heavyUnlockedThisRun ? 1 : 0);
     }
 
-    private void EnsureStartingWeaponUnlocked() { }
+    public bool IsFamilyUnlocked(Gun.WeaponFamily family)
+    {
+        return family switch
+        {
+            Gun.WeaponFamily.Pistol => true,
+            Gun.WeaponFamily.Shotgun => shotgunUnlockedThisRun,
+            Gun.WeaponFamily.Heavy => heavyUnlockedThisRun,
+            _ => false
+        };
+    }
+
+    private void EnsureStartingWeaponUnlocked()
+    {
+        shotgunUnlockedThisRun = false;
+        heavyUnlockedThisRun = false;
+    }
 
     private void EnsureRunSeed()
     {

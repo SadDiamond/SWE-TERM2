@@ -17,9 +17,7 @@ public class CombatFeedbackHUD : MonoBehaviour
 
     public static void RegisterHit(float damage, bool kill, Color accent, string targetLabel = "")
     {
-        CombatFeedbackHUD hud = GetOrCreate();
-        if (hud == null) return;
-        hud.PushHit(damage, kill, accent, targetLabel);
+        return;
     }
 
     public static CombatFeedbackHUD GetOrCreate()
@@ -56,39 +54,26 @@ public class CombatFeedbackHUD : MonoBehaviour
 
     private void Update()
     {
-        if (hitTimer > 0f)
-            hitTimer -= Time.deltaTime;
-        if (killTimer > 0f)
-            killTimer -= Time.deltaTime;
+        if (hitTimer > 0f) hitTimer = 0f;
+        if (killTimer > 0f) killTimer = 0f;
+        queuedStatus = string.Empty;
 
-        float markerAlpha = Mathf.Clamp01(Mathf.Max(hitTimer / 0.12f, killTimer / 0.22f));
-        Color markerColor = currentLineColor;
-        markerColor.a = markerAlpha;
         for (int i = 0; i < hitLines.Length; i++)
         {
-            if (hitLines[i] == null) continue;
-            hitLines[i].color = markerColor;
-            hitLines[i].enabled = markerAlpha > 0.01f;
+            if (hitLines[i] != null)
+                hitLines[i].enabled = false;
         }
 
         if (statusText != null)
-        {
-            float statusAlpha = Mathf.Clamp01(killTimer / 0.4f);
-            statusText.text = statusAlpha > 0.01f ? queuedStatus : string.Empty;
-            Color textColor = new Color(1f, 0.89f, 0.7f, statusAlpha);
-            statusText.color = textColor;
-            if (statusBack != null)
-            {
-                statusBack.color = new Color(0.06f, 0.04f, 0.02f, statusAlpha * 0.72f);
-                statusBack.enabled = statusAlpha > 0.01f;
-            }
-        }
+            statusText.text = string.Empty;
+        if (statusBack != null)
+            statusBack.enabled = false;
     }
 
     private void PushHit(float damage, bool kill, Color accent, string targetLabel)
     {
         EnsureBuilt();
-        hitTimer = 0.12f;
+        hitTimer = 0f;
         if (kill)
         {
             killTimer = 0.4f;
