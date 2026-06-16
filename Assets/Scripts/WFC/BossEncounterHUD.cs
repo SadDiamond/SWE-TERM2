@@ -123,7 +123,7 @@ public class BossEncounterHUD : MonoBehaviour
             if (rewardPending && !lastRewardPending)
             {
                 ShowEncounterBanner(
-                    arenaDirector.IsFinalBossFloor() ? "CORE WEAPON READY" : "REWARD READY",
+                    arenaDirector.IsFinalBossFloor() ? "CORE DROP READY" : "REWARD READY",
                     arenaDirector.IsFinalBossFloor()
                         ? "Take the weapon, then enter the core."
                         : "Grab the weapon before you leave.",
@@ -211,22 +211,22 @@ public class BossEncounterHUD : MonoBehaviour
         {
             case CybergrindArenaGenerator.ArenaMode.Shop:
                 ShowEncounterBanner(
-                    $"{themeLabel.ToUpperInvariant()} // SHOP",
-                    $"{arenaDirector.CurrentDirectiveTitle}. Use a station, then take the exit.",
+                    $"{themeLabel.ToUpperInvariant()} SHOP",
+                    "Buy once. Leave when ready.",
                     new Color(0.02f, 0.11f, 0.10f, 0.9f),
                     bannerDuration);
                 break;
             case CybergrindArenaGenerator.ArenaMode.Boss:
                 ShowEncounterBanner(
-                    $"{themeLabel.ToUpperInvariant()} // BOSS FLOOR",
-                    $"{arenaDirector.CurrentDirectiveTitle}. Watch the patterns, keep moving, and hit back after each attack.",
+                    $"{themeLabel.ToUpperInvariant()} BOSS",
+                    "Read the pattern. Hit the opening.",
                     new Color(0.11f, 0.03f, 0.04f, 0.92f),
                     bannerDuration + 0.2f);
                 break;
             default:
                 ShowEncounterBanner(
-                    $"{themeLabel.ToUpperInvariant()} // FLOOR {arenaDirector.floor:00}",
-                    $"{arenaDirector.CurrentDirectiveTitle}. Finish the terminals, clear the enemies, and grab the weapon.",
+                    $"{themeLabel.ToUpperInvariant()} FLOOR {arenaDirector.floor:00}",
+                    "Clear the room. Finish the terminal. Take the drop.",
                     new Color(0.01f, 0.05f, 0.08f, 0.88f),
                     bannerDuration);
                 break;
@@ -239,14 +239,14 @@ public class BossEncounterHUD : MonoBehaviour
 
         string suffix = boss.bossArchetype switch
         {
-            BasicEnemyAI.BossArchetype.Warden => "WIDE SHOTS / AREA TRAPS",
-            BasicEnemyAI.BossArchetype.Striker => "FAST RUSH / SLAM ATTACKS",
-            BasicEnemyAI.BossArchetype.Sentinel => "AIR STRIKES / DIVE RUNS",
+            BasicEnemyAI.BossArchetype.Warden => "RINGS / CROSSFIRE",
+            BasicEnemyAI.BossArchetype.Striker => "RUSH / SLAM",
+            BasicEnemyAI.BossArchetype.Sentinel => "DIVE / VOLLEY",
             _ => "BOSS"
         };
 
         ShowEncounterBanner(
-            $"{boss.displayName.ToUpperInvariant()} // {suffix}",
+            $"{boss.displayName.ToUpperInvariant()} - {suffix}",
             BuildBossArchetypeDetail(boss),
             GetBannerColorForBoss(boss),
             Mathf.Max(bannerDuration, 3.4f));
@@ -264,8 +264,8 @@ public class BossEncounterHUD : MonoBehaviour
         };
 
         ShowEncounterBanner(
-            $"{phaseLabel} // PRESSURE RISING",
-            $"{boss.displayName.ToUpperInvariant()} is shifting pattern. {BuildBossArchetypeDetail(boss)}",
+            $"{phaseLabel}",
+            $"{boss.displayName.ToUpperInvariant()} changed pattern. {BuildBossArchetypeDetail(boss)}",
             GetBannerColorForBoss(boss),
             2.2f);
     }
@@ -344,6 +344,7 @@ public class BossEncounterHUD : MonoBehaviour
         rect.sizeDelta = boxSize;
 
         TMP_Text text = go.AddComponent<TextMeshProUGUI>();
+        ProjectStructureUIRoot.ApplyDefaultFont(text);
         text.fontSize = size;
         text.alignment = alignment;
         text.color = Color.white;
@@ -422,7 +423,7 @@ public class BossEncounterHUD : MonoBehaviour
             _ => "PHASE I"
         };
 
-        return $"{phase}  //  {Mathf.RoundToInt(boss.Health01 * 100f)}% HULL  //  {pattern.ToUpperInvariant()}";
+        return $"{phase}  {Mathf.RoundToInt(boss.Health01 * 100f)}%  {pattern.ToUpperInvariant()}";
     }
 
     private Color GetBossColor(BasicEnemyAI boss, float health01)

@@ -105,16 +105,15 @@ public class ProjectStructurePresentation : MonoBehaviour
         panelImage = panelRoot.AddComponent<Image>();
         panelImage.color = new Color(0.01f, 0.02f, 0.03f, 0.92f);
 
-        CreateOverlayPanel(panelRoot.transform, "TitleLineTop", new Vector2(0.5f, 0.81f), new Vector2(720f, 2f), new Color(0.42f, 0.9f, 1f, 0.45f));
-        CreateOverlayPanel(panelRoot.transform, "TitleLineBottom", new Vector2(0.5f, 0.57f), new Vector2(720f, 2f), new Color(0.42f, 0.9f, 1f, 0.32f));
-        CreateOverlayPanel(panelRoot.transform, "TitleLeftPanel", new Vector2(0.19f, 0.35f), new Vector2(260f, 180f), new Color(0.02f, 0.045f, 0.06f, 0.5f));
-        CreateOverlayPanel(panelRoot.transform, "TitleRightPanel", new Vector2(0.81f, 0.35f), new Vector2(260f, 180f), new Color(0.02f, 0.045f, 0.06f, 0.5f));
+        CreateOverlayPanel(panelRoot.transform, "TitleBandTop", new Vector2(0.5f, 0.78f), new Vector2(860f, 3f), new Color(0.42f, 0.9f, 1f, 0.42f));
+        CreateOverlayPanel(panelRoot.transform, "TitleBandBottom", new Vector2(0.5f, 0.42f), new Vector2(860f, 3f), new Color(0.42f, 0.9f, 1f, 0.24f));
+        CreateOverlayPanel(panelRoot.transform, "TitleStartPlate", new Vector2(0.5f, 0.31f), new Vector2(420f, 44f), new Color(0.02f, 0.045f, 0.06f, 0.58f));
 
-        overlayText = CreateText(panelRoot.transform, "OverlayTitle", 68, TextAlignmentOptions.Center, new Vector2(0.5f, 0.69f), new Vector2(1050f, 120f));
-        rankText = CreateText(panelRoot.transform, "OverlayRank", 20, TextAlignmentOptions.Center, new Vector2(0.5f, 0.54f), new Vector2(720f, 70f));
-        subtitleText = CreateText(panelRoot.transform, "OverlaySubtitle", 20, TextAlignmentOptions.Center, new Vector2(0.5f, 0.36f), new Vector2(720f, 150f));
-        detailText = CreateText(panelRoot.transform, "OverlayDetail", 15, TextAlignmentOptions.Center, new Vector2(0.5f, 0.2f), new Vector2(720f, 90f));
-        footerText = CreateText(panelRoot.transform, "OverlayFooter", 18, TextAlignmentOptions.Center, new Vector2(0.5f, 0.08f), new Vector2(720f, 56f));
+        overlayText = CreateText(panelRoot.transform, "OverlayTitle", 72, TextAlignmentOptions.Center, new Vector2(0.5f, 0.64f), new Vector2(1120f, 116f));
+        rankText = CreateText(panelRoot.transform, "OverlayRank", 15, TextAlignmentOptions.Center, new Vector2(0.5f, 0.51f), new Vector2(760f, 34f));
+        subtitleText = CreateText(panelRoot.transform, "OverlaySubtitle", 18, TextAlignmentOptions.Center, new Vector2(0.5f, 0.34f), new Vector2(720f, 92f));
+        detailText = CreateText(panelRoot.transform, "OverlayDetail", 13, TextAlignmentOptions.Center, new Vector2(0.5f, 0.22f), new Vector2(760f, 54f));
+        footerText = CreateText(panelRoot.transform, "OverlayFooter", 13, TextAlignmentOptions.Center, new Vector2(0.5f, 0.09f), new Vector2(840f, 42f));
         if (rankText != null)
             rankText.color = new Color(0.82f, 0.94f, 1f);
         if (detailText != null)
@@ -139,6 +138,7 @@ public class ProjectStructurePresentation : MonoBehaviour
         rect.pivot = new Vector2(0.5f, 0.5f);
         rect.sizeDelta = sizeDelta;
         TMP_Text text = go.AddComponent<TextMeshProUGUI>();
+        ProjectStructureUIRoot.ApplyDefaultFont(text);
         text.fontSize = size;
         text.alignment = alignment;
         text.color = Color.white;
@@ -179,11 +179,11 @@ public class ProjectStructurePresentation : MonoBehaviour
             rankText.text = "FAST ARENA SHOOTER";
         subtitleText.text =
             BuildTitleIntro() + "\n\n" +
-            "ENTER / SPACE to start\nESC settings";
+            "Enter / Space to start\nEsc for settings";
         if (detailText != null)
             detailText.text = BuildTitleDetail(runState);
         if (footerText != null)
-            footerText.text = "WASD move   SHIFT dash   CTRL slide   SPACE jump   E interact   F melee";
+            footerText.text = "WASD move   Shift dash   Ctrl slide   Space jump   E interact   F melee";
 
         Time.timeScale = 0f;
         if (player != null) player.ToggleUIMode(true);
@@ -240,7 +240,7 @@ public class ProjectStructurePresentation : MonoBehaviour
         float duration = runState.GetRunDurationSeconds();
         RunSummary summary = BuildRunSummary(runState, duration);
         if (rankText != null)
-            rankText.text = $"{summary.rankLabel}  //  {summary.signature}";
+            rankText.text = $"{summary.rankLabel} - {summary.signature}";
         subtitleText.text =
             "You made it to the end of the run.\n" +
             $"{summary.epitaph}";
@@ -255,7 +255,7 @@ public class ProjectStructurePresentation : MonoBehaviour
                 $"Time: {FormatTime(duration)}";
         }
         if (footerText != null)
-            footerText.text = "ENTER / SPACE // PLAY AGAIN";
+            footerText.text = "Enter or Space: play again";
         Time.timeScale = 0f;
         if (player != null) player.ToggleUIMode(true);
         Cursor.lockState = CursorLockMode.None;
@@ -292,7 +292,7 @@ public class ProjectStructurePresentation : MonoBehaviour
         if (panelImage != null)
             panelImage.color = new Color(0.03f, 0.01f, 0.015f, 0.94f);
 
-        overlayText.text = "RUN BROKEN";
+        overlayText.text = "RUN OVER";
         overlayText.color = new Color(1f, 0.78f, 0.72f);
         CybergrindRunState runState = CybergrindRunState.GetOrCreate();
         if (rankText != null)
@@ -308,7 +308,7 @@ public class ProjectStructurePresentation : MonoBehaviour
                 $"Shop uses: {runState.shopInteractionsThisRun}   Damage taken: {Mathf.RoundToInt(runState.damageTakenThisRun)}";
         }
         if (footerText != null)
-            footerText.text = "ENTER / SPACE // RESTART    ESC // TITLE";
+            footerText.text = "Enter or Space: restart    Esc: title";
 
         Time.timeScale = 0f;
         if (player != null) player.ToggleUIMode(true);
@@ -339,7 +339,7 @@ public class ProjectStructurePresentation : MonoBehaviour
     private string BuildTitleIntro()
     {
         return
-            "Clear rooms. Buy upgrades. Reach the core.";
+            "Clear rooms. Buy gun mods. Reach the core.";
     }
 
     private string BuildTitleDetail(CybergrindRunState runState)
@@ -396,30 +396,30 @@ public class ProjectStructurePresentation : MonoBehaviour
         Cursor.visible = true;
 
         yield return PlayEndingBeat(
-            "CORE SIGNAL",
-            "The structure finally answered.\nEverything around you locked onto the core.",
-            "Hold on.",
+            "CORE REACHED",
+            "The floor opens under you.\nThe whole place goes quiet.",
+            "Stay ready.",
             new Color(0.01f, 0.02f, 0.03f, 0.82f),
             0.85f);
 
         yield return PlayEndingBeat(
-            "INNER SHELL OPEN",
-            "A chamber opened beneath the arena.\nThe machine recognized what you did.",
-            "Access granted.",
+            "INNER FLOOR",
+            "A chamber opens below the arena.\nYou made it farther than the last run.",
+            "Going down.",
             new Color(0.02f, 0.03f, 0.05f, 0.88f),
             0.8f);
 
         yield return PlayEndingBeat(
-            "IMPRINT RECORDED",
-            "Your run is written into the core now.\nIt will remember the path you forced open.",
-            "Saving run data.",
+            "RUN SAVED",
+            "Your route is marked.\nThe next attempt starts with a cleaner path.",
+            "Saving.",
             new Color(0.04f, 0.03f, 0.02f, 0.9f),
             0.82f);
 
         yield return PlayEndingBeat(
-            "CORE RESPONSE",
-            "The structure stayed open where you broke it.\nAnother run can follow the same wound.",
-            "Wrapping up the run.",
+            "END OF SLICE",
+            "The core is still below.\nThis is as far as this build goes.",
+            "Run complete.",
             new Color(0.02f, 0.03f, 0.03f, 0.92f),
             0.78f);
 
@@ -444,14 +444,14 @@ public class ProjectStructurePresentation : MonoBehaviour
         yield return PlayEndingBeat(
             "YOU DIED",
             "You lost the run.\nThe structure kept moving without you.",
-            "Recording failure.",
+            "Run ended.",
             new Color(0.03f, 0.01f, 0.015f, 0.88f),
             0.82f);
 
         yield return PlayEndingBeat(
             "SIGNAL LOST",
             "The path sealed over behind you.\nYou can still break it open again.",
-            "Ready to restart.",
+            "Restart when ready.",
             new Color(0.04f, 0.015f, 0.02f, 0.92f),
             0.78f);
 
@@ -466,12 +466,12 @@ public class ProjectStructurePresentation : MonoBehaviour
         overlayText.text = title;
         overlayText.color = ResolveOverlayAccent();
         if (rankText != null)
-            rankText.text = "CORE ONLINE";
+            rankText.text = "RUN RESULT";
         subtitleText.text = subtitle;
         if (detailText != null)
             detailText.text = detail;
         if (footerText != null)
-            footerText.text = "CHANNEL HELD // STAND BY";
+            footerText.text = "Hold position";
 
         yield return PulseEndingFlash();
         yield return new WaitForSecondsRealtime(duration);
@@ -582,6 +582,7 @@ public class ProjectStructurePresentation : MonoBehaviour
     private void EnsureRuntimePresentation()
     {
         Canvas hudCanvas = ProjectStructureUIRoot.GetOrCreateCanvas();
+        RemoveLegacyScreenOverlays(hudCanvas);
 
         ProjectStructureAtmosphereHUD atmosphere = FindAnyObjectByType<ProjectStructureAtmosphereHUD>();
         if (atmosphere != null)
@@ -634,6 +635,26 @@ public class ProjectStructurePresentation : MonoBehaviour
             GameObject go = new GameObject("ShopPreviewHUD");
             go.AddComponent<ShopPreviewHUD>();
         }
+    }
+
+    private void RemoveLegacyScreenOverlays(Canvas hudCanvas)
+    {
+        if (hudCanvas == null) return;
+
+        RemoveCanvasChild(hudCanvas.transform, "ProjectStructureScanlines");
+        RemoveCanvasChild(hudCanvas.transform, "ProjectStructureModeTint");
+        RemoveCanvasChild(hudCanvas.transform, "ProjectStructureVignette");
+    }
+
+    private void RemoveCanvasChild(Transform parent, string childName)
+    {
+        Transform child = parent != null ? parent.Find(childName) : null;
+        if (child == null) return;
+
+        if (Application.isPlaying)
+            Destroy(child.gameObject);
+        else
+            DestroyImmediate(child.gameObject);
     }
 
     private struct RunSummary

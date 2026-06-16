@@ -30,6 +30,7 @@ public class CybergrindWeaponReward : Interactable
     private static GameObject rewardPanel;
     private static TMP_Text rewardTitleText;
     private static TMP_Text rewardBodyText;
+    private static TMP_Text rewardTimerText;
     private static Image rewardProgressFill;
     private static Image rewardPanelImage;
     private static CybergrindWeaponReward activeRewardGuide;
@@ -52,7 +53,7 @@ public class CybergrindWeaponReward : Interactable
                 cachedCollider.enabled = false;
         }
         RefreshWeaponLabels();
-        promptMessage = isBossReward ? "Boss weapon dropping in" : "Pick up weapon // " + weaponName;
+        promptMessage = isBossReward ? "Boss gun dropping in" : "Pick up gun - " + weaponName;
         ApplyRewardMaterial();
         BuildRewardCrown();
         base.Start();
@@ -74,7 +75,7 @@ public class CybergrindWeaponReward : Interactable
                 transform.position = basePosition;
                 if (cachedCollider != null)
                     cachedCollider.enabled = true;
-                promptMessage = isBossReward ? "Pick up boss weapon // " + weaponName : "Pick up weapon // " + weaponName;
+                promptMessage = isBossReward ? "Pick up boss gun - " + weaponName : "Pick up gun - " + weaponName;
             }
         }
         else if (!IsClaimed)
@@ -118,14 +119,14 @@ public class CybergrindWeaponReward : Interactable
         guideTimer = guideDuration;
         activeRewardGuide = this;
         activeGuideHideAt = Time.unscaledTime + guideDuration;
-        promptMessage = isBossReward ? "Boss weapon ready. The way down is open." : "Weapon ready. Head for the exit.";
+        promptMessage = isBossReward ? "Boss gun ready. The way down is open." : "Gun ready. Head for the exit.";
         SpawnPickupBurst();
 
         WeaponStatusHUD armoryHud = FindAnyObjectByType<WeaponStatusHUD>();
         if (armoryHud != null)
         {
-            string title = isBossReward ? "CORE WEAPON READY" : "WEAPON READY";
-            string detail = $"{weaponName.ToUpperInvariant()} // {guideText}";
+            string title = isBossReward ? "CORE DROP READY" : "GUN READY";
+            string detail = $"{weaponName.ToUpperInvariant()} - {guideText}";
             armoryHud.ShowArmoryMoment(title, detail, GetRewardColor(presetIndex), isBossReward ? 3.4f : 2.8f);
         }
 
@@ -133,7 +134,7 @@ public class CybergrindWeaponReward : Interactable
         if (encounterHud != null)
         {
             encounterHud.ShowSystemBanner(
-                isBossReward ? "CORE WEAPON READY" : "WEAPON PICKED UP",
+                isBossReward ? "CORE DROP READY" : "GUN TAKEN",
                 isBossReward
                     ? $"{weaponName.ToUpperInvariant()} is ready. The next drop is open."
                     : $"{weaponName.ToUpperInvariant()} is ready. Exit is live.",
@@ -166,7 +167,7 @@ public class CybergrindWeaponReward : Interactable
         }
         else
         {
-            guideText = isBossReward ? "Boss weapon added." : "New weapon added.";
+            guideText = isBossReward ? "Boss gun added." : "New gun added.";
         }
     }
 
@@ -383,14 +384,15 @@ public class CybergrindWeaponReward : Interactable
         rewardPanelImage = rewardPanel.AddComponent<Image>();
         rewardPanelImage.color = new Color(0.02f, 0.04f, 0.055f, 0.94f);
 
-        rewardTitleText = CreateGuideText(rewardPanel.transform, "RewardTitle", 18f, new Vector2(0.5f, 0.78f), new Vector2(390f, 24f), TextAlignmentOptions.Center, Color.white);
-        rewardBodyText = CreateGuideText(rewardPanel.transform, "RewardBody", 12f, new Vector2(0.5f, 0.46f), new Vector2(390f, 58f), TextAlignmentOptions.Center, new Color(0.84f, 0.9f, 0.96f));
+        rewardTitleText = CreateGuideText(rewardPanel.transform, "RewardTitle", 18f, new Vector2(0.5f, 0.8f), new Vector2(390f, 24f), TextAlignmentOptions.Center, Color.white);
+        rewardBodyText = CreateGuideText(rewardPanel.transform, "RewardBody", 11.5f, new Vector2(0.5f, 0.48f), new Vector2(390f, 54f), TextAlignmentOptions.Center, new Color(0.84f, 0.9f, 0.96f));
+        rewardTimerText = CreateGuideText(rewardPanel.transform, "RewardTimer", 10f, new Vector2(0.5f, 0.2f), new Vector2(390f, 16f), TextAlignmentOptions.Center, new Color(0.72f, 0.86f, 0.92f));
 
         GameObject progressBack = new GameObject("RewardProgressBack");
         progressBack.transform.SetParent(rewardPanel.transform, false);
         RectTransform backRect = progressBack.AddComponent<RectTransform>();
-        backRect.anchorMin = new Vector2(0.14f, 0.08f);
-        backRect.anchorMax = new Vector2(0.86f, 0.15f);
+        backRect.anchorMin = new Vector2(0.14f, 0.07f);
+        backRect.anchorMax = new Vector2(0.86f, 0.12f);
         backRect.offsetMin = Vector2.zero;
         backRect.offsetMax = Vector2.zero;
         Image backImage = progressBack.AddComponent<Image>();
@@ -423,6 +425,7 @@ public class CybergrindWeaponReward : Interactable
         rect.sizeDelta = boxSize;
 
         TMP_Text text = go.AddComponent<TextMeshProUGUI>();
+        ProjectStructureUIRoot.ApplyDefaultFont(text);
         text.fontSize = size;
         text.alignment = alignment;
         text.color = color;
@@ -448,7 +451,7 @@ public class CybergrindWeaponReward : Interactable
             rewardPanelImage.color = Color.Lerp(new Color(0.02f, 0.04f, 0.055f, 0.94f), accent * new Color(1f, 1f, 1f, 0.92f), activeRewardGuide.isBossReward ? 0.4f : 0.26f);
         if (rewardTitleText != null)
         {
-            rewardTitleText.text = (activeRewardGuide.isBossReward ? "CORE WEAPON // " : "NEW WEAPON // ") + activeRewardGuide.weaponName.ToUpperInvariant();
+            rewardTitleText.text = (activeRewardGuide.isBossReward ? "CORE DROP - " : "NEW GUN - ") + activeRewardGuide.weaponName.ToUpperInvariant();
             rewardTitleText.color = Color.Lerp(Color.white, accent, 0.28f);
         }
         if (rewardBodyText != null)
@@ -464,6 +467,11 @@ public class CybergrindWeaponReward : Interactable
         {
             rewardProgressFill.fillAmount = Mathf.Clamp01(activeRewardGuide.guideTimer / Mathf.Max(0.01f, activeRewardGuide.guideDuration));
             rewardProgressFill.color = Color.Lerp(new Color(0.74f, 0.95f, 1f, 0.98f), accent, 0.35f);
+        }
+        if (rewardTimerText != null)
+        {
+            rewardTimerText.text = $"Hides in {Mathf.CeilToInt(activeRewardGuide.guideTimer)}s";
+            rewardTimerText.color = Color.Lerp(new Color(0.72f, 0.86f, 0.92f), accent, 0.22f);
         }
     }
 }

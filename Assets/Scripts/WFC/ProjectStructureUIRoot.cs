@@ -2,6 +2,7 @@ using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.InputSystem.UI;
 using UnityEngine.UI;
+using TMPro;
 
 public static class ProjectStructureUIRoot
 {
@@ -10,6 +11,7 @@ public static class ProjectStructureUIRoot
     public const float MinUIScale = 0.75f;
     public const float MaxUIScale = 1.35f;
     private static float cachedUIScale = -1f;
+    private static TMP_FontAsset cachedDefaultFont;
 
     public static Canvas GetOrCreateCanvas()
     {
@@ -120,5 +122,27 @@ public static class ProjectStructureUIRoot
     {
         if (target == null) return;
         target.SetAsLastSibling();
+    }
+
+    public static void ApplyDefaultFont(TMP_Text text)
+    {
+        if (text == null || text.font != null)
+            return;
+
+        TMP_FontAsset font = GetDefaultFont();
+        if (font != null)
+            text.font = font;
+    }
+
+    private static TMP_FontAsset GetDefaultFont()
+    {
+        if (cachedDefaultFont != null)
+            return cachedDefaultFont;
+
+        cachedDefaultFont = Resources.Load<TMP_FontAsset>("Fonts & Materials/LiberationSans SDF");
+        if (cachedDefaultFont == null)
+            cachedDefaultFont = TMP_Settings.defaultFontAsset;
+
+        return cachedDefaultFont;
     }
 }

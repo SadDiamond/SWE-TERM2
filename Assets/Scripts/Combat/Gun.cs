@@ -213,6 +213,8 @@ public class Gun : MonoBehaviour
         else
             BuildHeavyModel(root, preset);
 
+        BuildInstalledModModel(root, preset);
+
         if (gunBarrel == null)
         {
             GameObject barrel = new GameObject("GeneratedBarrel");
@@ -223,6 +225,55 @@ public class Gun : MonoBehaviour
                     ? new Vector3(0.22f, -0.06f, 1.48f)
                     : new Vector3(0.18f, -0.04f, 1.72f);
             gunBarrel = barrel.transform;
+        }
+    }
+
+    private void BuildInstalledModModel(Transform root, WeaponPreset preset)
+    {
+        PassiveMod passive = GetPassiveMod(preset.family);
+        AltFireMod alt = GetAltMod(preset.family);
+        if (passive == PassiveMod.None && alt == AltFireMod.None)
+            return;
+
+        Vector3 mount = preset.family switch
+        {
+            WeaponFamily.Shotgun => new Vector3(0f, 0.18f, 0.58f),
+            WeaponFamily.Heavy => new Vector3(0f, 0.28f, 0.68f),
+            _ => new Vector3(0f, 0.22f, 0.45f)
+        };
+
+        if (passive != PassiveMod.None)
+        {
+            switch (passive)
+            {
+                case PassiveMod.SharpenedRounds:
+                    AddPart(root, "InstalledMod_DamageCore", mount + new Vector3(0.34f, 0f, 0.1f), new Vector3(0.1f, 0.3f, 0.34f), Quaternion.identity, accentMaterial);
+                    AddPart(root, "InstalledMod_DamageNeedle", mount + new Vector3(0.34f, 0.18f, 0.32f), new Vector3(0.08f, 0.46f, 0.08f), Quaternion.Euler(18f, 0f, 0f), accentMaterial);
+                    break;
+                case PassiveMod.Stabilizer:
+                    AddPart(root, "InstalledMod_StabilizerL", mount + new Vector3(-0.36f, -0.02f, 0.28f), new Vector3(0.09f, 0.14f, 0.72f), Quaternion.identity, accentMaterial);
+                    AddPart(root, "InstalledMod_StabilizerR", mount + new Vector3(0.36f, -0.02f, 0.28f), new Vector3(0.09f, 0.14f, 0.72f), Quaternion.identity, accentMaterial);
+                    break;
+                case PassiveMod.RapidFeed:
+                    AddPart(root, "InstalledMod_FeedRail", mount + new Vector3(0f, -0.18f, 0.08f), new Vector3(0.58f, 0.08f, 0.34f), Quaternion.identity, accentMaterial);
+                    AddPart(root, "InstalledMod_FeedCellA", mount + new Vector3(-0.2f, -0.28f, 0.1f), new Vector3(0.12f, 0.16f, 0.2f), Quaternion.identity, accentMaterial);
+                    AddPart(root, "InstalledMod_FeedCellB", mount + new Vector3(0.2f, -0.28f, 0.1f), new Vector3(0.12f, 0.16f, 0.2f), Quaternion.identity, accentMaterial);
+                    break;
+            }
+        }
+
+        if (alt != AltFireMod.None)
+        {
+            if (alt == AltFireMod.Overload)
+            {
+                AddPart(root, "InstalledMod_OverloadSpine", mount + new Vector3(0f, 0.34f, 0.22f), new Vector3(0.16f, 0.42f, 0.18f), Quaternion.identity, accentMaterial);
+                AddPart(root, "InstalledMod_OverloadCap", mount + new Vector3(0f, 0.58f, 0.22f), new Vector3(0.44f, 0.08f, 0.36f), Quaternion.identity, accentMaterial);
+            }
+            else
+            {
+                AddPart(root, "InstalledMod_QuickChargeL", mount + new Vector3(-0.18f, 0.34f, 0.22f), new Vector3(0.08f, 0.38f, 0.16f), Quaternion.identity, accentMaterial);
+                AddPart(root, "InstalledMod_QuickChargeR", mount + new Vector3(0.18f, 0.34f, 0.22f), new Vector3(0.08f, 0.38f, 0.16f), Quaternion.identity, accentMaterial);
+            }
         }
     }
 
@@ -368,12 +419,12 @@ public class Gun : MonoBehaviour
         AltFireMod alt = GetAltMod(activeFamily);
 
         if (fireRatePercent <= 0 && damagePercent <= 0 && altPercent <= 0 && passive == PassiveMod.None && alt == AltFireMod.None)
-            return "No active boosts.";
+            return "No mods installed.";
 
         string modText = passive != PassiveMod.None || alt != AltFireMod.None
             ? $"  mods {FormatPassiveMod(passive)} / {FormatAltMod(alt)}"
             : string.Empty;
-        return $"Boosts: fire rate +{Mathf.Max(0, fireRatePercent)}%  damage +{Mathf.Max(0, damagePercent)}%  alt +{Mathf.Max(0, altPercent)}%{modText}";
+        return $"Mods: rate +{Mathf.Max(0, fireRatePercent)}%  damage +{Mathf.Max(0, damagePercent)}%  special +{Mathf.Max(0, altPercent)}%{modText}";
     }
 
     public string GetActiveStatsLine()
@@ -532,7 +583,7 @@ public class Gun : MonoBehaviour
                 : direction;
             SpawnVisualTracer(barrelPos, tracerDirection, preset);
             if (didHit)
-                SpawnImpactBurst(hitPoint, preset.accentColor, preset.archetype == WeaponArchetype.CoreEject ? 0.22f : 0.12f, 0.16f);
+                SpawnImpactBurst(hitPoint, hit.normal, tracerDirection, preset.accentColor, preset.archetype == WeaponArchetype.CoreEject ? 0.22f : 0.12f, 0.16f);
         }
     }
 
@@ -602,70 +653,7 @@ public class Gun : MonoBehaviour
 
     public GameObject SpawnVisualTracer(Vector3 barrelPos, Vector3 direction, WeaponPreset preset)
     {
-        if (bulletPrefab == null)
-        {
-            return SpawnProceduralTracer(barrelPos, direction, preset);
-        }
-
-        // Create visual tracer from barrel (will be seen but won't cause collision/damage)
-        GameObject tracer = Instantiate(bulletPrefab, barrelPos, Quaternion.LookRotation(direction));
-        DisableTracerCollisionAndDamage(tracer);
-
-        Rigidbody rb = tracer.GetComponent<Rigidbody>();
-        if (rb != null)
-        {
-            rb.useGravity = false;
-            rb.isKinematic = false;
-            rb.detectCollisions = false;
-#pragma warning disable 0618
-            rb.velocity = direction * preset.bulletSpeed;
-#pragma warning restore 0618
-        }
-
-        BulletTrail trail = tracer.GetComponent<BulletTrail>();
-        if (trail == null)
-            trail = tracer.AddComponent<BulletTrail>();
-        trail.Configure(preset.accentColor, GetTracerWidth(preset), GetTracerTime(preset));
-
-        Renderer renderer = tracer.GetComponentInChildren<Renderer>();
-        if (renderer != null)
-        {
-            AssignRendererMaterial(renderer, GetFxMaterial(preset.accentColor, 2.4f));
-            tracer.transform.localScale = Vector3.one * GetTracerCoreScale(preset);
-        }
-
-        // Short lifetime for visual effect. In edit-mode probes, leave cleanup to the caller.
-        if (Application.isPlaying)
-            Destroy(tracer, Mathf.Max(0.18f, GetTracerTime(preset) + 0.16f));
-        return tracer;
-    }
-
-    private void DisableTracerCollisionAndDamage(GameObject tracer)
-    {
-        if (tracer == null) return;
-
-        Projectile[] projectiles = tracer.GetComponentsInChildren<Projectile>(true);
-        for (int i = 0; i < projectiles.Length; i++)
-        {
-            if (projectiles[i] == null) continue;
-            projectiles[i].owner = player != null ? player.gameObject : gameObject;
-            projectiles[i].enabled = false;
-        }
-
-        Collider[] colliders = tracer.GetComponentsInChildren<Collider>(true);
-        for (int i = 0; i < colliders.Length; i++)
-        {
-            if (colliders[i] != null)
-                colliders[i].enabled = false;
-        }
-
-        Rigidbody[] bodies = tracer.GetComponentsInChildren<Rigidbody>(true);
-        for (int i = 0; i < bodies.Length; i++)
-        {
-            if (bodies[i] == null) continue;
-            bodies[i].useGravity = false;
-            bodies[i].detectCollisions = false;
-        }
+        return SpawnProceduralTracer(barrelPos, direction, preset);
     }
 
     private bool TryGetAimHit(Vector3 origin, Vector3 direction, out RaycastHit hit)
@@ -747,7 +735,7 @@ public class Gun : MonoBehaviour
             {
                 DealDamage(damageable, damage, preset.accentColor);
                 hitAnyDamageable = true;
-                SpawnImpactBurst(hits[i].point, preset.accentColor, 0.2f + splashRadius * 0.03f, 0.18f);
+                SpawnImpactBurst(hits[i].point, hits[i].normal, direction, preset.accentColor, 0.2f + splashRadius * 0.03f, 0.18f);
             }
 
             if (hitCollider.attachedRigidbody != null)
@@ -762,7 +750,7 @@ public class Gun : MonoBehaviour
 
         SpawnVisualTracer(GetBarrelWorldPosition(origin), direction, preset);
         if (!hitAnyDamageable)
-            SpawnImpactBurst(endPoint, preset.accentColor, 0.18f, 0.16f);
+            SpawnImpactBurst(endPoint, -direction, direction, preset.accentColor, 0.18f, 0.16f);
     }
 
     private void FireFanBurst(Vector3 cameraPos, Vector3 forward, WeaponPreset preset, int pelletCount, float spread, float damage)
@@ -776,7 +764,7 @@ public class Gun : MonoBehaviour
             {
                 hitPoint = hit.point;
                 ApplyHitScanDamage(hit, damage);
-                SpawnImpactBurst(hitPoint, preset.accentColor, 0.12f, 0.14f);
+                SpawnImpactBurst(hitPoint, hit.normal, direction, preset.accentColor, 0.12f, 0.14f);
             }
 
             SpawnVisualTracer(GetBarrelWorldPosition(cameraPos), direction, preset);
@@ -792,7 +780,7 @@ public class Gun : MonoBehaviour
             {
                 taggedTarget = damageable;
                 taggedTargetTimer = 8f;
-                SpawnImpactBurst(hit.point, preset.accentColor, 0.28f, 0.35f);
+                SpawnImpactBurst(hit.point, hit.normal, direction, preset.accentColor, 0.28f, 0.35f);
             }
         }
     }
@@ -844,7 +832,7 @@ public class Gun : MonoBehaviour
             IDamageable candidate = hits[i].GetComponentInParent<IDamageable>();
             if (candidate == null || candidate == original) continue;
             DealDamage(candidate, damage, color);
-            SpawnImpactBurst(hits[i].bounds.center, color, 0.14f, 0.16f);
+            SpawnImpactBurst(hits[i].bounds.center, -transform.forward, transform.forward, color, 0.14f, 0.16f);
             break;
         }
     }
@@ -856,7 +844,6 @@ public class Gun : MonoBehaviour
 
         damageable.TakeDamage(damage);
         bool resolved = IsDamageableResolved(damageable);
-        CombatFeedbackHUD.RegisterHit(damage, resolved, accentColor, GetDamageableLabel(damageable));
         if (player != null)
             player.NotifyWeaponHit(accentColor, resolved);
         if (combatAudioDirector == null)
@@ -889,17 +876,6 @@ public class Gun : MonoBehaviour
             PlayerController playerTarget => playerTarget.Health01 <= 0f,
             MonoBehaviour behaviour => behaviour == null || !behaviour.isActiveAndEnabled || !behaviour.gameObject.activeInHierarchy,
             _ => false
-        };
-    }
-
-    private string GetDamageableLabel(IDamageable damageable)
-    {
-        return damageable switch
-        {
-            BasicEnemyAI enemy => enemy.displayName,
-            Target target => target != null ? target.gameObject.name : "Target",
-            MonoBehaviour behaviour => behaviour != null ? behaviour.gameObject.name : "Hostile",
-            _ => "Hostile"
         };
     }
 
@@ -965,10 +941,18 @@ public class Gun : MonoBehaviour
 
     private void SpawnImpactBurst(Vector3 position, Color color, float scale, float lifetime)
     {
+        SpawnImpactBurst(position, Vector3.up, transform.forward, color, scale, lifetime);
+    }
+
+    private void SpawnImpactBurst(Vector3 position, Vector3 normal, Vector3 incomingDirection, Color color, float scale, float lifetime)
+    {
         Material mat = GetFxMaterial(color, 2.4f);
         int shardCount = Mathf.Clamp(Mathf.RoundToInt(5f + scale * 10f), 5, 13);
-        SpawnImpactRing(position, color, Mathf.Max(0.18f, scale * 1.55f), lifetime * 1.4f);
-        SpawnImpactCore(position, color, scale, lifetime);
+        Vector3 surfaceNormal = normal.sqrMagnitude > 0.001f ? normal.normalized : Vector3.up;
+        Vector3 shotDirection = incomingDirection.sqrMagnitude > 0.001f ? incomingDirection.normalized : -surfaceNormal;
+        SpawnImpactRing(position, surfaceNormal, color, Mathf.Max(0.18f, scale * 1.55f), lifetime * 1.4f);
+        SpawnImpactCore(position, surfaceNormal, shotDirection, color, scale, lifetime);
+        SpawnImpactStreak(position, surfaceNormal, shotDirection, color, Mathf.Max(0.3f, scale * 2.4f), lifetime * 0.72f);
 
         for (int i = 0; i < shardCount; i++)
         {
@@ -980,25 +964,29 @@ public class Gun : MonoBehaviour
                 new Vector3(0.035f, 0.035f, Mathf.Max(0.1f, scale * UnityEngine.Random.Range(0.65f, 1.25f))),
                 mat);
 
-            Vector3 scatter = UnityEngine.Random.onUnitSphere;
-            scatter.y = Mathf.Abs(scatter.y) * 0.55f + 0.08f;
+            Vector3 tangent = Vector3.Cross(surfaceNormal, UnityEngine.Random.onUnitSphere);
+            if (tangent.sqrMagnitude < 0.001f)
+                tangent = Vector3.Cross(surfaceNormal, Vector3.right);
+            Vector3 scatter = (surfaceNormal * UnityEngine.Random.Range(0.2f, 0.65f) + tangent.normalized * UnityEngine.Random.Range(-1f, 1f) - shotDirection * UnityEngine.Random.Range(0.05f, 0.24f)).normalized;
             Vector3 end = position + scatter.normalized * Mathf.Max(0.22f, scale * UnityEngine.Random.Range(1.0f, 2.1f));
             StartCoroutine(AnimateImpactShard(shard.transform, lifetime, end));
         }
     }
 
-    private void SpawnImpactCore(Vector3 position, Color color, float scale, float lifetime)
+    private void SpawnImpactCore(Vector3 position, Vector3 normal, Vector3 incomingDirection, Color color, float scale, float lifetime)
     {
         Camera cam = Camera.main;
-        Vector3 forward = cam != null ? cam.transform.forward : transform.forward;
+        Vector3 forward = normal.sqrMagnitude > 0.001f ? normal.normalized : (cam != null ? cam.transform.forward : transform.forward);
         Vector3 up = cam != null ? cam.transform.up : Vector3.up;
+        if (Mathf.Abs(Vector3.Dot(forward, up)) > 0.92f)
+            up = Vector3.Cross(forward, incomingDirection).sqrMagnitude > 0.001f ? Vector3.Cross(forward, incomingDirection).normalized : Vector3.up;
         Material hot = GetFxMaterial(Color.Lerp(color, Color.white, 0.48f), 3.1f);
         float coreSize = Mathf.Max(0.12f, scale * 0.9f);
 
         GameObject core = CreateFxPrimitive(
             "HitCore",
             PrimitiveType.Cube,
-            position - forward * 0.03f,
+            position + forward * 0.035f,
             Quaternion.LookRotation(forward, up),
             new Vector3(coreSize * 0.28f, coreSize * 0.28f, coreSize * 1.2f),
             hot);
@@ -1021,6 +1009,25 @@ public class Gun : MonoBehaviour
             new Vector3(coreSize * 0.95f, coreSize * 0.055f, coreSize * 0.08f),
             hot);
         StartCoroutine(AnimateFxScale(slashB.transform, slashB.transform.localScale, Vector3.zero, Mathf.Max(0.04f, lifetime * 0.5f)));
+    }
+
+    private void SpawnImpactStreak(Vector3 position, Vector3 normal, Vector3 incomingDirection, Color color, float length, float lifetime)
+    {
+        Vector3 surfaceNormal = normal.sqrMagnitude > 0.001f ? normal.normalized : Vector3.up;
+        Vector3 shotDirection = incomingDirection.sqrMagnitude > 0.001f ? incomingDirection.normalized : -surfaceNormal;
+        Vector3 tangent = Vector3.ProjectOnPlane(-shotDirection, surfaceNormal);
+        if (tangent.sqrMagnitude < 0.001f)
+            tangent = Vector3.Cross(surfaceNormal, Vector3.right);
+        tangent.Normalize();
+
+        GameObject streak = CreateFxPrimitive(
+            "ImpactStreak",
+            PrimitiveType.Cube,
+            position + surfaceNormal * 0.055f + tangent * (length * 0.22f),
+            Quaternion.LookRotation(tangent, surfaceNormal),
+            new Vector3(Mathf.Max(0.035f, length * 0.045f), Mathf.Max(0.035f, length * 0.045f), length),
+            GetFxMaterial(Color.Lerp(color, Color.white, 0.3f), 2.8f));
+        StartCoroutine(AnimateFxScale(streak.transform, streak.transform.localScale, Vector3.zero, Mathf.Max(0.04f, lifetime)));
     }
 
     private void SpawnMuzzleBurst(Vector3 origin, WeaponPreset preset, bool altFire = false)
@@ -1060,11 +1067,11 @@ public class Gun : MonoBehaviour
         StartCoroutine(AnimateFxScale(cross.transform, cross.transform.localScale, Vector3.zero, 0.045f));
 
         GameObject bloom = CreateFxPrimitive(
-            "MuzzleBloom",
-            PrimitiveType.Sphere,
+            "MuzzlePlate",
+            PrimitiveType.Cube,
             origin + forward * (length * 0.16f),
-            Quaternion.identity,
-            Vector3.one * (width * 2.2f),
+            Quaternion.LookRotation(forward, up),
+            new Vector3(width * 2.4f, width * 0.24f, width * 0.72f),
             GetFxMaterial(Color.Lerp(preset.accentColor, Color.white, 0.35f), altFire ? 3.5f : 2.7f));
         StartCoroutine(AnimateFxScale(bloom.transform, bloom.transform.localScale, Vector3.zero, 0.05f));
 
@@ -1086,11 +1093,12 @@ public class Gun : MonoBehaviour
 
     private GameObject SpawnProceduralTracer(Vector3 barrelPos, Vector3 direction, WeaponPreset preset)
     {
-        GameObject tracer = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+        GameObject tracer = GameObject.CreatePrimitive(PrimitiveType.Cube);
         tracer.name = "ProceduralTracer";
         tracer.transform.position = barrelPos;
         tracer.transform.rotation = Quaternion.LookRotation(direction);
-        tracer.transform.localScale = Vector3.one * GetTracerCoreScale(preset);
+        float coreScale = GetTracerCoreScale(preset);
+        tracer.transform.localScale = new Vector3(coreScale * 0.42f, coreScale * 0.42f, coreScale * 3.4f);
         Collider collider = tracer.GetComponent<Collider>();
         DestroyComponentSafe(collider);
         Renderer renderer = tracer.GetComponent<Renderer>();
@@ -1116,13 +1124,14 @@ public class Gun : MonoBehaviour
             Destroy(tracer.gameObject);
     }
 
-    private void SpawnImpactRing(Vector3 position, Color color, float radius, float lifetime)
+    private void SpawnImpactRing(Vector3 position, Vector3 normal, Color color, float radius, float lifetime)
     {
+        Vector3 surfaceNormal = normal.sqrMagnitude > 0.001f ? normal.normalized : Vector3.up;
         GameObject ring = CreateFxPrimitive(
             "ImpactRing",
             PrimitiveType.Cylinder,
-            position + Vector3.up * 0.025f,
-            Quaternion.identity,
+            position + surfaceNormal * 0.035f,
+            Quaternion.FromToRotation(Vector3.up, surfaceNormal),
             new Vector3(radius * 0.3f, 0.018f, radius * 0.3f),
             GetFxMaterial(new Color(color.r, color.g, color.b, 0.55f), 1.8f));
         StartCoroutine(AnimateFxScale(ring.transform, ring.transform.localScale, new Vector3(radius, 0.018f, radius), lifetime));
@@ -1257,44 +1266,6 @@ public class Gun : MonoBehaviour
             Destroy(burst.gameObject);
     }
 
-    private void SpawnInvisibleProjectile(Vector3 cameraPos, Vector3 direction, WeaponPreset preset)
-    {
-        if (bulletPrefab == null) return;
-
-        // Create invisible projectile from camera for actual collision/damage detection
-        GameObject projectile = Instantiate(bulletPrefab, cameraPos, Quaternion.LookRotation(direction));
-
-        // Hide the renderer so it's invisible
-        Renderer[] renderers = projectile.GetComponentsInChildren<Renderer>();
-        foreach (Renderer r in renderers)
-            r.enabled = false;
-
-        // Remove trail renderer if it exists
-        BulletTrail trail = projectile.GetComponent<BulletTrail>();
-        if (trail != null)
-            Destroy(trail);
-
-        Projectile proj = projectile.GetComponent<Projectile>();
-        if (proj != null)
-        {
-            proj.Initialize(player != null ? player.gameObject : gameObject, GetEffectiveDamage(preset.damage));
-        }
-
-        Rigidbody rb = projectile.GetComponent<Rigidbody>();
-        if (rb != null)
-        {
-#pragma warning disable 0618
-            rb.velocity = direction * preset.bulletSpeed;
-#pragma warning restore 0618
-        }
-    }
-
-    private Vector3 CalculateShotDirection(Vector3 origin, Vector3 targetPoint, float spreadDegrees)
-    {
-        Vector3 direction = (targetPoint - origin).normalized;
-        return ApplySpread(direction, spreadDegrees);
-    }
-
     private Vector3 ApplySpread(Vector3 direction, float spreadDegrees)
     {
         if (spreadDegrees <= 0.001f) return direction.normalized;
@@ -1302,32 +1273,6 @@ public class Gun : MonoBehaviour
         float yaw = UnityEngine.Random.Range(-spreadDegrees, spreadDegrees);
         float pitch = UnityEngine.Random.Range(-spreadDegrees, spreadDegrees);
         return (Quaternion.Euler(pitch, yaw, 0f) * direction).normalized;
-    }
-
-
-    private GameObject SpawnProjectile(Vector3 direction, WeaponPreset preset, int pelletIndex)
-    {
-        // Retain legacy projectile spawn in case other systems rely on it. Spawn from camera for consistent hit-registration.
-        if (bulletPrefab == null) return null;
-
-        Vector3 spawnPosition = GetProjectileSpawnPosition() + direction * (0.08f * pelletIndex);
-        GameObject bullet = Instantiate(bulletPrefab, spawnPosition, Quaternion.LookRotation(direction));
-
-        Projectile projectile = bullet.GetComponent<Projectile>();
-        if (projectile != null)
-        {
-            projectile.Initialize(player != null ? player.gameObject : gameObject, GetEffectiveDamage(preset.damage));
-        }
-
-        Rigidbody rb = bullet.GetComponent<Rigidbody>();
-        if (rb != null)
-        {
-#pragma warning disable 0618
-            rb.velocity = direction * preset.bulletSpeed;
-#pragma warning restore 0618
-        }
-
-        return bullet;
     }
 
     // Returns the world position to use as the visual barrel origin. Falls back to provided fallback if needed.
@@ -1348,60 +1293,6 @@ public class Gun : MonoBehaviour
             return cam.transform.position + cam.transform.forward * muzzleForwardOffset;
 
         return fallback;
-    }
-
-    private System.Collections.IEnumerator VisualTracerRoutine(Vector3 from, Vector3 to)
-    {
-        GameObject tracer = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-        tracer.name = "VisualTracer";
-        tracer.transform.position = from;
-        tracer.transform.localScale = Vector3.one * 0.06f;
-        Collider c = tracer.GetComponent<Collider>();
-        if (c != null) Destroy(c);
-
-        if (tracer.GetComponent<BulletTrail>() == null)
-            tracer.AddComponent<BulletTrail>();
-
-        float t = 0f;
-        float duration = 0.06f; // very fast
-        while (t < duration)
-        {
-            t += Time.deltaTime;
-            tracer.transform.position = Vector3.Lerp(from, to, Mathf.Clamp01(t / duration));
-            yield return null;
-        }
-
-        tracer.transform.position = to;
-        Destroy(tracer, 0.05f);
-    }
-
-    private void IgnoreSiblingProjectileCollisions(GameObject[] projectiles)
-    {
-        if (projectiles == null) return;
-
-        for (int i = 0; i < projectiles.Length; i++)
-        {
-            if (projectiles[i] == null) continue;
-            Collider a = projectiles[i].GetComponent<Collider>();
-            if (a == null) continue;
-
-            for (int j = i + 1; j < projectiles.Length; j++)
-            {
-                if (projectiles[j] == null) continue;
-                Collider b = projectiles[j].GetComponent<Collider>();
-                if (b != null)
-                    Physics.IgnoreCollision(a, b, true);
-            }
-        }
-    }
-
-    private Vector3 GetProjectileSpawnPosition()
-    {
-        Camera cam = Camera.main;
-        if (cam != null)
-            return cam.transform.position + cam.transform.forward * muzzleForwardOffset;
-
-        return transform.position + transform.forward * muzzleForwardOffset;
     }
 
     public void ApplyWeaponOverclock(float fireRateReductionPercent, float damageIncreasePercent, float altCooldownReductionPercent)
@@ -1441,12 +1332,21 @@ public class Gun : MonoBehaviour
         runFireRateMultiplier = 1f;
         runDamageMultiplier = 1f;
         runAltCooldownMultiplier = 1f;
+        pistolVariant = 0;
+        shotgunVariant = 0;
+        heavyVariant = 0;
         pistolPassiveMod = PassiveMod.None;
         shotgunPassiveMod = PassiveMod.None;
         heavyPassiveMod = PassiveMod.None;
         pistolAltMod = AltFireMod.None;
         shotgunAltMod = AltFireMod.None;
         heavyAltMod = AltFireMod.None;
+        activeFamily = WeaponFamily.Pistol;
+        activePresetIndex = CybergrindRunState.StartingWeaponPreset;
+        taggedTarget = null;
+        taggedTargetTimer = 0f;
+        nextAltFireTime = 0f;
+        nextTimeToFire = 0f;
 
         if (restrictToUnlockedWeapons)
             ApplyPreset(CybergrindRunState.GetOrCreate().GetFirstUnlockedPreset());

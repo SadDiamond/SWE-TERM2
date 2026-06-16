@@ -83,27 +83,27 @@ public class ProjectStructureHintOverlay : MonoBehaviour
         else if (!sawTerminalHint && CountUnsolvedTerminals() > 0)
         {
             nextKey = "terminal";
-            title = $"{sectorLabel} // TERMINALS";
-            body = $"Finish the terminals, then clear the enemies to open the exit.";
+            title = $"{sectorLabel} - TERMINALS";
+            body = "Finish the terminals, then clear the enemies to open the exit.";
         }
         else if (!sawRewardHint && arenaDirector != null && arenaDirector.HasPendingReward())
         {
             nextKey = "reward";
-            title = "NEW WEAPON";
-            body = "Pick up the weapon before you leave. You do not keep it between runs.";
+            title = "NEW GUN";
+            body = "Pick up the gun before you leave. You do not keep it between runs.";
         }
         else if (!sawShopHint && arenaDirector != null && arenaDirector.generator != null &&
                  arenaDirector.generator.arenaMode == CybergrindArenaGenerator.ArenaMode.Shop)
         {
             nextKey = "shop";
-            title = $"{sectorLabel} // SHOP";
-            body = $"Use at least one station. Refit changes weapons, Overclock boosts damage, Surge improves movement, and Repair heals you.";
+            title = $"{sectorLabel} - SHOP";
+            body = "Use one station. Weapon adds a gun or variant. Mod boosts damage. Move improves movement. Heal restores HP.";
         }
         else if (!sawBossHint && arenaDirector != null && arenaDirector.generator != null &&
                  arenaDirector.generator.arenaMode == CybergrindArenaGenerator.ArenaMode.Boss)
         {
             nextKey = "boss";
-            title = $"{sectorLabel} // BOSS";
+            title = $"{sectorLabel} - BOSS";
             body = "Watch the attack pattern, stay moving, and hit during the gaps.";
         }
 
@@ -182,6 +182,7 @@ public class ProjectStructureHintOverlay : MonoBehaviour
         rect.sizeDelta = boxSize;
 
         TMP_Text text = go.AddComponent<TextMeshProUGUI>();
+        ProjectStructureUIRoot.ApplyDefaultFont(text);
         text.fontSize = fontSize;
         text.alignment = alignment;
         text.color = color;

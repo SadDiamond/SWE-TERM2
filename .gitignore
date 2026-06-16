@@ -104,6 +104,9 @@ InitTestScene*.unity*
 
 # Auto-generated cache in Assets folder
 /[Aa]ssets/[Ss]ceneDependencyCache*
+
+# Local visual QA captures
+/Temp*Preview.png
 CLAUDE.md
 AGENTS.md
 PLAN.md

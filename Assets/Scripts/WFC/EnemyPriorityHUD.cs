@@ -131,6 +131,7 @@ public class EnemyPriorityHUD : MonoBehaviour
             labelRect.anchoredPosition = new Vector2(0f, 18f);
             labelRect.sizeDelta = new Vector2(72f, 24f);
             TMP_Text label = labelGo.AddComponent<TextMeshProUGUI>();
+            ProjectStructureUIRoot.ApplyDefaultFont(label);
             label.alignment = TextAlignmentOptions.Center;
             label.fontSize = 16f;
             label.color = new Color(1f, 0.95f, 0.76f, 0.98f);

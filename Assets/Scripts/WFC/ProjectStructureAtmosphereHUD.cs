@@ -34,6 +34,14 @@ public class ProjectStructureAtmosphereHUD : MonoBehaviour
         RefreshOverlay();
     }
 
+    private void OnDisable()
+    {
+        if (vignetteOverlay != null)
+            vignetteOverlay.enabled = false;
+        if (modeTintOverlay != null)
+            modeTintOverlay.enabled = false;
+    }
+
     private void EnsureOverlay()
     {
         Canvas canvas = ProjectStructureUIRoot.GetOrCreateCanvas();

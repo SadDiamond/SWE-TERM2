@@ -22,6 +22,7 @@ public class CybergrindRunState : MonoBehaviour
     [Header("Persistence")]
     public bool persistBossUnlocks = false;
     public int maxTrackedWeaponPresets = 9;
+    [SerializeField] private bool[] unlockedWeaponPresetsThisRun;
 
     private void Awake()
     {
@@ -33,6 +34,7 @@ public class CybergrindRunState : MonoBehaviour
 
         Instance = this;
         EnsureStartingWeaponUnlocked();
+        EnsureWeaponPresetTracking();
         EnsureRunSeed();
         if (runStartRealtime <= 0f)
             runStartRealtime = Time.realtimeSinceStartup;
@@ -51,20 +53,18 @@ public class CybergrindRunState : MonoBehaviour
 
     public bool IsWeaponUnlocked(int presetIndex)
     {
-        if (presetIndex < WeaponFamilySize) return true;
-        if (presetIndex < WeaponFamilySize * 2) return shotgunUnlockedThisRun;
-        return heavyUnlockedThisRun;
+        EnsureWeaponPresetTracking();
+        if (presetIndex < 0 || presetIndex >= unlockedWeaponPresetsThisRun.Length)
+            return false;
+
+        return unlockedWeaponPresetsThisRun[presetIndex];
     }
 
     public int RegisterBossDefeated(int themeIndex)
     {
         bossesClearedThisRun++;
-        int unlockIndex = heavyUnlockedThisRun
-            ? Mathf.Clamp(6 + (themeIndex % WeaponFamilySize), 6, maxTrackedWeaponPresets - 1)
-            : 6;
-        UnlockWeapon(unlockIndex);
-        Debug.Log($"[ArenaRunState] Boss cleared. Reward preset {unlockIndex} is available.");
-        return unlockIndex;
+        Debug.Log($"[ArenaRunState] Boss cleared. Core progress {bossesClearedThisRun}.");
+        return -1;
     }
 
     public void RegisterFloorCleared()
@@ -104,6 +104,7 @@ public class CybergrindRunState : MonoBehaviour
         shopInteractionsThisRun = 0;
         damageTakenThisRun = 0f;
         runStartRealtime = Time.realtimeSinceStartup;
+        EnsureStartingWeaponUnlocked();
     }
 
     public float GetRunDurationSeconds()
@@ -116,6 +117,11 @@ public class CybergrindRunState : MonoBehaviour
     {
         if (presetIndex < 0) return;
 
+        EnsureWeaponPresetTracking();
+        if (presetIndex >= unlockedWeaponPresetsThisRun.Length)
+            return;
+
+        unlockedWeaponPresetsThisRun[presetIndex] = true;
         if (presetIndex >= WeaponFamilySize * 2)
             heavyUnlockedThisRun = true;
         else if (presetIndex >= WeaponFamilySize)
@@ -129,7 +135,15 @@ public class CybergrindRunState : MonoBehaviour
 
     public int CountUnlockedWeapons()
     {
-        return 1 + (shotgunUnlockedThisRun ? 1 : 0) + (heavyUnlockedThisRun ? 1 : 0);
+        EnsureWeaponPresetTracking();
+        int count = 0;
+        for (int i = 0; i < unlockedWeaponPresetsThisRun.Length; i++)
+        {
+            if (unlockedWeaponPresetsThisRun[i])
+                count++;
+        }
+
+        return Mathf.Max(1, count);
     }
 
     public bool IsFamilyUnlocked(Gun.WeaponFamily family)
@@ -145,8 +159,34 @@ public class CybergrindRunState : MonoBehaviour
 
     private void EnsureStartingWeaponUnlocked()
     {
+        EnsureWeaponPresetTracking();
         shotgunUnlockedThisRun = false;
         heavyUnlockedThisRun = false;
+
+        for (int i = 0; i < unlockedWeaponPresetsThisRun.Length; i++)
+            unlockedWeaponPresetsThisRun[i] = false;
+
+        if (StartingWeaponPreset >= 0 && StartingWeaponPreset < unlockedWeaponPresetsThisRun.Length)
+            unlockedWeaponPresetsThisRun[StartingWeaponPreset] = true;
+    }
+
+    private void EnsureWeaponPresetTracking()
+    {
+        int size = Mathf.Max(1, maxTrackedWeaponPresets);
+        if (unlockedWeaponPresetsThisRun != null && unlockedWeaponPresetsThisRun.Length == size)
+            return;
+
+        bool[] previous = unlockedWeaponPresetsThisRun;
+        unlockedWeaponPresetsThisRun = new bool[size];
+        if (previous != null)
+        {
+            int copyCount = Mathf.Min(previous.Length, unlockedWeaponPresetsThisRun.Length);
+            for (int i = 0; i < copyCount; i++)
+                unlockedWeaponPresetsThisRun[i] = previous[i];
+        }
+
+        if (StartingWeaponPreset >= 0 && StartingWeaponPreset < unlockedWeaponPresetsThisRun.Length)
+            unlockedWeaponPresetsThisRun[StartingWeaponPreset] = true;
     }
 
     private void EnsureRunSeed()

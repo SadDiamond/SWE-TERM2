@@ -17,9 +17,13 @@ public class RunStatusHUD : MonoBehaviour
     public TMP_Text objectiveText;
     public TMP_Text seedText;
     public TMP_Text coreProgressText;
+    public TMP_Text hpText;
+    public TMP_Text coinText;
     public Image coreProgressFill;
+    public Image hpFill;
     public Image headerPanel;
     public Image objectivePanel;
+    public Image vitalsPanel;
 
     [Header("Refresh")]
     [Min(0.05f)] public float refreshInterval = 0.2f;
@@ -56,6 +60,7 @@ public class RunStatusHUD : MonoBehaviour
         RefreshDirectiveText();
         RefreshSeedText();
         RefreshCoreProgress();
+        RefreshVitals();
 
         if (objectiveText == null) return;
 
@@ -70,21 +75,21 @@ public class RunStatusHUD : MonoBehaviour
 
         if (runComplete)
         {
-            objectiveText.text = "Core is open";
+            objectiveText.text = "Core open";
             return;
         }
 
         if (isShop)
         {
             objectiveText.text = arenaDirector != null && arenaDirector.HasShopInteractionThisFloor()
-                ? "Shop done - take the exit"
-                : "Use one station, then leave";
+                ? "Exit open"
+                : "Choose one station";
             return;
         }
 
         if (unsolvedTerminals > 0)
         {
-            objectiveText.text = $"Finish terminals: {unsolvedTerminals} left";
+            objectiveText.text = $"Terminals left: {unsolvedTerminals}";
             return;
         }
 
@@ -99,26 +104,26 @@ public class RunStatusHUD : MonoBehaviour
                     1 => "PHASE II",
                     _ => "PHASE I"
                 } : "BOSS";
-                objectiveText.text = $"Beat the boss - {phase}";
+                objectiveText.text = $"Boss: {phase}";
             }
             else
             {
                 objectiveText.text = livingEnemies <= 2
-                    ? $"Clear enemies: {livingEnemies} left - marked"
-                    : $"Clear enemies: {livingEnemies} left";
+                    ? $"Enemies left: {livingEnemies} - marked"
+                    : $"Enemies left: {livingEnemies}";
             }
             return;
         }
 
         if (isBoss && bossRewardRevealActive)
         {
-            objectiveText.text = "Boss down - grab the reward";
+            objectiveText.text = "Boss down - take the drop";
             return;
         }
 
         if (coreAccessActive)
         {
-            objectiveText.text = "Enter the core";
+            objectiveText.text = "Enter core";
             return;
         }
 
@@ -126,13 +131,13 @@ public class RunStatusHUD : MonoBehaviour
         {
             objectiveText.text = isBoss
                 ? (arenaDirector != null && arenaDirector.IsFinalBossFloor()
-                    ? "Grab the boss weapon to wake the core"
-                    : "Grab the boss weapon to open the next floor")
-                : "Grab the weapon to open the exit";
+                    ? "Take the drop"
+                    : "Take the drop")
+                : "Take the weapon";
             return;
         }
 
-        objectiveText.text = "Floor clear - take the exit";
+        objectiveText.text = "Exit open";
     }
 
     private void RefreshCycleText()
@@ -146,7 +151,7 @@ public class RunStatusHUD : MonoBehaviour
 
         if (position < arenaDirector.combatFloorsBeforeShop)
         {
-            cycleText.text = $"{themeLabel} - Combat {position + 1}/2";
+            cycleText.text = $"{themeLabel} - Fight {position + 1}/2";
         }
         else if (position == arenaDirector.combatFloorsBeforeShop)
         {
@@ -155,7 +160,7 @@ public class RunStatusHUD : MonoBehaviour
         else if (position < arenaDirector.combatFloorsBeforeShop + 1 + arenaDirector.combatFloorsAfterShop)
         {
             int backHalfIndex = position - arenaDirector.combatFloorsBeforeShop;
-            cycleText.text = $"{themeLabel} - Combat {backHalfIndex + 2}/4";
+            cycleText.text = $"{themeLabel} - Fight {backHalfIndex + 2}/4";
         }
         else
         {
@@ -172,7 +177,7 @@ public class RunStatusHUD : MonoBehaviour
     private void RefreshSeedText()
     {
         if (seedText == null || runState == null) return;
-        seedText.text = $"Seed {runState.currentRunSeed} / {runState.currentFloorSeed}";
+        seedText.text = $"Run {runState.currentRunSeed}";
     }
 
     private void RefreshCoreProgress()
@@ -180,7 +185,7 @@ public class RunStatusHUD : MonoBehaviour
         if (arenaDirector == null || runState == null) return;
 
         if (coreProgressText != null)
-            coreProgressText.text = $"Bosses: {runState.bossesClearedThisRun}/{arenaDirector.bossFloorsToReachCore}";
+            coreProgressText.text = $"Core {runState.bossesClearedThisRun}/{arenaDirector.bossFloorsToReachCore}";
 
         if (coreProgressFill != null)
             coreProgressFill.fillAmount = Mathf.Clamp01((float)runState.bossesClearedThisRun / Mathf.Max(1, arenaDirector.bossFloorsToReachCore));
@@ -189,6 +194,19 @@ public class RunStatusHUD : MonoBehaviour
             headerPanel.color = ResolvePanelColor(arenaDirector.generator.arenaMode, 0.84f);
         if (objectivePanel != null && arenaDirector.generator != null)
             objectivePanel.color = ResolvePanelColor(arenaDirector.generator.arenaMode, 0.62f);
+    }
+
+    private void RefreshVitals()
+    {
+        PlayerController player = FindAnyObjectByType<PlayerController>();
+        if (player == null) return;
+
+        if (hpText != null)
+            hpText.text = $"HP {Mathf.CeilToInt(player.currentHealth)}/{Mathf.CeilToInt(player.EffectiveMaxHealth)}";
+        if (coinText != null)
+            coinText.text = $"Coins {player.currency}";
+        if (hpFill != null)
+            hpFill.fillAmount = Mathf.Clamp01(player.currentHealth / Mathf.Max(1f, player.EffectiveMaxHealth));
     }
 
     private int CountUnsolvedPuzzleTerminals()
@@ -260,22 +278,33 @@ public class RunStatusHUD : MonoBehaviour
     private void EnsureHudTexts()
     {
         EnsurePanels();
-        if (floorText != null && cycleText != null && directiveText != null && objectiveText != null && seedText != null && coreProgressText != null && coreProgressFill != null) return;
 
-        floorText = floorText != null ? floorText : CreateHudText("FloorText", new Vector2(14f, -84f), 18f);
-        cycleText = cycleText != null ? cycleText : CreateHudText("CycleText", new Vector2(14f, -108f), 14f);
-        directiveText = directiveText != null ? directiveText : CreateHudText("DirectiveText", new Vector2(14f, -128f), 10.5f);
+        floorText = floorText != null ? floorText : CreateHudText("FloorText", new Vector2(18f, -70f), 16f);
+        ApplyTextLayout(floorText, new Vector2(18f, -70f), new Vector2(320f, 20f), 16f);
+        cycleText = cycleText != null ? cycleText : CreateHudText("CycleText", new Vector2(18f, -92f), 12.5f);
+        ApplyTextLayout(cycleText, new Vector2(18f, -92f), new Vector2(320f, 20f), 12.5f);
+        directiveText = directiveText != null ? directiveText : CreateHudText("DirectiveText", new Vector2(18f, -110f), 9.5f);
         if (directiveText != null)
         {
             directiveText.textWrappingMode = TextWrappingModes.Normal;
-            if (directiveText.rectTransform != null)
-                directiveText.rectTransform.sizeDelta = new Vector2(340f, 30f);
+            ApplyTextLayout(directiveText, new Vector2(18f, -110f), new Vector2(310f, 28f), 9.5f);
         }
-        objectiveText = objectiveText != null ? objectiveText : CreateHudText("ObjectiveText", new Vector2(14f, -160f), 14f);
-        seedText = seedText != null ? seedText : CreateHudText("SeedText", new Vector2(14f, -184f), 10f);
-        coreProgressText = coreProgressText != null ? coreProgressText : CreateHudText("CoreProgressText", new Vector2(14f, -204f), 10f);
+        objectiveText = objectiveText != null ? objectiveText : CreateHudText("ObjectiveText", new Vector2(18f, -146f), 13f);
+        ApplyTextLayout(objectiveText, new Vector2(18f, -146f), new Vector2(320f, 20f), 13f);
+        seedText = seedText != null ? seedText : CreateHudText("SeedText", new Vector2(18f, -168f), 9f);
+        ApplyTextLayout(seedText, new Vector2(18f, -168f), new Vector2(320f, 18f), 9f);
+        coreProgressText = coreProgressText != null ? coreProgressText : CreateHudText("CoreProgressText", new Vector2(18f, -186f), 9f);
+        ApplyTextLayout(coreProgressText, new Vector2(18f, -186f), new Vector2(320f, 18f), 9f);
         if (coreProgressFill == null)
-            coreProgressFill = CreateProgressBar("CoreProgressBar", new Vector2(14f, -224f));
+            coreProgressFill = CreateProgressBar("CoreProgressBar", new Vector2(18f, -204f), new Vector2(156f, 6f), new Color(0.74f, 0.95f, 1f, 0.95f));
+        ApplyProgressLayout(coreProgressFill, new Vector2(18f, -204f), new Vector2(156f, 6f));
+        hpText = hpText != null ? hpText : CreateHudText("HPText", new Vector2(18f, -244f), 12f);
+        ApplyTextLayout(hpText, new Vector2(18f, -244f), new Vector2(150f, 20f), 12f);
+        coinText = coinText != null ? coinText : CreateHudText("CoinText", new Vector2(188f, -244f), 12f);
+        ApplyTextLayout(coinText, new Vector2(188f, -244f), new Vector2(140f, 20f), 12f);
+        if (hpFill == null)
+            hpFill = CreateProgressBar("HPProgressBar", new Vector2(18f, -264f), new Vector2(260f, 7f), new Color(0.78f, 1f, 0.72f, 0.95f));
+        ApplyProgressLayout(hpFill, new Vector2(18f, -264f), new Vector2(260f, 7f));
     }
 
     private TMP_Text CreateHudText(string name, Vector2 anchoredPos, float fontSize)
@@ -294,14 +323,33 @@ public class RunStatusHUD : MonoBehaviour
         rect.anchorMax = new Vector2(0f, 1f);
         rect.pivot = new Vector2(0f, 1f);
         rect.anchoredPosition = anchoredPos;
-        rect.sizeDelta = new Vector2(360f, 22f);
+        rect.sizeDelta = new Vector2(320f, 20f);
 
         TMP_Text text = go.AddComponent<TextMeshProUGUI>();
+        ProjectStructureUIRoot.ApplyDefaultFont(text);
         text.fontSize = fontSize;
         text.alignment = TextAlignmentOptions.Left;
         text.color = Color.white;
         text.textWrappingMode = TextWrappingModes.NoWrap;
+        text.overflowMode = TextOverflowModes.Ellipsis;
         return text;
+    }
+
+    private void ApplyTextLayout(TMP_Text text, Vector2 anchoredPos, Vector2 size, float fontSize)
+    {
+        if (text == null) return;
+        RectTransform rect = text.rectTransform;
+        if (rect != null)
+        {
+            rect.anchorMin = new Vector2(0f, 1f);
+            rect.anchorMax = new Vector2(0f, 1f);
+            rect.pivot = new Vector2(0f, 1f);
+            rect.anchoredPosition = anchoredPos;
+            rect.sizeDelta = size;
+        }
+
+        text.fontSize = fontSize;
+        text.overflowMode = TextOverflowModes.Ellipsis;
     }
 
     private void EnsurePanels()
@@ -309,8 +357,12 @@ public class RunStatusHUD : MonoBehaviour
         RectTransform parentRect = transform as RectTransform;
         if (parentRect == null) return;
 
-        headerPanel = headerPanel != null ? headerPanel : CreatePanel("HeaderPanel", new Vector2(8f, -78f), new Vector2(370f, 70f));
-        objectivePanel = objectivePanel != null ? objectivePanel : CreatePanel("ObjectivePanel", new Vector2(8f, -146f), new Vector2(370f, 94f));
+        headerPanel = headerPanel != null ? headerPanel : CreatePanel("HeaderPanel", new Vector2(10f, -64f), new Vector2(342f, 62f));
+        ApplyPanelLayout(headerPanel, new Vector2(10f, -64f), new Vector2(342f, 62f));
+        objectivePanel = objectivePanel != null ? objectivePanel : CreatePanel("ObjectivePanel", new Vector2(10f, -136f), new Vector2(342f, 86f));
+        ApplyPanelLayout(objectivePanel, new Vector2(10f, -136f), new Vector2(342f, 86f));
+        vitalsPanel = vitalsPanel != null ? vitalsPanel : CreatePanel("VitalsPanel", new Vector2(10f, -234f), new Vector2(342f, 48f));
+        ApplyPanelLayout(vitalsPanel, new Vector2(10f, -234f), new Vector2(342f, 48f));
     }
 
     private Image CreatePanel(string name, Vector2 anchoredPos, Vector2 size)
@@ -334,7 +386,18 @@ public class RunStatusHUD : MonoBehaviour
         return image;
     }
 
-    private Image CreateProgressBar(string name, Vector2 anchoredPos)
+    private void ApplyPanelLayout(Image image, Vector2 anchoredPos, Vector2 size)
+    {
+        if (image == null || image.rectTransform == null) return;
+        RectTransform rect = image.rectTransform;
+        rect.anchorMin = new Vector2(0f, 1f);
+        rect.anchorMax = new Vector2(0f, 1f);
+        rect.pivot = new Vector2(0f, 1f);
+        rect.anchoredPosition = anchoredPos;
+        rect.sizeDelta = size;
+    }
+
+    private Image CreateProgressBar(string name, Vector2 anchoredPos, Vector2 size, Color fillColor)
     {
         Transform existing = transform.Find(name);
         if (existing != null)
@@ -347,7 +410,7 @@ public class RunStatusHUD : MonoBehaviour
         backRect.anchorMax = new Vector2(0f, 1f);
         backRect.pivot = new Vector2(0f, 1f);
         backRect.anchoredPosition = anchoredPos;
-        backRect.sizeDelta = new Vector2(170f, 7f);
+        backRect.sizeDelta = size;
 
         Image backImage = back.AddComponent<Image>();
         backImage.color = new Color(0.08f, 0.09f, 0.12f, 0.95f);
@@ -364,8 +427,21 @@ public class RunStatusHUD : MonoBehaviour
         fillImage.type = Image.Type.Filled;
         fillImage.fillMethod = Image.FillMethod.Horizontal;
         fillImage.fillAmount = 0f;
-        fillImage.color = new Color(0.74f, 0.95f, 1f, 0.95f);
+        fillImage.color = fillColor;
         return fillImage;
+    }
+
+    private void ApplyProgressLayout(Image fill, Vector2 anchoredPos, Vector2 size)
+    {
+        if (fill == null || fill.transform.parent == null) return;
+        RectTransform backRect = fill.transform.parent as RectTransform;
+        if (backRect == null) return;
+
+        backRect.anchorMin = new Vector2(0f, 1f);
+        backRect.anchorMax = new Vector2(0f, 1f);
+        backRect.pivot = new Vector2(0f, 1f);
+        backRect.anchoredPosition = anchoredPos;
+        backRect.sizeDelta = size;
     }
 
     private Color ResolvePanelColor(CybergrindArenaGenerator.ArenaMode mode, float alpha)

@@ -30,10 +30,10 @@ public class CybergrindWeaponShop : Interactable
     {
         bool unlocked = CybergrindRunState.GetOrCreate().IsWeaponUnlocked(presetIndex);
         string title = unlocked
-            ? $"SWITCH // {equipCost} COINS"
-            : $"ADD // {equipCost} COINS";
+            ? $"EQUIP - {equipCost} COINS"
+            : $"ADD - {equipCost} COINS";
         if (player != null && equipCost > 0 && player.currency < equipCost)
-            return $"{title} // NEED {equipCost - player.currency}";
+            return $"{title} - NEED {equipCost - player.currency}";
         return title;
     }
 
@@ -86,7 +86,7 @@ public class CybergrindWeaponShop : Interactable
         {
             hud.ShowShopServiceBanner(
                 CybergrindShopStation.ShopService.Refit,
-                "WEAPON READY",
+                "GUN READY",
                 $"{gun.GetPresetDisplayName(presetIndex)} active. {gun.GetActiveDescriptorLine()}");
         }
 
@@ -106,7 +106,7 @@ public class CybergrindWeaponShop : Interactable
         Gun gun = GetGun(null);
         string weaponName = gun != null ? gun.GetPresetDisplayName(presetIndex) : $"Weapon {presetIndex + 1}";
         bool unlocked = CybergrindRunState.GetOrCreate().IsWeaponUnlocked(presetIndex);
-        promptMessage = unlocked ? $"Equip // {weaponName} ({equipCost} coins)" : $"Add // {weaponName} ({equipCost} coins)";
+        promptMessage = unlocked ? $"Equip {weaponName} - {equipCost} coins" : $"Add {weaponName} - {equipCost} coins";
     }
 
     private Gun GetGun(PlayerController player)

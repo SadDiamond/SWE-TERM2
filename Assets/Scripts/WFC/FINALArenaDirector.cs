@@ -196,8 +196,8 @@ public class CybergrindArenaDirector : MonoBehaviour
         if (generator.arenaMode == CybergrindArenaGenerator.ArenaMode.Boss)
         {
             if (runState == null) runState = CybergrindRunState.GetOrCreate();
-            int unlockedPreset = runState.RegisterBossDefeated(CurrentThemeIndex);
-            Debug.Log($"[ArenaDirector] Boss floor cleared. Unlocked weapon preset {unlockedPreset}.");
+            runState.RegisterBossDefeated(CurrentThemeIndex);
+            Debug.Log("[ArenaDirector] Boss floor cleared.");
 
             if (runState.bossesClearedThisRun >= bossFloorsToReachCore)
             {
@@ -537,9 +537,8 @@ public class CybergrindArenaDirector : MonoBehaviour
         if (runState == null)
             runState = CybergrindRunState.GetOrCreate();
 
-        int unlockedPreset = runState.RegisterBossDefeated(CurrentThemeIndex);
         runState.RegisterFloorCleared();
-        Debug.Log($"[ArenaDirector] Core reached. Final boss unlock awarded: preset {unlockedPreset}.");
+        Debug.Log("[ArenaDirector] Core reached.");
 
         BossEncounterHUD hud = FindAnyObjectByType<BossEncounterHUD>();
         if (hud != null)

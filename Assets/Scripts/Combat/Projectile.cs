@@ -6,8 +6,8 @@ public class Projectile : MonoBehaviour
     public float lifetime = 3f;
     public float impactScalePulse = 1.35f;
     public float impactLifetime = 0.08f;
-    public float ownerIgnoreGraceTime = 0.16f;
-    public float ownerClearanceRadius = 2.2f;
+    public float ownerIgnoreGraceTime = 0.28f;
+    public float ownerClearanceRadius = 3.1f;
     [HideInInspector] public GameObject owner; // Tells the bullet who shot it so they don't shoot themselves
     
     [Header("Impact FX")]
@@ -65,6 +65,9 @@ public class Projectile : MonoBehaviour
     {
         // Don't hit the person who shot this!
         if (ShouldIgnoreCollision(collision.collider)) return;
+
+        if (ShouldDiscardEarlyClearanceCollision(collision.collider))
+            return;
 
         PlayerController player = collision.collider.GetComponentInParent<PlayerController>();
         if (player != null && player.TryParryIncomingProjectile(this))
@@ -152,10 +155,14 @@ public class Projectile : MonoBehaviour
     private bool IsOwnerCollision(Collider other)
     {
         if (owner == null || other == null) return false;
-        return other.gameObject == owner ||
-               other.transform.IsChildOf(owner.transform) ||
-               transform.IsChildOf(owner.transform) ||
-               other.GetComponentInParent<PlayerController>() != null && owner.GetComponentInParent<PlayerController>() != null;
+        if (other.gameObject == owner ||
+            other.transform.IsChildOf(owner.transform) ||
+            transform.IsChildOf(owner.transform))
+            return true;
+
+        PlayerController hitPlayer = other.GetComponentInParent<PlayerController>();
+        PlayerController ownerPlayer = owner.GetComponentInParent<PlayerController>();
+        return hitPlayer != null && ownerPlayer != null && hitPlayer == ownerPlayer;
     }
 
     private bool ShouldIgnoreCollision(Collider other)
@@ -164,9 +171,6 @@ public class Projectile : MonoBehaviour
 
         if (!ShouldKeepIgnoringOwner())
             return false;
-
-        if (other != null && other.GetComponentInParent<PlayerController>() != null)
-            return true;
 
         if (owner != null)
         {
@@ -192,4 +196,25 @@ public class Projectile : MonoBehaviour
 
         return Vector3.Distance(transform.position, spawnPosition) <= ownerClearanceRadius * 0.55f;
     }
+
+    private bool ShouldDiscardEarlyClearanceCollision(Collider other)
+    {
+        if (other == null)
+            return true;
+
+        if (!ShouldKeepIgnoringOwner())
+            return false;
+
+        if (other.GetComponentInParent<IDamageable>() != null)
+            return false;
+
+        return true;
+    }
+
+#if UNITY_EDITOR
+    public bool DebugShouldDiscardEarlyClearanceCollision(Collider other)
+    {
+        return ShouldDiscardEarlyClearanceCollision(other);
+    }
+#endif
 }

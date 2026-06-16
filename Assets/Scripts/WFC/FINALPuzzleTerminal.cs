@@ -465,6 +465,14 @@ public class CybergrindPuzzleTerminal : Terminal
         return $"Reinforcements in {remaining:0}s.";
     }
 
+    public float GetPressure01()
+    {
+        if (!puzzleOpen || !enablePressureTimer || pressureDuration <= 0.01f)
+            return 0f;
+
+        return Mathf.Clamp01(pressureTimer / pressureDuration);
+    }
+
     public string GetPrimaryActionLabel()
     {
         switch (challengeMode)

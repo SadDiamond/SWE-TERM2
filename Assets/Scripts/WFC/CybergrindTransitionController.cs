@@ -15,15 +15,11 @@ public class CybergrindTransitionController : MonoBehaviour
     public AnimationCurve shiftCurve = AnimationCurve.EaseInOut(0f, 0f, 1f, 1f);
 
     [Header("Structure Shift Motion")]
-    public float oldArenaDropDistance = 42f;
-    public float newArenaRiseDistance = 38f;
+    public float oldArenaDropDistance = 18f;
+    public float newArenaRiseDistance = 16f;
+    [Min(1f)] public float unmatchedTileTravelDistance = 3.8f;
     public float exitLiftDistance = 9.5f;
     public float exitLiftDuration = 0.92f;
-
-    [Header("Camera")]
-    public Camera targetCamera;
-    public float fovKick = 8f;
-    public float fovOvershoot = 3.2f;
 
     [Header("Exit / Cage FX")]
     public Color exitHighlightColor = new Color(0.9f, 0.6f, 0.1f, 0.5f);
@@ -35,24 +31,21 @@ public class CybergrindTransitionController : MonoBehaviour
     public float cageWallHeight = 9f;
     [Range(0.3f, 0.8f)] public float cageCellScale = 0.52f;
 
-    [Header("Structure Detail Motion")]
-    public float detailPieceDropDistance = 12f;
-    public float detailPieceRiseDistance = 10f;
-    public float detailPieceSlideDistance = 3.2f;
-    public float detailPieceSpinDegrees = 12f;
+    [Header("Structure Reconfigure Motion")]
     public float detailStaggerRange = 0.34f;
 
+    [Header("Transition Performance")]
+    [Min(128)] public int maxAnimatedTransitionPieces = 420;
+    [Range(1, 6)] public int transitionDetailStride = 4;
+    public bool animateSurfaceMicroDetails = false;
+
     [Header("Transient Structure FX")]
-    [Range(4, 12)] public int latticeColumnCount = 6;
-    public float latticeRadius = 4.6f;
-    public float latticeColumnHeight = 10f;
-    public float latticeFxDuration = 0.75f;
-    public float shockwaveScale = 9f;
-    [Range(6, 18)] public int reclaimerSlabCount = 12;
-    public float reclaimerSlabRadius = 7.8f;
-    public float reclaimerSlabTravel = 8.5f;
-    public Vector3 reclaimerSlabSize = new Vector3(3.6f, 0.2f, 2.8f);
-    public float reclaimerFxDuration = 1.15f;
+    public Color assemblyColor = new Color(0.56f, 0.92f, 1f, 0.18f);
+    [Range(8, 24)] public int assemblySlabCount = 16;
+    public float assemblyRadius = 8.2f;
+    public float assemblyTravel = 8.5f;
+    public Vector3 assemblySlabSize = new Vector3(3.8f, 0.18f, 2.4f);
+    public float assemblyFxDuration = 1.2f;
 
     [Header("Overlay FX")]
     public Color flashColor = new Color(0.72f, 0.95f, 1f, 0.28f);
@@ -66,21 +59,23 @@ public class CybergrindTransitionController : MonoBehaviour
 
     public bool IsTransitioning { get; private set; }
     public string DebugStage { get; private set; } = "Idle";
+    public int DebugLastReconfigureStates { get; private set; }
+    public int DebugLastMatchedPieces { get; private set; }
+    public int DebugLastRaisedPieces { get; private set; }
+    public int DebugLastRetractedPieces { get; private set; }
+    public int DebugLastOldPieceGroups { get; private set; }
+    public int DebugLastNewPieceGroups { get; private set; }
+    public int DebugLastVerticalMatchedPieces { get; private set; }
+    public float DebugLastMaxVerticalDelta { get; private set; }
 
-    private float baseFov;
     private Image flashOverlay;
     private CanvasGroup bannerGroup;
     private TMP_Text bannerTitleText;
     private TMP_Text bannerSubtitleText;
+    private const string TransitionPreviewSnapshotName = "TransitionPreviewSnapshot";
 
     private void Awake()
     {
-        if (targetCamera == null)
-            targetCamera = Camera.main;
-
-        if (targetCamera != null)
-            baseFov = targetCamera.fieldOfView;
-
         EnsureOverlay();
     }
 
@@ -102,9 +97,8 @@ public class CybergrindTransitionController : MonoBehaviour
         DebugStage = "Start";
         onTransitionStarted?.Invoke();
         string themeLabel = generator != null ? generator.GetThemeLabel() : "Arena";
-        string directiveTitle = generator != null ? generator.GetThemeDirectiveTitle() : "Directive";
-        ShowTransitionBanner("STRUCTURE LOCK", $"{themeLabel} is folding inward // {directiveTitle}");
-        StartCoroutine(PulseFlash(flashColor, flashDuration));
+        ShowTransitionBanner("FLOOR SHIFT", $"{themeLabel}. Tiles moving.");
+        StartTransitionRoutine(PulseFlash(flashColor, flashDuration));
 
         Transform oldRoot = generator != null ? generator.CurrentArenaRoot : null;
         Transform exit = FindExitCellTransform(generator);
@@ -123,25 +117,17 @@ public class CybergrindTransitionController : MonoBehaviour
         {
             DebugStage = "Cage";
             yield return AnimateCover(rig.cage, true, coverScaleDuration);
-            StartCoroutine(PulseFlash(new Color(coverColor.r, coverColor.g, coverColor.b, 0.16f), flashDuration * 0.8f));
+            StartTransitionRoutine(PulseFlash(new Color(coverColor.r, coverColor.g, coverColor.b, 0.16f), flashDuration * 0.8f));
         }
 
         if (rig.anchor != null)
-            StartCoroutine(EmitAnchorLattice(rig.anchor.position, coverColor, latticeFxDuration));
-        if (rig.anchor != null)
-            StartCoroutine(EmitSegmentCascade(rig.anchor.position, coverColor, latticeFxDuration * 1.2f, false));
-        if (rig.anchor != null)
-            StartCoroutine(EmitReclaimerSlabs(rig.anchor.position, coverColor, reclaimerFxDuration, false));
+            StartTransitionRoutine(EmitAssemblyField(rig.anchor.position, assemblyColor, assemblyFxDuration, false));
 
         if (rig.anchor != null)
         {
             DebugStage = "Lift";
             yield return LiftAnchor(rig, exitLiftDistance, exitLiftDuration);
-            StartCoroutine(EmitShockwave(rig.anchor.position, exitHighlightColor, shockwaveScale, 0.45f));
         }
-
-        DebugStage = "DropOld";
-        yield return AnimateArenaRoot(oldRoot, Vector3.zero, Vector3.down * oldArenaDropDistance, oldArenaDropDuration, true);
 
         if (generator != null)
             generator.skipPlayerPlacementOnce = true;
@@ -149,39 +135,39 @@ public class CybergrindTransitionController : MonoBehaviour
         DebugStage = "Swap";
         DestroyTransientContent(oldRoot);
         if (rig.anchor != null)
-            StartCoroutine(EmitAnchorLattice(rig.anchor.position + Vector3.up * 1.2f, exitHighlightColor, latticeFxDuration * 0.9f));
-        if (rig.anchor != null)
-            StartCoroutine(EmitSegmentCascade(rig.anchor.position + Vector3.up * 0.6f, exitHighlightColor, latticeFxDuration * 1.25f, true));
-        if (rig.anchor != null)
-            StartCoroutine(EmitReclaimerSlabs(rig.anchor.position + Vector3.up * 0.5f, exitHighlightColor, reclaimerFxDuration * 1.15f, true));
+            StartTransitionRoutine(EmitAssemblyField(rig.anchor.position + Vector3.up * 0.5f, assemblyColor, assemblyFxDuration * 1.15f, true));
         onSwapMoment?.Invoke();
         swapAction?.Invoke();
 
-        DebugStage = "Hold";
-        yield return new WaitForSecondsRealtime(swapHoldDuration);
-
         Transform newRoot = generator != null ? generator.CurrentArenaRoot : null;
-        if (newRoot != null)
-            newRoot.position += Vector3.down * newArenaRiseDistance;
+        if (newRoot == oldRoot)
+            newRoot = null;
 
-        DebugStage = "RiseNew";
-        ShowTransitionBanner("NEXT FLOOR", $"{themeLabel} is locking into place // {directiveTitle}");
-        StartCoroutine(PulseFlash(new Color(exitHighlightColor.r, exitHighlightColor.g, exitHighlightColor.b, 0.22f), flashDuration * 1.1f));
+        DebugStage = "Reconfigure";
+        string nextThemeLabel = generator != null ? generator.GetThemeLabel() : themeLabel;
+        string nextDirectiveTitle = generator != null ? generator.GetThemeDirectiveTitle() : string.Empty;
+        ShowTransitionBanner("NEXT FLOOR", $"{nextThemeLabel}. {nextDirectiveTitle}");
+        StartTransitionRoutine(PulseFlash(new Color(exitHighlightColor.r, exitHighlightColor.g, exitHighlightColor.b, 0.22f), flashDuration * 1.1f));
         if (newRoot != null)
-            StartCoroutine(EmitArenaRiseAccent(newRoot));
-        yield return AnimateArenaRoot(newRoot, Vector3.down * newArenaRiseDistance, Vector3.zero, newArenaRiseDuration, false);
+            StartTransitionRoutine(EmitArenaRiseAccent(newRoot));
+
+        float reconfigureDuration = Mathf.Max(oldArenaDropDuration, newArenaRiseDuration);
+        yield return AnimateArenaReconfiguration(oldRoot, newRoot, reconfigureDuration);
+
+        if (swapHoldDuration > 0f)
+        {
+            DebugStage = "Hold";
+            yield return new WaitForSecondsRealtime(swapHoldDuration);
+        }
 
         DebugStage = "PlacePlayer";
         if (generator != null && player != null)
             generator.PlacePlayerAtSpawn();
 
         if (rig.root != null)
-            Destroy(rig.root.gameObject);
+            DestroyTransitionObject(rig.root.gameObject);
         if (oldRoot != null)
-            Destroy(oldRoot.gameObject);
-
-        if (targetCamera != null)
-            targetCamera.fieldOfView = baseFov;
+            DestroyTransitionObject(oldRoot.gameObject);
 
         if (player != null)
             player.SetTransitionLock(false);
@@ -189,6 +175,276 @@ public class CybergrindTransitionController : MonoBehaviour
         IsTransitioning = false;
         DebugStage = "Complete";
         onTransitionFinished?.Invoke();
+    }
+
+    public IEnumerator DebugPreviewTransitionLook(CybergrindArenaGenerator generator, float duration)
+    {
+        yield return DebugPreviewReconfigureTransition(generator, duration);
+    }
+
+    public IEnumerator DebugPreviewReconfigureTransition(CybergrindArenaGenerator generator, float duration)
+    {
+        if (generator == null || generator.CurrentArenaRoot == null) yield break;
+
+        Transform oldRoot = generator.CurrentArenaRoot;
+        GameObject previewRoot = new GameObject("TransitionReconfigurePreviewRoot");
+        previewRoot.transform.position = generator.transform.position;
+        previewRoot.transform.rotation = generator.transform.rotation;
+
+        CybergrindArenaGenerator previewGenerator = previewRoot.AddComponent<CybergrindArenaGenerator>();
+        CopyGeneratorSettingsForTransitionPreview(generator, previewGenerator);
+        previewGenerator.randomizeSeedEachGeneration = false;
+        previewGenerator.generateOnStart = false;
+        previewGenerator.clearBeforeGenerate = true;
+        previewGenerator.skipPlayerPlacementOnce = true;
+        previewGenerator.playerToPlace = null;
+        previewGenerator.enemyPrefab = null;
+        previewGenerator.seed = generator.lastGeneratedSeed != 0
+            ? unchecked(generator.lastGeneratedSeed + 7919)
+            : unchecked(Environment.TickCount ^ 7919);
+        previewGenerator.GenerateArena();
+
+        Transform newRoot = previewGenerator.CurrentArenaRoot;
+        Collider[] previewColliders = newRoot != null ? newRoot.GetComponentsInChildren<Collider>(true) : null;
+        SetCollidersEnabled(previewColliders, false);
+
+        if (!Application.isPlaying)
+        {
+            DebugStage = "PreviewDiff";
+            string plan = DebugDescribeReconfigurePlan(oldRoot, newRoot);
+            Debug.Log($"[ArenaTransition] Preview diff plan: {plan}");
+            if (newRoot != null)
+                DestroyTransitionObject(newRoot.gameObject);
+            DestroyTransitionObject(previewRoot);
+            DebugStage = IsTransitioning ? DebugStage : "Idle";
+            yield break;
+        }
+
+        Transform exit = FindExitCellTransform(generator);
+        Vector3 center = exit != null ? exit.position : oldRoot.position;
+        float previewDuration = Mathf.Max(0.35f, duration);
+
+        DebugStage = "PreviewDiff";
+        if (exit != null)
+            HighlightExit(exit);
+
+        ShowTransitionBanner("FLOOR SHIFT", "Previewing tile reconfigure.");
+        StartTransitionRoutine(PulseFlash(new Color(assemblyColor.r, assemblyColor.g, assemblyColor.b, 0.16f), flashDuration));
+        StartTransitionRoutine(EmitAssemblyField(center + Vector3.up * 0.35f, assemblyColor, Mathf.Min(assemblyFxDuration, previewDuration), true));
+
+        yield return AnimateArenaReconfiguration(oldRoot, newRoot, previewDuration, true);
+
+        if (newRoot != null)
+            DestroyTransitionObject(newRoot.gameObject);
+        DestroyTransitionObject(previewRoot);
+        DebugStage = IsTransitioning ? DebugStage : "Idle";
+    }
+
+    private void CopyGeneratorSettingsForTransitionPreview(CybergrindArenaGenerator source, CybergrindArenaGenerator target)
+    {
+        if (source == null || target == null) return;
+
+        target.width = source.width;
+        target.length = source.length;
+        target.tileSize = source.tileSize;
+        target.floorThickness = source.floorThickness;
+        target.pillarDepth = source.pillarDepth;
+        target.killPlaneY = source.killPlaneY;
+        target.generatedRootName = "_ArenaPreviewNext";
+        target.arenaMode = source.arenaMode;
+        target.themeIndex = source.themeIndex;
+        target.useThemePaletteVariants = source.useThemePaletteVariants;
+        target.bridgeLevel = source.bridgeLevel;
+        target.platformLevel = source.platformLevel;
+        target.crownLevel = source.crownLevel;
+        target.levelHeight = source.levelHeight;
+        target.mainBridgeHalfWidth = source.mainBridgeHalfWidth;
+        target.centralPlatformRadius = source.centralPlatformRadius;
+        target.cornerPlatformSize = source.cornerPlatformSize;
+        target.outerGapChance = source.outerGapChance;
+        target.hazardChance = source.hazardChance;
+        target.coverChance = source.coverChance;
+        target.itemChance = source.itemChance;
+        target.safeRadiusAroundSpawn = source.safeRadiusAroundSpawn;
+        target.safeRadiusAroundExit = source.safeRadiusAroundExit;
+        target.playerSpawnHeight = source.playerSpawnHeight;
+        target.decorativeDensity = Mathf.Min(source.decorativeDensity, 0.32f);
+        target.microDetailDensity = Mathf.Min(source.microDetailDensity, 0.08f);
+        target.combatEnemyMin = 0;
+        target.combatEnemyMax = 0;
+        target.bossEnemyMin = 0;
+        target.bossEnemyMax = 0;
+        target.spawnBossChampion = false;
+        target.floorMaterial = source.floorMaterial;
+        target.darkMaterial = source.darkMaterial;
+        target.accentMaterial = source.accentMaterial;
+        target.hazardMaterial = source.hazardMaterial;
+        target.spawnMaterial = source.spawnMaterial;
+        target.exitMaterial = source.exitMaterial;
+        target.itemMaterial = source.itemMaterial;
+        target.puzzleMaterial = source.puzzleMaterial;
+    }
+
+    private void SetCollidersEnabled(Collider[] colliders, bool enabled)
+    {
+        if (colliders == null) return;
+        for (int i = 0; i < colliders.Length; i++)
+        {
+            if (colliders[i] != null)
+                colliders[i].enabled = enabled;
+        }
+    }
+
+    public void DebugCancelTransitionForEditor()
+    {
+        IsTransitioning = false;
+        DebugStage = "Idle";
+        DestroyTransitionPreviewSnapshots();
+
+        Transform[] all = FindObjectsByType<Transform>(FindObjectsInactive.Include);
+        for (int i = 0; i < all.Length; i++)
+        {
+            Transform t = all[i];
+            if (t == null) continue;
+            if (t.name == "TransitionAssemblySlab" || t.name == "ExitTransitionRig")
+                DestroyTransitionObject(t.gameObject);
+        }
+
+        if (flashOverlay != null)
+        {
+            flashOverlay.color = new Color(flashOverlay.color.r, flashOverlay.color.g, flashOverlay.color.b, 0f);
+            flashOverlay.enabled = false;
+        }
+
+        if (bannerGroup != null)
+            bannerGroup.alpha = 0f;
+    }
+
+    public GameObject DebugBuildTransitionSnapshot(CybergrindArenaGenerator generator, float progress, bool rising)
+    {
+        DestroyTransitionPreviewSnapshots();
+        if (generator == null || generator.CurrentArenaRoot == null)
+            return null;
+
+        Transform root = generator.CurrentArenaRoot;
+        Transform exit = FindExitCellTransform(generator);
+        Vector3 center = exit != null ? exit.position : root.position;
+        Color color = assemblyColor;
+        float t = Mathf.Clamp01(progress);
+        float eased = shiftCurve != null ? shiftCurve.Evaluate(t) : Mathf.SmoothStep(0f, 1f, t);
+        float pulse = Mathf.Sin(t * Mathf.PI);
+
+        GameObject snapshot = new GameObject(TransitionPreviewSnapshotName);
+        snapshot.transform.position = center;
+        Material material = BuildTransparentMaterial(new Color(color.r, color.g, color.b, 0.26f), true);
+        BuildSnapshotCage(snapshot.transform, generator);
+        int slabCount = Mathf.Max(4, assemblySlabCount);
+        Vector3 slabScale = new Vector3(
+            Mathf.Max(1.2f, assemblySlabSize.x),
+            Mathf.Max(0.08f, assemblySlabSize.y),
+            Mathf.Max(1.2f, assemblySlabSize.z));
+
+        for (int i = 0; i < slabCount; i++)
+        {
+            float angle = (Mathf.PI * 2f * i) / slabCount;
+            Vector3 radial = new Vector3(Mathf.Cos(angle), 0f, Mathf.Sin(angle));
+            float ring = ((i & 1) == 0) ? assemblyRadius : assemblyRadius * 0.58f;
+            float spread = Mathf.Lerp(ring * (rising ? 0.64f : 0.92f), ring * (rising ? 1.02f : 1.22f), eased);
+            float height = rising
+                ? Mathf.Lerp(-assemblyTravel, 1.7f, eased)
+                : Mathf.Lerp(1.4f, -assemblyTravel, eased);
+
+            GameObject slab = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            slab.name = "TransitionSnapshotSlab";
+            slab.transform.SetParent(snapshot.transform, true);
+            slab.transform.position = center + radial * spread + Vector3.up * height;
+            slab.transform.rotation = Quaternion.LookRotation(radial, Vector3.up) * Quaternion.Euler(0f, 0f, Mathf.Lerp(rising ? -10f : 0f, rising ? 0f : 10f, eased));
+            slab.transform.localScale = new Vector3(
+                Mathf.Lerp(slabScale.x * 0.76f, slabScale.x * (rising ? 1.08f : 0.92f), eased) + pulse * 0.12f,
+                slabScale.y,
+                Mathf.Lerp(slabScale.z * 0.82f, slabScale.z * (rising ? 1.12f : 1.28f), eased));
+
+            Renderer renderer = slab.GetComponent<Renderer>();
+            if (renderer != null) renderer.sharedMaterial = material;
+            Collider collider = slab.GetComponent<Collider>();
+            if (collider != null)
+            {
+                if (Application.isPlaying) Destroy(collider);
+                else DestroyImmediate(collider);
+            }
+        }
+
+        if (exit != null)
+            HighlightExit(exit);
+
+        return snapshot;
+    }
+
+    private void BuildSnapshotCage(Transform parent, CybergrindArenaGenerator generator)
+    {
+        if (parent == null) return;
+
+        float tileSize = generator != null ? Mathf.Max(1f, generator.tileSize) : 4f;
+        float cellSize = tileSize * cageCellScale;
+        float half = cellSize * 0.5f;
+        float wallHeight = Mathf.Max(3.5f, cageWallHeight);
+        float wallThickness = Mathf.Max(0.06f, cageWallThickness);
+        float pillarWidth = wallThickness * 1.8f;
+        Material glassMaterial = BuildTransparentMaterial(coverColor, true);
+
+        GameObject cageRoot = new GameObject("TransitionSnapshotCage");
+        cageRoot.transform.SetParent(parent, false);
+        cageRoot.transform.localPosition = Vector3.zero;
+        cageRoot.transform.localRotation = Quaternion.identity;
+        cageRoot.transform.localScale = Vector3.one;
+
+        CreatePreviewWall(cageRoot.transform, "SnapshotNorthWall", new Vector3(0f, wallHeight * 0.5f, half), new Vector3(cellSize, wallHeight, wallThickness), glassMaterial);
+        CreatePreviewWall(cageRoot.transform, "SnapshotSouthWall", new Vector3(0f, wallHeight * 0.5f, -half), new Vector3(cellSize, wallHeight, wallThickness), glassMaterial);
+        CreatePreviewWall(cageRoot.transform, "SnapshotEastWall", new Vector3(half, wallHeight * 0.5f, 0f), new Vector3(wallThickness, wallHeight, cellSize), glassMaterial);
+        CreatePreviewWall(cageRoot.transform, "SnapshotWestWall", new Vector3(-half, wallHeight * 0.5f, 0f), new Vector3(wallThickness, wallHeight, cellSize), glassMaterial);
+        CreatePreviewWall(cageRoot.transform, "SnapshotRoof", new Vector3(0f, wallHeight + wallThickness * 0.5f, 0f), new Vector3(cellSize, wallThickness, cellSize), glassMaterial);
+        CreatePreviewWall(cageRoot.transform, "SnapshotCornerNE", new Vector3(half, wallHeight * 0.5f, half), new Vector3(pillarWidth, wallHeight, pillarWidth), glassMaterial);
+        CreatePreviewWall(cageRoot.transform, "SnapshotCornerNW", new Vector3(-half, wallHeight * 0.5f, half), new Vector3(pillarWidth, wallHeight, pillarWidth), glassMaterial);
+        CreatePreviewWall(cageRoot.transform, "SnapshotCornerSE", new Vector3(half, wallHeight * 0.5f, -half), new Vector3(pillarWidth, wallHeight, pillarWidth), glassMaterial);
+        CreatePreviewWall(cageRoot.transform, "SnapshotCornerSW", new Vector3(-half, wallHeight * 0.5f, -half), new Vector3(pillarWidth, wallHeight, pillarWidth), glassMaterial);
+        CreatePreviewWall(cageRoot.transform, "SnapshotMidRingX", new Vector3(0f, wallHeight * 0.58f, 0f), new Vector3(cellSize * 0.94f, wallThickness * 0.8f, wallThickness), glassMaterial);
+        CreatePreviewWall(cageRoot.transform, "SnapshotMidRingZ", new Vector3(0f, wallHeight * 0.58f, 0f), new Vector3(wallThickness, wallThickness * 0.8f, cellSize * 0.94f), glassMaterial);
+    }
+
+    private GameObject CreatePreviewWall(Transform parent, string name, Vector3 localPosition, Vector3 localScale, Material material)
+    {
+        GameObject wall = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        wall.name = name;
+        wall.transform.SetParent(parent, false);
+        wall.transform.localPosition = localPosition;
+        wall.transform.localRotation = Quaternion.identity;
+        wall.transform.localScale = localScale;
+        if (wall.TryGetComponent(out Renderer renderer))
+            renderer.sharedMaterial = material;
+
+        Collider collider = wall.GetComponent<Collider>();
+        if (collider != null)
+        {
+            if (Application.isPlaying) Destroy(collider);
+            else DestroyImmediate(collider);
+        }
+
+        return wall;
+    }
+
+    public int DestroyTransitionPreviewSnapshots()
+    {
+        int destroyed = 0;
+        Transform[] all = FindObjectsByType<Transform>(FindObjectsInactive.Include);
+        for (int i = 0; i < all.Length; i++)
+        {
+            Transform t = all[i];
+            if (t == null || t.name != TransitionPreviewSnapshotName) continue;
+            DestroyTransitionObject(t.gameObject);
+            destroyed++;
+        }
+
+        return destroyed;
     }
 
     public Transform FindExitTransform(Transform root)
@@ -383,12 +639,13 @@ public class CybergrindTransitionController : MonoBehaviour
     {
         if (cover == null) yield break;
 
-        float startTime = Time.realtimeSinceStartup;
+        float elapsed = 0f;
         Vector3 from = open ? Vector3.zero : Vector3.one;
         Vector3 to = open ? Vector3.one : Vector3.zero;
-        while (Time.realtimeSinceStartup - startTime < duration)
+        while (elapsed < duration)
         {
-            float t = Mathf.Clamp01((Time.realtimeSinceStartup - startTime) / Mathf.Max(0.01f, duration));
+            elapsed += GetTransitionDelta(duration);
+            float t = Mathf.Clamp01(elapsed / Mathf.Max(0.01f, duration));
             float eased = Mathf.SmoothStep(0f, 1f, t);
             cover.transform.localScale = Vector3.LerpUnclamped(from, to, eased);
             yield return null;
@@ -404,11 +661,12 @@ public class CybergrindTransitionController : MonoBehaviour
         Vector3 start = rig.anchor.position;
         Vector3 end = start + Vector3.up * distance;
         Vector3 previous = start;
-        float startTime = Time.realtimeSinceStartup;
+        float elapsed = 0f;
 
-        while (Time.realtimeSinceStartup - startTime < duration)
+        while (elapsed < duration)
         {
-            float t = Mathf.Clamp01((Time.realtimeSinceStartup - startTime) / Mathf.Max(0.01f, duration));
+            elapsed += GetTransitionDelta(duration);
+            float t = Mathf.Clamp01(elapsed / Mathf.Max(0.01f, duration));
             float eased = Mathf.SmoothStep(0f, 1f, t);
             eased = Mathf.Sin(eased * Mathf.PI * 0.5f);
             Vector3 current = Vector3.LerpUnclamped(start, end, eased);
@@ -431,11 +689,12 @@ public class CybergrindTransitionController : MonoBehaviour
         rig.anchor.position = end;
 
         float bounceDuration = 0.14f;
-        float bounceStart = Time.realtimeSinceStartup;
+        float bounceElapsed = 0f;
         Vector3 bounceEnd = end + Vector3.up * 0.34f;
-        while (Time.realtimeSinceStartup - bounceStart < bounceDuration)
+        while (bounceElapsed < bounceDuration)
         {
-            float t = Mathf.Clamp01((Time.realtimeSinceStartup - bounceStart) / bounceDuration);
+            bounceElapsed += GetTransitionDelta(bounceDuration);
+            float t = Mathf.Clamp01(bounceElapsed / bounceDuration);
             float eased = 1f - Mathf.Pow(1f - t, 2f);
             Vector3 current = Vector3.LerpUnclamped(end, bounceEnd, eased);
             rig.anchor.position = current;
@@ -443,36 +702,6 @@ public class CybergrindTransitionController : MonoBehaviour
         }
 
         rig.anchor.position = bounceEnd;
-    }
-
-    private IEnumerator AnimateArenaRoot(Transform root, Vector3 fromOffset, Vector3 toOffset, float duration, bool cameraOut)
-    {
-        if (root == null) yield break;
-
-        Vector3 basePosition = root.position - fromOffset;
-        float startTime = Time.realtimeSinceStartup;
-        Coroutine detailRoutine = StartCoroutine(AnimateStructureDetails(root, cameraOut, duration));
-
-        while (Time.realtimeSinceStartup - startTime < duration)
-        {
-            float t = Mathf.Clamp01((Time.realtimeSinceStartup - startTime) / Mathf.Max(0.01f, duration));
-            float eased = shiftCurve != null ? shiftCurve.Evaluate(t) : Mathf.SmoothStep(0f, 1f, t);
-            root.position = basePosition + Vector3.LerpUnclamped(fromOffset, toOffset, eased);
-
-            if (targetCamera != null)
-            {
-                float pulse = Mathf.Sin(t * Mathf.PI);
-                float kick = cameraOut ? fovKick : fovKick * 0.7f;
-                float overshoot = cameraOut ? fovOvershoot : fovOvershoot * 0.55f;
-                targetCamera.fieldOfView = baseFov + pulse * kick + Mathf.SmoothStep(0f, 1f, t) * overshoot;
-            }
-
-            yield return null;
-        }
-
-        root.position = basePosition + toOffset;
-        if (detailRoutine != null)
-            yield return detailRoutine;
     }
 
     private void DestroyTransientContent(Transform root)
@@ -483,21 +712,21 @@ public class CybergrindTransitionController : MonoBehaviour
         for (int i = 0; i < terminals.Length; i++)
         {
             if (terminals[i] != null)
-                Destroy(terminals[i].gameObject);
+                DestroyTransitionObject(terminals[i].gameObject);
         }
 
         CybergrindPickup[] pickups = root.GetComponentsInChildren<CybergrindPickup>(true);
         for (int i = 0; i < pickups.Length; i++)
         {
             if (pickups[i] != null)
-                Destroy(pickups[i].gameObject);
+                DestroyTransitionObject(pickups[i].gameObject);
         }
 
         BasicEnemyAI[] enemies = root.GetComponentsInChildren<BasicEnemyAI>(true);
         for (int i = 0; i < enemies.Length; i++)
         {
             if (enemies[i] != null)
-                Destroy(enemies[i].gameObject);
+                DestroyTransitionObject(enemies[i].gameObject);
         }
     }
 
@@ -509,74 +738,188 @@ public class CybergrindTransitionController : MonoBehaviour
         public PlayerController player;
     }
 
-    private struct PieceMotionState
+    private struct ReconfigurePieceState
     {
         public Transform transform;
-        public Vector3 origin;
-        public Quaternion rotation;
-        public Vector3 offsetAxis;
+        public Transform parent;
+        public int siblingIndex;
+        public Vector3 finalLocalPosition;
+        public Quaternion finalLocalRotation;
+        public Vector3 finalLocalScale;
+        public Vector3 startPosition;
+        public Vector3 endPosition;
+        public Quaternion startRotation;
+        public Quaternion endRotation;
+        public Vector3 startLocalScale;
+        public Vector3 endLocalScale;
+        public Renderer[] renderers;
+        public bool revealAtEnd;
+        public bool destroyAtEnd;
+        public bool restoreParentAtEnd;
+        public bool preserveFootprintDuringMotion;
         public float stagger;
-        public float depthBias;
+        public float settleAmplitude;
     }
 
-    private IEnumerator AnimateStructureDetails(Transform root, bool dropping, float duration)
+    private IEnumerator AnimateArenaReconfiguration(Transform oldRoot, Transform newRoot, float duration, bool preserveOldRoot = false)
     {
-        if (root == null) yield break;
+        if (oldRoot == null && newRoot == null) yield break;
 
-        List<Transform> pieces = CollectAnimatedPieces(root);
-        if (pieces.Count == 0) yield break;
+        Dictionary<string, List<Transform>> oldPieces = CollectAnimatedPiecesByKey(oldRoot);
+        Dictionary<string, List<Transform>> newPieces = CollectAnimatedPiecesByKey(newRoot);
+        List<ReconfigurePieceState> states = new List<ReconfigurePieceState>(Mathf.Max(oldPieces.Count, newPieces.Count));
+        HashSet<string> keys = new HashSet<string>();
+        int matchedPieces = 0;
+        int raisedPieces = 0;
+        int retractedPieces = 0;
+        int verticalMatchedPieces = 0;
+        float maxVerticalDelta = 0f;
 
-        List<PieceMotionState> states = new List<PieceMotionState>(pieces.Count);
-        float startTime = Time.realtimeSinceStartup;
-        for (int i = 0; i < pieces.Count; i++)
+        foreach (string key in oldPieces.Keys)
+            keys.Add(key);
+        foreach (string key in newPieces.Keys)
+            keys.Add(key);
+
+        int motionIndex = 0;
+        foreach (string key in keys)
         {
-            Transform piece = pieces[i];
-            if (piece == null) continue;
+            oldPieces.TryGetValue(key, out List<Transform> oldList);
+            newPieces.TryGetValue(key, out List<Transform> newList);
 
-            Vector3 lateral = new Vector3(piece.localPosition.x, 0f, piece.localPosition.z);
-            Vector3 offsetAxis = lateral.sqrMagnitude > 0.01f
-                ? Vector3.Cross(Vector3.up, lateral.normalized)
-                : (((i & 1) == 0) ? Vector3.right : Vector3.forward);
-            offsetAxis.Normalize();
+            int oldCount = oldList != null ? oldList.Count : 0;
+            int newCount = newList != null ? newList.Count : 0;
+            int paired = Mathf.Min(oldCount, newCount);
 
-            PieceMotionState state = new PieceMotionState
+            for (int i = 0; i < paired; i++)
             {
-                transform = piece,
-                origin = piece.localPosition,
-                rotation = piece.localRotation,
-                offsetAxis = offsetAxis,
-                stagger = GetPieceStagger(piece, i),
-                depthBias = 0.75f + Mathf.Repeat(i * 0.11f, 0.65f)
-            };
-            states.Add(state);
+                Transform oldPiece = oldList[i];
+                Transform newPiece = newList[i];
+                if (oldPiece == null || newPiece == null) continue;
+                matchedPieces++;
+                float verticalDelta = Mathf.Abs(newPiece.position.y - oldPiece.position.y);
+                if (verticalDelta > 0.08f)
+                    verticalMatchedPieces++;
+                maxVerticalDelta = Mathf.Max(maxVerticalDelta, verticalDelta);
 
-            if (!dropping)
+                Renderer[] newRenderers = newPiece.GetComponentsInChildren<Renderer>(true);
+                SetRenderersEnabled(newRenderers, false);
+
+                states.Add(CreateReconfigureState(
+                    oldPiece,
+                    oldPiece.position,
+                    newPiece.position,
+                    oldPiece.rotation,
+                    newPiece.rotation,
+                    newPiece.localScale,
+                    null,
+                    false,
+                    !preserveOldRoot,
+                    preserveOldRoot,
+                    IsGridLockedPiece(oldPiece),
+                    motionIndex++));
+            }
+
+            for (int i = paired; i < oldCount; i++)
             {
-                Vector3 preOffset = offsetAxis * detailPieceSlideDistance * state.depthBias - Vector3.up * (detailPieceRiseDistance * state.depthBias);
-                piece.localPosition = state.origin + preOffset;
-                piece.localRotation = state.rotation * Quaternion.Euler(0f, detailPieceSpinDegrees * 0.55f * state.depthBias, 0f);
+                Transform oldPiece = oldList[i];
+                if (oldPiece == null) continue;
+                retractedPieces++;
+                float drop = GetUnmatchedReconfigureTravel(oldPiece, true);
+                states.Add(CreateReconfigureState(
+                    oldPiece,
+                    oldPiece.position,
+                    oldPiece.position + Vector3.down * drop,
+                    oldPiece.rotation,
+                    oldPiece.rotation,
+                    oldPiece.localScale,
+                    null,
+                    false,
+                    !preserveOldRoot,
+                    preserveOldRoot,
+                    false,
+                    motionIndex++));
+            }
+
+            for (int i = paired; i < newCount; i++)
+            {
+                Transform newPiece = newList[i];
+                if (newPiece == null) continue;
+                raisedPieces++;
+                float rise = GetUnmatchedReconfigureTravel(newPiece, false);
+                states.Add(CreateReconfigureState(
+                    newPiece,
+                    newPiece.position + Vector3.down * rise,
+                    newPiece.position,
+                    newPiece.rotation,
+                    newPiece.rotation,
+                    newPiece.localScale,
+                    newPiece.GetComponentsInChildren<Renderer>(true),
+                    false,
+                    false,
+                    true,
+                    false,
+                    motionIndex++));
             }
         }
 
-        while (Time.realtimeSinceStartup - startTime < duration)
+        DebugLastOldPieceGroups = oldPieces.Count;
+        DebugLastNewPieceGroups = newPieces.Count;
+        DebugLastReconfigureStates = states.Count;
+        DebugLastMatchedPieces = matchedPieces;
+        DebugLastRaisedPieces = raisedPieces;
+        DebugLastRetractedPieces = retractedPieces;
+        DebugLastVerticalMatchedPieces = verticalMatchedPieces;
+        DebugLastMaxVerticalDelta = maxVerticalDelta;
+
+        if (states.Count == 0)
         {
-            float t = Mathf.Clamp01((Time.realtimeSinceStartup - startTime) / Mathf.Max(0.01f, duration));
+            if (oldRoot != null && !preserveOldRoot)
+                DestroyTransitionObject(oldRoot.gameObject);
+            if (newRoot != null)
+                SetRenderersEnabled(newRoot.GetComponentsInChildren<Renderer>(true), true);
+            yield break;
+        }
+
+        Renderer[] allNewRenderers = newRoot != null ? newRoot.GetComponentsInChildren<Renderer>(true) : null;
+        SetRenderersEnabled(allNewRenderers, false);
+
+        for (int i = 0; i < states.Count; i++)
+        {
+            ReconfigurePieceState state = states[i];
+            if (state.transform == null) continue;
+            state.transform.SetParent((oldRoot != null ? oldRoot.parent : (newRoot != null ? newRoot.parent : null)), true);
+            state.transform.position = state.startPosition;
+            state.transform.rotation = state.startRotation;
+            state.transform.localScale = state.startLocalScale;
+            if (state.renderers != null && !state.revealAtEnd)
+                SetRenderersEnabled(state.renderers, true);
+            states[i] = state;
+        }
+
+        float elapsed = 0f;
+        while (elapsed < duration)
+        {
+            elapsed += GetTransitionDelta(duration);
+            float t = Mathf.Clamp01(elapsed / Mathf.Max(0.01f, duration));
             for (int i = 0; i < states.Count; i++)
             {
-                PieceMotionState state = states[i];
-                Transform piece = state.transform;
-                if (piece == null) continue;
+                ReconfigurePieceState state = states[i];
+                if (state.transform == null) continue;
 
-                float stagger = Mathf.Clamp01(t - state.stagger);
-                float eased = shiftCurve != null ? shiftCurve.Evaluate(stagger) : Mathf.SmoothStep(0f, 1f, stagger);
-                Vector3 modularOffset = state.offsetAxis * detailPieceSlideDistance * state.depthBias;
-                Vector3 verticalOffset = Vector3.up * (dropping ? -detailPieceDropDistance : detailPieceRiseDistance) * state.depthBias;
-                Vector3 from = dropping ? state.origin : state.origin + modularOffset - verticalOffset;
-                Vector3 to = dropping ? state.origin + modularOffset + verticalOffset : state.origin;
-                piece.localPosition = Vector3.LerpUnclamped(from, to, eased);
+                float localT = Mathf.Clamp01(t - state.stagger);
+                float eased = shiftCurve != null ? Mathf.Clamp01(shiftCurve.Evaluate(localT)) : Mathf.SmoothStep(0f, 1f, localT);
+                Vector3 position = Vector3.Lerp(state.startPosition, state.endPosition, eased);
+                if (!state.destroyAtEnd && eased > 0.78f && state.settleAmplitude > 0f)
+                {
+                    float settleT = Mathf.InverseLerp(0.78f, 1f, eased);
+                    position += Vector3.up * Mathf.Sin(settleT * Mathf.PI * 2f) * (1f - settleT) * state.settleAmplitude;
+                }
 
-                float spin = Mathf.Lerp(dropping ? 0f : detailPieceSpinDegrees * state.depthBias, dropping ? detailPieceSpinDegrees * state.depthBias : 0f, eased);
-                piece.localRotation = state.rotation * Quaternion.Euler(0f, spin, 0f);
+                state.transform.position = position;
+                state.transform.rotation = Quaternion.Slerp(state.startRotation, state.endRotation, eased);
+                state.transform.localScale = state.preserveFootprintDuringMotion
+                    ? state.startLocalScale
+                    : Vector3.Lerp(state.startLocalScale, state.endLocalScale, eased);
             }
 
             yield return null;
@@ -584,27 +927,300 @@ public class CybergrindTransitionController : MonoBehaviour
 
         for (int i = 0; i < states.Count; i++)
         {
-            PieceMotionState state = states[i];
+            ReconfigurePieceState state = states[i];
             if (state.transform == null) continue;
-            if (dropping)
-                state.transform.localPosition = state.origin + state.offsetAxis * detailPieceSlideDistance * state.depthBias + Vector3.down * (detailPieceDropDistance * state.depthBias);
-            else
-                state.transform.localPosition = state.origin;
-            state.transform.localRotation = state.rotation;
+
+            if (state.destroyAtEnd)
+            {
+                DestroyTransitionObject(state.transform.gameObject);
+                continue;
+            }
+
+            if (state.renderers != null)
+                SetRenderersEnabled(state.renderers, true);
+
+            state.transform.position = state.endPosition;
+            state.transform.rotation = state.endRotation;
+            state.transform.localScale = state.endLocalScale;
+            if (state.restoreParentAtEnd && state.parent != null)
+            {
+                state.transform.SetParent(state.parent, true);
+                state.transform.SetSiblingIndex(Mathf.Clamp(state.siblingIndex, 0, state.parent.childCount - 1));
+                state.transform.localPosition = state.finalLocalPosition;
+                state.transform.localRotation = state.finalLocalRotation;
+                state.transform.localScale = state.finalLocalScale;
+            }
         }
+
+        SetRenderersEnabled(allNewRenderers, true);
+    }
+
+    private ReconfigurePieceState CreateReconfigureState(
+        Transform piece,
+        Vector3 start,
+        Vector3 end,
+        Quaternion startRotation,
+        Quaternion endRotation,
+        Vector3 endLocalScale,
+        Renderer[] renderers,
+        bool revealAtEnd,
+        bool destroyAtEnd,
+        bool restoreParentAtEnd,
+        bool preserveFootprintDuringMotion,
+        int index)
+    {
+        return new ReconfigurePieceState
+        {
+            transform = piece,
+            parent = piece != null ? piece.parent : null,
+            siblingIndex = piece != null ? piece.GetSiblingIndex() : 0,
+            finalLocalPosition = piece != null ? piece.localPosition : Vector3.zero,
+            finalLocalRotation = piece != null ? piece.localRotation : Quaternion.identity,
+            finalLocalScale = piece != null ? piece.localScale : Vector3.one,
+            startPosition = start,
+            endPosition = end,
+            startRotation = startRotation,
+            endRotation = endRotation,
+            startLocalScale = piece != null ? piece.localScale : Vector3.one,
+            endLocalScale = endLocalScale,
+            renderers = renderers,
+            revealAtEnd = revealAtEnd,
+            destroyAtEnd = destroyAtEnd,
+            restoreParentAtEnd = restoreParentAtEnd,
+            preserveFootprintDuringMotion = preserveFootprintDuringMotion,
+            stagger = GetGridReconfigureStagger(piece, index),
+            settleAmplitude = GetPieceSettleAmplitude(piece, index)
+        };
+    }
+
+    private Dictionary<string, List<Transform>> CollectAnimatedPiecesByKey(Transform root)
+    {
+        Dictionary<string, List<Transform>> result = new Dictionary<string, List<Transform>>();
+        if (root == null) return result;
+
+        List<Transform> pieces = CollectAnimatedPieces(root);
+        for (int i = 0; i < pieces.Count; i++)
+        {
+            Transform piece = pieces[i];
+            if (piece == null) continue;
+            if (!TryGetCellKey(piece.name, out string cellKey)) continue;
+            string key = cellKey + ":" + GetTransitionPieceRole(piece.name);
+            if (!result.TryGetValue(key, out List<Transform> list))
+            {
+                list = new List<Transform>();
+                result.Add(key, list);
+            }
+            list.Add(piece);
+        }
+
+        return result;
+    }
+
+    private string GetTransitionPieceRole(string name)
+    {
+        if (string.IsNullOrEmpty(name)) return "other";
+        if (name.StartsWith("ArenaDistrict_")) return "district-root";
+        if (name.StartsWith("Floor_") ||
+            name.StartsWith("Bridge_") ||
+            name.StartsWith("Platform_") ||
+            name.StartsWith("UpperPlatform_") ||
+            name.StartsWith("Spawn_") ||
+            name.StartsWith("Exit_") ||
+            name.StartsWith("Hazard_"))
+            return "base";
+
+        if (name.StartsWith("HazardInset")) return "hazard-inset";
+        if (name.StartsWith("ExitBeacon")) return "exit-beacon";
+        if (name.StartsWith("SurfacePanel_")) return "surface-panel";
+        if (name.StartsWith("RailN") || name.StartsWith("RailS") || name.StartsWith("RailE") || name.StartsWith("RailW")) return name.Substring(0, 5);
+        if (name.StartsWith("BrokenRail")) return "broken-rail";
+        if (name.StartsWith("RouteLip")) return "route-lip";
+        if (name.StartsWith("RouteLanding")) return "route-landing";
+        if (name.StartsWith("RoutePost")) return "route-post";
+        if (name.StartsWith("RouteOverhead")) return "route-overhead";
+        if (name.StartsWith("RouteStripeX")) return "route-stripe-x";
+        if (name.StartsWith("RouteStripeZ")) return "route-stripe-z";
+        if (name.StartsWith("TraversalGapGlow")) return "route-gap";
+        if (name.StartsWith("HeightFascia")) return "height-fascia";
+        if (name.StartsWith("Step_")) return "step";
+        if (name.StartsWith("JumpPad_")) return "jump-pad";
+        if (name.StartsWith("ParkourBlock_")) return "parkour";
+        if (name.StartsWith("RecoveryDeck")) return "recovery-deck";
+        if (name.StartsWith("RecoveryPad")) return "recovery-pad";
+        if (name.StartsWith("ArenaPylon_")) return "pylon";
+        if (name.StartsWith("PylonCore_")) return "pylon-core";
+        if (name.StartsWith("PylonGlow_")) return "pylon-glow";
+        if (name.StartsWith("ServiceRib_")) return "service-rib";
+        if (name.StartsWith("ServiceGlowChip_")) return "service-chip";
+        if (name.StartsWith("Cover_")) return "cover";
+        if (name.StartsWith("DistrictPlate_")) return "district-plate";
+        if (name.StartsWith("DistrictUndercarriage_")) return "district-under";
+        if (name.StartsWith("DistrictSeamGlow_")) return "district-seam";
+        if (name.StartsWith("DistrictActuatorGlow_")) return "district-actuator-glow";
+        if (name.StartsWith("DistrictActuator_")) return "district-actuator";
+        if (name.StartsWith("DistrictCornerLineA_")) return "district-corner-a";
+        if (name.StartsWith("DistrictCornerLineB_")) return "district-corner-b";
+        if (name.StartsWith("MegaPillarCore_")) return "mega-pillar-core";
+        if (name.StartsWith("MegaPillarCrown_")) return "mega-pillar-crown";
+        if (name.StartsWith("MegaPillarGlowA_")) return "mega-pillar-glow-a";
+        if (name.StartsWith("MegaPillarGlowB_")) return "mega-pillar-glow-b";
+        if (name.StartsWith("BossArenaDaisInset_")) return "boss-dais-inset";
+        if (name.StartsWith("BossArenaDais_")) return "boss-dais";
+        if (name.StartsWith("BossArenaInnerPad_")) return "boss-inner-pad";
+        if (name.StartsWith("BossArenaNorthArch_")) return "boss-arch-n";
+        if (name.StartsWith("BossArenaSouthArch_")) return "boss-arch-s";
+        if (name.StartsWith("BossArenaEastArch_")) return "boss-arch-e";
+        if (name.StartsWith("BossArenaWestArch_")) return "boss-arch-w";
+        if (name.StartsWith("BossArenaGlowRingA_")) return "boss-glow-a";
+        if (name.StartsWith("BossArenaGlowRingB_")) return "boss-glow-b";
+        if (name.StartsWith("BossArenaPylonGlow_")) return "boss-pylon-glow";
+        if (name.StartsWith("BossArenaPylon_")) return "boss-pylon";
+        return "other";
+    }
+
+    private bool TryGetCellKey(string name, out string key)
+    {
+        key = null;
+        if (string.IsNullOrEmpty(name)) return false;
+
+        string[] parts = name.Split('_');
+        for (int i = 0; i < parts.Length - 1; i++)
+        {
+            if (int.TryParse(parts[i], out int x) && int.TryParse(parts[i + 1], out int z))
+            {
+                key = x + "_" + z;
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private float GetGridReconfigureStagger(Transform piece, int index)
+    {
+        if (piece == null) return Mathf.Repeat(index * 0.041f, 1f) * detailStaggerRange;
+        Vector3 p = piece.position;
+        float wave = Mathf.Repeat(Mathf.Abs(p.x) * 0.014f + Mathf.Abs(p.z) * 0.021f + index * 0.011f, 1f);
+        return wave * detailStaggerRange;
+    }
+
+    private float GetUnmatchedReconfigureTravel(Transform piece, bool dropping)
+    {
+        if (piece == null) return Mathf.Max(1f, unmatchedTileTravelDistance);
+
+        float baseTravel = Mathf.Clamp(unmatchedTileTravelDistance, 1f, 4.8f);
+        if (IsGridLockedPiece(piece))
+            return baseTravel;
+        if (IsRoutePiece(piece))
+            return baseTravel * 1.18f;
+        if (IsTilePiece(piece))
+            return baseTravel * 1.08f;
+
+        float fallback = dropping ? oldArenaDropDistance : newArenaRiseDistance;
+        return Mathf.Clamp(fallback * 0.35f * GetPieceVerticalMultiplier(piece), baseTravel, baseTravel * 1.75f);
+    }
+
+    private void SetRenderersEnabled(Renderer[] renderers, bool enabled)
+    {
+        if (renderers == null) return;
+        for (int i = 0; i < renderers.Length; i++)
+        {
+            if (renderers[i] != null)
+                renderers[i].enabled = enabled;
+        }
+    }
+
+    public int CountAnimatedTransitionPieces(Transform root)
+    {
+        return root == null ? 0 : CollectAnimatedPieces(root).Count;
+    }
+
+    public string DebugDescribeReconfigurePlan(Transform oldRoot, Transform newRoot)
+    {
+        Dictionary<string, List<Transform>> oldPieces = CollectAnimatedPiecesByKey(oldRoot);
+        Dictionary<string, List<Transform>> newPieces = CollectAnimatedPiecesByKey(newRoot);
+        CalculateReconfigureStats(oldPieces, newPieces, out int matched, out int raised, out int retracted, out int states, out int verticalMatched, out float maxVerticalDelta);
+        DebugLastOldPieceGroups = oldPieces.Count;
+        DebugLastNewPieceGroups = newPieces.Count;
+        DebugLastReconfigureStates = states;
+        DebugLastMatchedPieces = matched;
+        DebugLastRaisedPieces = raised;
+        DebugLastRetractedPieces = retracted;
+        DebugLastVerticalMatchedPieces = verticalMatched;
+        DebugLastMaxVerticalDelta = maxVerticalDelta;
+
+        return $"groups old/new {oldPieces.Count}/{newPieces.Count}, states {states}, matched {matched}, vertical {verticalMatched}, maxY {maxVerticalDelta:0.0}, raised {raised}, retracted {retracted}, budget {maxAnimatedTransitionPieces}";
+    }
+
+    private void CalculateReconfigureStats(
+        Dictionary<string, List<Transform>> oldPieces,
+        Dictionary<string, List<Transform>> newPieces,
+        out int matched,
+        out int raised,
+        out int retracted,
+        out int states,
+        out int verticalMatched,
+        out float maxVerticalDelta)
+    {
+        HashSet<string> keys = new HashSet<string>();
+        foreach (string key in oldPieces.Keys)
+            keys.Add(key);
+        foreach (string key in newPieces.Keys)
+            keys.Add(key);
+
+        matched = 0;
+        raised = 0;
+        retracted = 0;
+        verticalMatched = 0;
+        maxVerticalDelta = 0f;
+        foreach (string key in keys)
+        {
+            int oldCount = oldPieces.TryGetValue(key, out List<Transform> oldList) ? oldList.Count : 0;
+            int newCount = newPieces.TryGetValue(key, out List<Transform> newList) ? newList.Count : 0;
+            int paired = Mathf.Min(oldCount, newCount);
+            matched += paired;
+            for (int i = 0; i < paired; i++)
+            {
+                Transform oldPiece = oldList[i];
+                Transform newPiece = newList[i];
+                if (oldPiece == null || newPiece == null) continue;
+                float verticalDelta = Mathf.Abs(newPiece.position.y - oldPiece.position.y);
+                if (verticalDelta > 0.08f)
+                    verticalMatched++;
+                maxVerticalDelta = Mathf.Max(maxVerticalDelta, verticalDelta);
+            }
+            if (newCount > oldCount)
+                raised += newCount - oldCount;
+            if (oldCount > newCount)
+                retracted += oldCount - newCount;
+        }
+
+        states = matched + raised + retracted;
     }
 
     private List<Transform> CollectAnimatedPieces(Transform root)
     {
-        List<Transform> pieces = new List<Transform>();
+        List<Transform> corePieces = new List<Transform>();
+        List<Transform> detailPieces = new List<Transform>();
         Transform[] all = root.GetComponentsInChildren<Transform>(true);
         for (int i = 0; i < all.Length; i++)
         {
             Transform candidate = all[i];
             if (candidate == null || candidate == root) continue;
             if (!ShouldAnimatePiece(candidate)) continue;
-            pieces.Add(candidate);
+            if (HasAnimatedAncestor(candidate, root)) continue;
+            if (IsCoreTransitionPiece(candidate))
+                corePieces.Add(candidate);
+            else if (ShouldKeepDetailPiece(candidate, detailPieces.Count))
+                detailPieces.Add(candidate);
         }
+
+        int maxPieces = Mathf.Clamp(maxAnimatedTransitionPieces, 128, 420);
+        List<Transform> pieces = new List<Transform>(Mathf.Min(maxPieces, corePieces.Count + detailPieces.Count));
+        for (int i = 0; i < corePieces.Count && pieces.Count < maxPieces; i++)
+            pieces.Add(corePieces[i]);
+        for (int i = 0; i < detailPieces.Count && pieces.Count < maxPieces; i++)
+            pieces.Add(detailPieces[i]);
 
         return pieces;
     }
@@ -612,32 +1228,236 @@ public class CybergrindTransitionController : MonoBehaviour
     private bool ShouldAnimatePiece(Transform candidate)
     {
         if (candidate == null) return false;
-        if (candidate.GetComponent<Renderer>() == null) return false;
+        if (IsTransitionGroupingRoot(candidate.name)) return false;
+        if (candidate.GetComponent<Renderer>() == null && !candidate.name.StartsWith("ArenaDistrict_")) return false;
 
-        string name = candidate.name;
-        return name.Contains("Pillar") ||
-               name.StartsWith("Floor_") ||
+        return ShouldAnimatePieceName(candidate.name);
+    }
+
+    private bool HasAnimatedAncestor(Transform candidate, Transform root)
+    {
+        Transform current = candidate.parent;
+        while (current != null && current != root)
+        {
+            if (!IsTransitionGroupingRoot(current.name) && ShouldAnimatePieceName(current.name))
+                return true;
+            current = current.parent;
+        }
+
+        return false;
+    }
+
+    private bool IsTransitionGroupingRoot(string name)
+    {
+        return !string.IsNullOrEmpty(name) && name.StartsWith("ArenaDistrict_");
+    }
+
+    private bool ShouldAnimatePieceName(string name)
+    {
+        return name.StartsWith("Floor_") ||
                name.StartsWith("Bridge_") ||
                name.StartsWith("Platform_") ||
                name.StartsWith("UpperPlatform_") ||
+               name.StartsWith("Spawn_") ||
+               name.StartsWith("Exit_") ||
+               name.StartsWith("Hazard_") ||
+               name.StartsWith("HazardInset") ||
+               name.StartsWith("Cover_") ||
+               name.StartsWith("ExitBeacon") ||
+               name.StartsWith("Rail") ||
+               name.StartsWith("BrokenRail") ||
+               name.StartsWith("RouteLip") ||
+               name.StartsWith("RouteLanding") ||
+               name.StartsWith("RoutePost") ||
+               name.StartsWith("RouteOverhead") ||
+               name.StartsWith("Step_") ||
+               name.StartsWith("JumpPad_") ||
+               name.StartsWith("ParkourBlock_") ||
+               name.StartsWith("RecoveryDeck") ||
+               name.StartsWith("RecoveryPad") ||
+               name.StartsWith("RecoveryGlow") ||
+               name.StartsWith("ArenaPylon_") ||
+               name.StartsWith("PylonCore_") ||
+               name.StartsWith("PylonGlow_") ||
+               name.StartsWith("District") ||
+               name.StartsWith("HeightFascia") ||
+               name.StartsWith("BossArena") ||
+               name.StartsWith("BossLane") ||
+               name.StartsWith("BossOuterRing") ||
+               name.StartsWith("BossCornerRoutePad") ||
                name.StartsWith("SurfacePanel_") ||
                name.StartsWith("Edge") ||
+               name.StartsWith("TraversalGapGlow") ||
+               name.StartsWith("ServiceRib") ||
+               name.StartsWith("ServiceGlowChip") ||
+               name.StartsWith("RouteStripe") ||
+               name.StartsWith("PylonGlow_") ||
+               name.StartsWith("RecoveryGlow") ||
+               name.Contains("Pillar") ||
                name.Contains("Gate") ||
                name.Contains("Shop") ||
-               name.Contains("BossArena") ||
-               name.Contains("Exit") ||
                name.Contains("Canopy") ||
                name.Contains("Shell") ||
-               name.Contains("Glow") ||
                name.Contains("Sign") ||
                name.Contains("Reactor");
     }
 
-    private float GetPieceStagger(Transform piece, int index)
+    private bool IsCoreTransitionPiece(Transform piece)
     {
-        float normalized = Mathf.Repeat(index * 0.071f, 1f);
-        float heightBias = Mathf.Clamp01(piece.localPosition.y / Mathf.Max(0.1f, cageWallHeight + 6f)) * 0.08f;
-        return normalized * detailStaggerRange + heightBias;
+        if (piece == null) return false;
+        string name = piece.name;
+        return IsGridLockedPiece(piece) ||
+               IsRoutePiece(piece) ||
+               name.StartsWith("JumpPad_") ||
+               name.StartsWith("ParkourBlock_") ||
+               name.StartsWith("RecoveryDeck") ||
+               name.StartsWith("RecoveryPad") ||
+               name.StartsWith("RecoveryGlow") ||
+               name.StartsWith("ArenaPylon_") ||
+               name.StartsWith("PylonCore_") ||
+               name.StartsWith("PylonGlow_") ||
+               name.StartsWith("BossArena") ||
+               name.StartsWith("BossLane") ||
+               name.StartsWith("BossOuterRing") ||
+               name.StartsWith("BossCornerRoutePad") ||
+               name.Contains("Gate") ||
+               name.Contains("Shop") ||
+               name.Contains("Reactor");
+    }
+
+    private bool ShouldKeepDetailPiece(Transform piece, int detailIndex)
+    {
+        if (piece == null) return false;
+        string name = piece.name;
+        if (!animateSurfaceMicroDetails && IsMicroTransitionDetail(name))
+            return false;
+
+        int stride = Mathf.Max(1, transitionDetailStride);
+        return detailIndex % stride == 0;
+    }
+
+    private bool IsMicroTransitionDetail(string name)
+    {
+        return name.StartsWith("SurfacePanel_") ||
+               name.StartsWith("Edge") ||
+               name.StartsWith("TraversalGapGlow") ||
+               name.StartsWith("ServiceRib") ||
+               name.StartsWith("ServiceGlowChip") ||
+               name.StartsWith("RouteStripe") ||
+               name.StartsWith("PylonGlow_") ||
+               name.StartsWith("RecoveryGlow") ||
+               name.StartsWith("HeightFasciaGlow");
+    }
+
+    private bool IsTilePiece(Transform piece)
+    {
+        if (piece == null) return false;
+        string name = piece.name;
+        return name.StartsWith("Floor_") ||
+               name.StartsWith("Bridge_") ||
+               name.StartsWith("Platform_") ||
+               name.StartsWith("UpperPlatform_") ||
+               name.StartsWith("Spawn_") ||
+               name.StartsWith("Exit_") ||
+               name.StartsWith("Hazard_") ||
+               name.StartsWith("HazardInset") ||
+               name.StartsWith("Cover_") ||
+               name.StartsWith("ExitBeacon") ||
+               name.StartsWith("RouteLip") ||
+               name.StartsWith("RouteLanding") ||
+               name.StartsWith("RouteOverhead") ||
+               name.StartsWith("TraversalGapGlow") ||
+               name.StartsWith("Step_") ||
+               name.StartsWith("JumpPad_") ||
+               name.StartsWith("ParkourBlock_") ||
+               name.StartsWith("RecoveryDeck") ||
+               name.StartsWith("RecoveryPad") ||
+               name.StartsWith("RecoveryGlow") ||
+               name.StartsWith("DistrictPlate") ||
+               name.StartsWith("DistrictUndercarriage") ||
+               name.StartsWith("DistrictActuator") ||
+               name.StartsWith("DistrictSeamGlow") ||
+               name.StartsWith("DistrictCornerLine") ||
+               name.StartsWith("HeightFascia");
+    }
+
+    private bool IsGridLockedPiece(Transform piece)
+    {
+        if (piece == null) return false;
+        string name = piece.name;
+        return name.StartsWith("Floor_") ||
+               name.StartsWith("Bridge_") ||
+               name.StartsWith("Platform_") ||
+               name.StartsWith("UpperPlatform_") ||
+               name.StartsWith("Spawn_") ||
+               name.StartsWith("Exit_") ||
+               name.StartsWith("Hazard_") ||
+               name.StartsWith("DistrictPlate") ||
+               name.StartsWith("DistrictUndercarriage") ||
+               name.StartsWith("DistrictActuator") ||
+               name.StartsWith("DistrictSeamGlow") ||
+               name.StartsWith("DistrictCornerLine") ||
+               name.StartsWith("HeightFascia");
+    }
+
+    private bool IsRoutePiece(Transform piece)
+    {
+        if (piece == null) return false;
+        string name = piece.name;
+        return name.StartsWith("RouteLip") ||
+               name.StartsWith("RouteLanding") ||
+               name.StartsWith("RoutePost") ||
+               name.StartsWith("RouteOverhead") ||
+               name.StartsWith("BrokenRail") ||
+               name.StartsWith("TraversalGapGlow") ||
+               name.StartsWith("HeightFascia") ||
+               name.StartsWith("RouteStripe") ||
+               name.StartsWith("Step_") ||
+               name.StartsWith("JumpPad_") ||
+               name.StartsWith("ParkourBlock_") ||
+               name.StartsWith("RecoveryDeck") ||
+               name.StartsWith("RecoveryPad");
+    }
+
+    private float GetPieceVerticalMultiplier(Transform piece)
+    {
+        if (piece == null) return 1f;
+        string name = piece.name;
+        if (name.StartsWith("Floor_")) return 1.12f;
+        if (name.StartsWith("Bridge_")) return 1.34f;
+        if (name.StartsWith("Platform_")) return 1.48f;
+        if (name.StartsWith("UpperPlatform_")) return 1.62f;
+        if (name.StartsWith("Spawn_") || name.StartsWith("Exit_")) return 1.2f;
+        if (name.StartsWith("RouteLip") || name.StartsWith("TraversalGapGlow")) return 1.5f;
+        if (name.StartsWith("RouteLanding")) return 1.46f;
+        if (name.StartsWith("RouteOverhead")) return 1.56f;
+        if (name.StartsWith("RouteStripe")) return 1.52f;
+        if (name.StartsWith("Step_")) return 1.44f;
+        if (name.StartsWith("JumpPad_") || name.StartsWith("ParkourBlock_")) return 1.36f;
+        if (name.StartsWith("RecoveryDeck") || name.StartsWith("RecoveryPad")) return 1.24f;
+        if (name.StartsWith("DistrictPlate")) return 1.46f;
+        if (name.StartsWith("DistrictUndercarriage")) return 1.58f;
+        if (name.StartsWith("DistrictActuator")) return 1.68f;
+        if (name.StartsWith("DistrictSeamGlow") || name.StartsWith("DistrictCornerLine")) return 1.42f;
+        if (name.StartsWith("HeightFascia")) return 1.42f;
+        if (name.StartsWith("RoutePost") || name.StartsWith("BrokenRail") || name.StartsWith("Rail")) return 1.38f;
+        if (name.StartsWith("ServiceRib") || name.StartsWith("ServiceGlowChip")) return 1.26f;
+        return 1f;
+    }
+
+    private float GetPieceSettleAmplitude(Transform piece, int index)
+    {
+        if (piece == null) return 0f;
+        string name = piece.name;
+        if (name.StartsWith("Floor_")) return 0.10f + Mathf.Repeat(index * 0.017f, 0.08f);
+        if (name.StartsWith("ArenaDistrict_")) return 0.24f + Mathf.Repeat(index * 0.021f, 0.12f);
+        if (name.StartsWith("Bridge_")) return 0.16f + Mathf.Repeat(index * 0.023f, 0.10f);
+        if (name.StartsWith("Platform_") || name.StartsWith("UpperPlatform_")) return 0.22f + Mathf.Repeat(index * 0.031f, 0.12f);
+        if (name.StartsWith("DistrictPlate") || name.StartsWith("DistrictUndercarriage")) return 0.18f + Mathf.Repeat(index * 0.027f, 0.10f);
+        if (name.StartsWith("DistrictActuator")) return 0.12f;
+        if (name.StartsWith("Step_") || name.StartsWith("RouteLanding")) return 0.10f;
+        if (name.StartsWith("Route") || name.StartsWith("Rail") || name.StartsWith("BrokenRail")) return 0.08f;
+        return 0f;
     }
 
     private void EnsureOverlay()
@@ -702,6 +1522,7 @@ public class CybergrindTransitionController : MonoBehaviour
         rect.sizeDelta = new Vector2(720f, 56f);
 
         TMP_Text text = go.AddComponent<TextMeshProUGUI>();
+        ProjectStructureUIRoot.ApplyDefaultFont(text);
         text.fontSize = fontSize;
         text.alignment = TextAlignmentOptions.Center;
         text.color = color;
@@ -727,7 +1548,7 @@ public class CybergrindTransitionController : MonoBehaviour
         float elapsed = 0f;
         while (elapsed < bannerDuration)
         {
-            elapsed += Time.unscaledDeltaTime;
+            elapsed += GetTransitionDelta(bannerDuration);
             float t = Mathf.Clamp01(elapsed / Mathf.Max(0.01f, bannerDuration));
             float alpha = t < 0.2f ? t / 0.2f : (t > 0.78f ? 1f - ((t - 0.78f) / 0.22f) : 1f);
             bannerGroup.alpha = alpha;
@@ -747,7 +1568,7 @@ public class CybergrindTransitionController : MonoBehaviour
         float elapsed = 0f;
         while (elapsed < duration)
         {
-            elapsed += Time.unscaledDeltaTime;
+            elapsed += GetTransitionDelta(duration);
             float t = Mathf.Clamp01(elapsed / Mathf.Max(0.01f, duration));
             float alpha = Mathf.Sin(t * Mathf.PI);
             Color c = color;
@@ -760,129 +1581,45 @@ public class CybergrindTransitionController : MonoBehaviour
         flashOverlay.enabled = false;
     }
 
-    private IEnumerator EmitAnchorLattice(Vector3 center, Color color, float duration)
+    private IEnumerator EmitAssemblyField(Vector3 center, Color color, float duration, bool rising)
     {
         Material material = BuildTransparentMaterial(new Color(color.r, color.g, color.b, 0.22f), true);
-        List<Transform> columns = new List<Transform>();
-        for (int i = 0; i < latticeColumnCount; i++)
-        {
-            float angle = (Mathf.PI * 2f * i) / Mathf.Max(1, latticeColumnCount);
-            Vector3 offset = new Vector3(Mathf.Cos(angle), 0f, Mathf.Sin(angle)) * latticeRadius;
-            GameObject column = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            column.name = "TransitionLatticeColumn";
-            column.transform.position = center + offset + Vector3.up * (latticeColumnHeight * 0.5f);
-            column.transform.localScale = new Vector3(0.16f, latticeColumnHeight, 0.16f);
-            Renderer renderer = column.GetComponent<Renderer>();
-            if (renderer != null) renderer.material = material;
-            Collider collider = column.GetComponent<Collider>();
-            if (collider != null) Destroy(collider);
-            columns.Add(column.transform);
-        }
-
-        float start = Time.realtimeSinceStartup;
-        while (Time.realtimeSinceStartup - start < duration)
-        {
-            float t = Mathf.Clamp01((Time.realtimeSinceStartup - start) / Mathf.Max(0.01f, duration));
-            for (int i = 0; i < columns.Count; i++)
-            {
-                Transform column = columns[i];
-                if (column == null) continue;
-                float scalePulse = Mathf.Sin((t + i * 0.1f) * Mathf.PI);
-                column.localScale = new Vector3(0.12f + scalePulse * 0.08f, latticeColumnHeight * Mathf.Lerp(0.25f, 1f, t), 0.12f + scalePulse * 0.08f);
-            }
-
-            yield return null;
-        }
-
-        for (int i = 0; i < columns.Count; i++)
-        {
-            if (columns[i] != null)
-                Destroy(columns[i].gameObject);
-        }
-    }
-
-    private IEnumerator EmitSegmentCascade(Vector3 center, Color color, float duration, bool rising)
-    {
-        Material material = BuildTransparentMaterial(new Color(color.r, color.g, color.b, 0.2f), true);
-        List<Transform> segments = new List<Transform>();
-        int segmentCount = 8;
-        for (int i = 0; i < segmentCount; i++)
-        {
-            float angle = (Mathf.PI * 2f * i) / segmentCount;
-            Vector3 radial = new Vector3(Mathf.Cos(angle), 0f, Mathf.Sin(angle));
-            GameObject segment = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            segment.name = "TransitionSegment";
-            segment.transform.position = center + radial * (latticeRadius * 0.72f) + Vector3.up * (rising ? -2.8f : 1.2f);
-            segment.transform.rotation = Quaternion.LookRotation(radial, Vector3.up);
-            segment.transform.localScale = new Vector3(1.4f, 0.18f, 3f);
-            Renderer renderer = segment.GetComponent<Renderer>();
-            if (renderer != null) renderer.material = material;
-            Collider collider = segment.GetComponent<Collider>();
-            if (collider != null) Destroy(collider);
-            segments.Add(segment.transform);
-        }
-
-        float start = Time.realtimeSinceStartup;
-        while (Time.realtimeSinceStartup - start < duration)
-        {
-            float t = Mathf.Clamp01((Time.realtimeSinceStartup - start) / Mathf.Max(0.01f, duration));
-            float eased = Mathf.SmoothStep(0f, 1f, t);
-            for (int i = 0; i < segments.Count; i++)
-            {
-                Transform segment = segments[i];
-                if (segment == null) continue;
-                Vector3 radial = (segment.position - center);
-                radial.y = 0f;
-                radial = radial.sqrMagnitude > 0.001f ? radial.normalized : Vector3.forward;
-                float rise = rising ? Mathf.Lerp(-2.8f, 2.4f, eased) : Mathf.Lerp(1.2f, -6.5f, eased);
-                float spread = Mathf.Lerp(latticeRadius * 0.58f, latticeRadius * 1.08f, eased);
-                segment.position = center + radial * spread + Vector3.up * rise;
-                segment.localScale = new Vector3(1.3f + eased * 0.5f, 0.18f, Mathf.Lerp(2.4f, 3.8f, eased));
-            }
-
-            yield return null;
-        }
-
-        for (int i = 0; i < segments.Count; i++)
-        {
-            if (segments[i] != null)
-                Destroy(segments[i].gameObject);
-        }
-    }
-
-    private IEnumerator EmitReclaimerSlabs(Vector3 center, Color color, float duration, bool rising)
-    {
-        Material material = BuildTransparentMaterial(new Color(color.r, color.g, color.b, 0.16f), true);
         List<Transform> slabs = new List<Transform>();
-        int slabCount = Mathf.Max(4, reclaimerSlabCount);
+        int slabCount = Mathf.Max(4, assemblySlabCount);
         Vector3 slabScale = new Vector3(
-            Mathf.Max(1.2f, reclaimerSlabSize.x),
-            Mathf.Max(0.08f, reclaimerSlabSize.y),
-            Mathf.Max(1.2f, reclaimerSlabSize.z));
+            Mathf.Max(1.2f, assemblySlabSize.x),
+            Mathf.Max(0.08f, assemblySlabSize.y),
+            Mathf.Max(1.2f, assemblySlabSize.z));
 
         for (int i = 0; i < slabCount; i++)
         {
             float angle = (Mathf.PI * 2f * i) / slabCount;
             Vector3 radial = new Vector3(Mathf.Cos(angle), 0f, Mathf.Sin(angle));
-            float ring = ((i & 1) == 0) ? reclaimerSlabRadius : reclaimerSlabRadius * 0.62f;
+            float ring = ((i & 1) == 0) ? assemblyRadius : assemblyRadius * 0.58f;
 
             GameObject slab = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            slab.name = "TransitionReclaimerSlab";
-            slab.transform.position = center + radial * ring + Vector3.up * (rising ? -reclaimerSlabTravel : 1.6f);
+            slab.name = "TransitionAssemblySlab";
+            slab.transform.position = center + radial * ring + Vector3.up * (rising ? -assemblyTravel : 1.4f);
             slab.transform.rotation = Quaternion.LookRotation(radial, Vector3.up);
             slab.transform.localScale = slabScale;
             Renderer renderer = slab.GetComponent<Renderer>();
             if (renderer != null) renderer.material = material;
             Collider collider = slab.GetComponent<Collider>();
-            if (collider != null) Destroy(collider);
+            if (collider != null)
+            {
+                if (Application.isPlaying) Destroy(collider);
+                else DestroyImmediate(collider);
+            }
             slabs.Add(slab.transform);
         }
 
-        float start = Time.realtimeSinceStartup;
-        while (Time.realtimeSinceStartup - start < duration)
+        float elapsed = 0f;
+        while (elapsed < duration)
         {
-            float t = Mathf.Clamp01((Time.realtimeSinceStartup - start) / Mathf.Max(0.01f, duration));
+            elapsed += GetTransitionDelta(duration);
+            float t = Mathf.Clamp01(elapsed / Mathf.Max(0.01f, duration));
             float eased = shiftCurve != null ? shiftCurve.Evaluate(t) : Mathf.SmoothStep(0f, 1f, t);
+            float pulse = Mathf.Sin(t * Mathf.PI);
 
             for (int i = 0; i < slabs.Count; i++)
             {
@@ -892,16 +1629,17 @@ public class CybergrindTransitionController : MonoBehaviour
                 Vector3 radial = slab.position - center;
                 radial.y = 0f;
                 radial = radial.sqrMagnitude > 0.001f ? radial.normalized : Vector3.forward;
-                float ring = ((i & 1) == 0) ? reclaimerSlabRadius : reclaimerSlabRadius * 0.62f;
-                float spread = Mathf.Lerp(ring * (rising ? 0.7f : 1f), ring * (rising ? 1.08f : 1.32f), eased);
+                float ring = ((i & 1) == 0) ? assemblyRadius : assemblyRadius * 0.58f;
+                float spread = Mathf.Lerp(ring * (rising ? 0.64f : 0.92f), ring * (rising ? 1.02f : 1.22f), eased);
                 float height = rising
-                    ? Mathf.Lerp(-reclaimerSlabTravel, 2.1f, eased)
-                    : Mathf.Lerp(1.6f, -reclaimerSlabTravel, eased);
+                    ? Mathf.Lerp(-assemblyTravel, 1.7f, eased)
+                    : Mathf.Lerp(1.4f, -assemblyTravel, eased);
                 slab.position = center + radial * spread + Vector3.up * height;
+                slab.rotation = Quaternion.LookRotation(radial, Vector3.up) * Quaternion.Euler(0f, 0f, Mathf.Lerp(rising ? -10f : 0f, rising ? 0f : 10f, eased));
                 slab.localScale = new Vector3(
-                    Mathf.Lerp(slabScale.x * 0.8f, slabScale.x * (rising ? 1.15f : 0.95f), eased),
+                    Mathf.Lerp(slabScale.x * 0.76f, slabScale.x * (rising ? 1.08f : 0.92f), eased) + pulse * 0.12f,
                     slabScale.y,
-                    Mathf.Lerp(slabScale.z * 0.85f, slabScale.z * (rising ? 1.2f : 1.4f), eased));
+                    Mathf.Lerp(slabScale.z * 0.82f, slabScale.z * (rising ? 1.12f : 1.28f), eased));
             }
 
             yield return null;
@@ -910,41 +1648,40 @@ public class CybergrindTransitionController : MonoBehaviour
         for (int i = 0; i < slabs.Count; i++)
         {
             if (slabs[i] != null)
-                Destroy(slabs[i].gameObject);
+                DestroyTransitionObject(slabs[i].gameObject);
         }
     }
 
-    private IEnumerator EmitShockwave(Vector3 center, Color color, float finalScale, float duration)
+    private void DestroyTransitionObject(GameObject target)
     {
-        GameObject ring = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
-        ring.name = "TransitionShockwave";
-        ring.transform.position = center + Vector3.up * 0.08f;
-        ring.transform.localScale = new Vector3(0.1f, 0.03f, 0.1f);
-        Renderer renderer = ring.GetComponent<Renderer>();
-        if (renderer != null)
-            renderer.material = BuildTransparentMaterial(new Color(color.r, color.g, color.b, 0.35f), true);
-        Collider collider = ring.GetComponent<Collider>();
-        if (collider != null)
-            Destroy(collider);
+        if (target == null) return;
+        if (Application.isPlaying)
+            Destroy(target);
+        else
+            DestroyImmediate(target);
+    }
 
-        float start = Time.realtimeSinceStartup;
-        while (Time.realtimeSinceStartup - start < duration)
+    private void StartTransitionRoutine(IEnumerator routine)
+    {
+        if (routine == null) return;
+
+        if (Application.isPlaying)
         {
-            float t = Mathf.Clamp01((Time.realtimeSinceStartup - start) / Mathf.Max(0.01f, duration));
-            float scale = Mathf.Lerp(0.1f, finalScale, t);
-            ring.transform.localScale = new Vector3(scale, 0.03f, scale);
-            if (renderer != null)
-            {
-                Color c = renderer.material.HasProperty("_BaseColor") ? renderer.material.GetColor("_BaseColor") : color;
-                c.a = Mathf.Lerp(0.32f, 0f, t);
-                if (renderer.material.HasProperty("_BaseColor")) renderer.material.SetColor("_BaseColor", c);
-                if (renderer.material.HasProperty("_Color")) renderer.material.SetColor("_Color", c);
-            }
-            yield return null;
+            StartCoroutine(routine);
+            return;
         }
 
-        if (ring != null)
-            Destroy(ring);
+        int guard = 0;
+        while (routine.MoveNext() && guard < 10000)
+            guard++;
+    }
+
+    private float GetTransitionDelta(float duration)
+    {
+        if (Application.isPlaying)
+            return Time.unscaledDeltaTime;
+
+        return Mathf.Max(0.001f, Mathf.Max(0.01f, duration) / 90f);
     }
 
     private IEnumerator EmitArenaRiseAccent(Transform root)
@@ -953,6 +1690,6 @@ public class CybergrindTransitionController : MonoBehaviour
 
         Transform exit = FindExitTransform(root);
         Vector3 center = exit != null ? exit.position : root.position;
-        yield return EmitAnchorLattice(center, new Color(0.66f, 0.94f, 1f, 1f), latticeFxDuration * 0.85f);
+        yield return EmitAssemblyField(center, assemblyColor, assemblyFxDuration * 0.85f, true);
     }
 }

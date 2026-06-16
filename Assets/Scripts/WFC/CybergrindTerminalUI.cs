@@ -325,6 +325,7 @@ public class CybergrindTerminalUI : MonoBehaviour
         GameObject textObject = new GameObject("Label");
         textObject.transform.SetParent(buttonObject.transform, false);
         TextMeshProUGUI text = textObject.AddComponent<TextMeshProUGUI>();
+        ProjectStructureUIRoot.ApplyDefaultFont(text);
         text.text = label;
         text.fontSize = 24f;
         text.alignment = TextAlignmentOptions.Center;
@@ -347,6 +348,7 @@ public class CybergrindTerminalUI : MonoBehaviour
         GameObject textObject = new GameObject(name);
         textObject.transform.SetParent(parent, false);
         text = textObject.AddComponent<TextMeshProUGUI>();
+        ProjectStructureUIRoot.ApplyDefaultFont(text);
         text.fontSize = fontSize;
         text.alignment = alignment;
         text.color = color;
@@ -403,7 +405,7 @@ public class CybergrindTerminalUI : MonoBehaviour
         if (terminal == null)
             return new Color(0.26f, 0.95f, 0.44f, 1f);
 
-        return terminal.challengeMode switch
+        Color baseColor = terminal.challengeMode switch
         {
             CybergrindPuzzleTerminal.ChallengeMode.Hold => new Color(0.36f, 0.88f, 1f, 1f),
             CybergrindPuzzleTerminal.ChallengeMode.Burst => new Color(1f, 0.52f, 0.18f, 1f),
@@ -411,6 +413,10 @@ public class CybergrindTerminalUI : MonoBehaviour
             CybergrindPuzzleTerminal.ChallengeMode.Calibration => new Color(0.86f, 0.76f, 0.24f, 1f),
             _ => new Color(0.26f, 0.95f, 0.44f, 1f)
         };
+        float pressure = terminal.GetPressure01();
+        if (pressure > 0.55f)
+            baseColor = Color.Lerp(baseColor, new Color(1f, 0.42f, 0.14f, 1f), Mathf.InverseLerp(0.55f, 1f, pressure));
+        return baseColor;
     }
 
     private void ApplyChallengeVisuals(CybergrindPuzzleTerminal terminal)

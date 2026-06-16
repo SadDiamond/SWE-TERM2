@@ -209,6 +209,7 @@ public class ProjectStructureSettingsMenu : MonoBehaviour
         rect.sizeDelta = new Vector2(1100f, 260f);
 
         TMP_Text text = go.AddComponent<TextMeshProUGUI>();
+        ProjectStructureUIRoot.ApplyDefaultFont(text);
         text.fontSize = size;
         text.alignment = alignment;
         text.color = Color.white;
@@ -287,7 +288,7 @@ public class ProjectStructureSettingsMenu : MonoBehaviour
             CybergrindArenaGenerator.ArenaMode.Boss => "BOSS",
             _ => $"FLOOR {director.floor:00}"
         };
-        return $"{director.CurrentThemeLabel.ToUpperInvariant()} // {mode}";
+        return $"{director.CurrentThemeLabel.ToUpperInvariant()} - {mode}";
     }
 
     private Color ResolveAccentColor()

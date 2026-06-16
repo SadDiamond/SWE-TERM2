@@ -42,8 +42,8 @@ public class CybergrindShopStation : Interactable
         return service switch
         {
             ShopService.Repair => "HEAL",
-            ShopService.Refit => "WEAPON",
-            ShopService.Overclock => "BOOST",
+            ShopService.Refit => "GUN",
+            ShopService.Overclock => "MOD",
             _ => "MOVE"
         };
     }
@@ -67,13 +67,13 @@ public class CybergrindShopStation : Interactable
     public string GetPreviewTitle(PlayerController player)
     {
         if (spent)
-            return $"{GetServiceTitle()} // USED";
+            return $"{GetServiceTitle()} - USED";
 
         string title = cost <= 0
-            ? $"{GetServiceTitle()} // FREE"
-            : $"{GetServiceTitle()} // {cost} COINS";
+            ? $"{GetServiceTitle()} - FREE"
+            : $"{GetServiceTitle()} - {cost} COINS";
         if (player != null && cost > 0 && player.currency < cost)
-            return $"{title} // NEED {cost - player.currency}";
+            return $"{title} - NEED {cost - player.currency}";
         return title;
     }
 
@@ -90,7 +90,7 @@ public class CybergrindShopStation : Interactable
         Gun gun = GetGun(player);
         return service switch
         {
-            ShopService.Repair => $"Restore {healAmount} HP now.",
+            ShopService.Repair => $"Restore {healAmount} HP.",
             ShopService.Refit => BuildRefitDetail(gun),
             ShopService.Overclock => BuildOverclockDetail(gun),
             _ => $"+{moveSpeedBonus:0.0} speed  +{dashBonus:0.0} dash  +{jumpBonus:0.0} jump."
@@ -139,7 +139,7 @@ public class CybergrindShopStation : Interactable
                 CybergrindRunState.GetOrCreate().UnlockWeapon(presetIndex);
                 gun.EquipPreset(presetIndex);
                 promptMessage = $"{gun.GetPresetDisplayName(presetIndex)} ready";
-                bannerTitle = "WEAPON READY";
+                bannerTitle = "GUN READY";
                 bannerDetail = $"{gun.GetPresetDisplayName(presetIndex)}. {gun.GetActiveDescriptorLine()}";
                 success = true;
                 break;
@@ -160,7 +160,7 @@ public class CybergrindShopStation : Interactable
                 overclockGun.ApplyWeaponMod(overclockGun.GetActiveFamily(), passiveMod, altFireMod);
                 player.Heal(Mathf.Max(12, healAmount / 3));
                 promptMessage = overclockGun.GetRunModifierStatus();
-                bannerTitle = "BOOST APPLIED";
+                bannerTitle = "MOD INSTALLED";
                 bannerDetail = $"{overclockGun.GetModPreviewLine(overclockGun.GetActiveFamily(), passiveMod, altFireMod)}. {overclockGun.GetRunModifierStatus()}";
                 success = true;
                 break;
@@ -172,8 +172,8 @@ public class CybergrindShopStation : Interactable
                     return;
                 }
                 player.ApplyMobilityUpgrade(moveSpeedBonus, dashBonus, jumpBonus);
-                promptMessage = "Movement upgraded";
-                bannerTitle = "MOVEMENT UPGRADED";
+                promptMessage = "Move kit upgraded";
+                bannerTitle = "MOVE KIT";
                 bannerDetail = $"+{moveSpeedBonus:0.0} speed  +{dashBonus:0.0} dash  +{jumpBonus:0.0} jump";
                 success = true;
                 break;
@@ -218,24 +218,24 @@ public class CybergrindShopStation : Interactable
         switch (service)
         {
             case ShopService.Repair:
-                promptMessage = $"Heal // +{healAmount} HP ({cost} coins)";
+                promptMessage = $"Heal +{healAmount} HP - {cost} coins";
                 break;
             case ShopService.Refit:
                 string weaponName = gun != null ? gun.GetPresetDisplayName(presetIndex) : $"Weapon {presetIndex + 1}";
                 bool unlocked = CybergrindRunState.GetOrCreate().IsWeaponUnlocked(presetIndex);
                 promptMessage = unlocked
-                    ? $"Switch // {weaponName} ({cost} coins)"
-                    : $"Add // {weaponName} ({cost} coins)";
+                    ? $"Equip {weaponName} - {cost} coins"
+                    : $"Add {weaponName} - {cost} coins";
                 break;
             case ShopService.Overclock:
                 int fireRatePercent = Mathf.RoundToInt(fireRateBoostPercent * 100f);
                 int damagePercent = Mathf.RoundToInt(damageBoostPercent * 100f);
-                promptMessage = $"Boost // +{fireRatePercent}% fire rate, +{damagePercent}% damage ({cost} coins)";
+                promptMessage = $"Install mod - +{fireRatePercent}% rate, +{damagePercent}% damage - {cost} coins";
                 break;
             case ShopService.Surge:
                 promptMessage = cost <= 0
-                    ? "Move upgrade // speed, dash, jump (free)"
-                    : $"Move upgrade // speed, dash, jump ({cost} coins)";
+                    ? "Move kit - speed, dash, jump - free"
+                    : $"Move kit - speed, dash, jump - {cost} coins";
                 break;
         }
     }
@@ -285,6 +285,6 @@ public class CybergrindShopStation : Interactable
         string modLine = gun != null
             ? gun.GetModPreviewLine(gun.GetActiveFamily(), passiveMod, altFireMod)
             : "Adds one passive mod and one special mod.";
-        return $"{gunName}. {modLine}. +{fireRatePercent}% fire rate  +{damagePercent}% damage  +{altPercent}% special cooldown. Restores a little HP.";
+        return $"{gunName}. {modLine}. +{fireRatePercent}% rate  +{damagePercent}% damage  +{altPercent}% special recharge. Restores a little HP.";
     }
 }

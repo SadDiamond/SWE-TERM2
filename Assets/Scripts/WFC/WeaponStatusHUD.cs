@@ -53,7 +53,7 @@ public class WeaponStatusHUD : MonoBehaviour
         if (familyText != null)
             familyText.text = gun.GetActiveFamilyLabel();
         if (variantText != null)
-            variantText.text = gun.GetActiveVariantLabel() + " // " + gun.GetActiveDisplayName().ToUpperInvariant();
+            variantText.text = gun.GetActiveVariantLabel() + " - " + gun.GetActiveDisplayName().ToUpperInvariant();
         if (detailText != null)
             detailText.text = gun.GetActiveDescriptorLine() + "\n" + gun.GetActiveStatsLine();
         string modifierStatus = gun.GetRunModifierStatus();
@@ -66,14 +66,14 @@ public class WeaponStatusHUD : MonoBehaviour
             if (!string.Equals(currentVariantDisplay, lastVariantDisplay))
             {
                 ShowArmoryMoment(
-                    "WEAPON READY",
-                    $"{currentVariantDisplay.ToUpperInvariant()} // {gun.GetActiveDescriptorLine()}",
+                    "GUN READY",
+                    $"{currentVariantDisplay.ToUpperInvariant()} - {gun.GetActiveDescriptorLine()}",
                     ResolveAccentColor());
             }
-            else if (!string.Equals(modifierStatus, lastModifierStatus) && modifierStatus != "No active boosts.")
+            else if (!string.Equals(modifierStatus, lastModifierStatus) && modifierStatus != "No mods installed.")
             {
                 ShowArmoryMoment(
-                    "BOOST APPLIED",
+                    "MOD INSTALLED",
                     modifierStatus,
                     new Color(1f, 0.68f, 0.2f, 1f));
             }
@@ -201,6 +201,7 @@ public class WeaponStatusHUD : MonoBehaviour
         rect.sizeDelta = boxSize;
 
         TMP_Text text = go.AddComponent<TextMeshProUGUI>();
+        ProjectStructureUIRoot.ApplyDefaultFont(text);
         text.fontSize = size;
         text.alignment = alignment;
         text.color = color;

@@ -57,6 +57,8 @@ public class BasicEnemyAI : MonoBehaviour, IDamageable
     public float droneDashDuration = 0.18f;
     public float droneDashIntervalMin = 0.85f;
     public float droneDashIntervalMax = 1.45f;
+    public float dronePostDashShootDelay = 0.35f;
+    public float droneRangeCorrectionSpeed = 2.2f;
     private float flyPhase = 0f;
     private float droneDashTimer;
     private float droneDashTimeRemaining;
@@ -69,6 +71,10 @@ public class BasicEnemyAI : MonoBehaviour, IDamageable
     public float meleeDamage = 12f;
     public float meleeRange = 2.1f;
     public float meleeCooldown = 1.1f;
+    [Min(0.05f)] public float bossPlayerHitCooldown = 0.42f;
+    [Header("Rewards")]
+    [Min(0)] public int coinReward = 1;
+    [Min(0)] public int bossCoinReward = 6;
     private float fireTimer;
     private float meleeTimer;
     private float bossPatternTimer;
@@ -79,6 +85,7 @@ public class BasicEnemyAI : MonoBehaviour, IDamageable
     private float flyingVolleyCooldown;
     private float bossAttackCooldown;
     private float bossSpecialCooldown;
+    private float bossPlayerHitTimer;
     private float meleeStunTimer;
     private Coroutine bossRoutine;
 
@@ -97,7 +104,10 @@ public class BasicEnemyAI : MonoBehaviour, IDamageable
     private bool isDying;
     private CapsuleCollider combatCollider;
     private Transform priorityMarker;
+    private Transform priorityMarkerRing;
+    private Transform priorityMarkerBeam;
     private Renderer priorityMarkerRenderer;
+    private Renderer[] priorityMarkerRenderers;
     private bool isPriorityTarget;
     public bool IsPriorityTarget => isPriorityTarget && !IsCombatResolved;
 
@@ -111,6 +121,8 @@ public class BasicEnemyAI : MonoBehaviour, IDamageable
     private Material bodyMaterial;
     private Material darkMaterial;
     private Material glowMaterial;
+    private Material transientFxMaterial;
+    private MaterialPropertyBlock transientFxBlock;
 
     void Start()
     {
@@ -167,7 +179,8 @@ public class BasicEnemyAI : MonoBehaviour, IDamageable
             stoppingDistance = Mathf.Max(stoppingDistance, 12f);
             fireRate = Mathf.Max(0.45f, fireRate * 0.9f);
             moveSpeed *= bossArchetype == BossArchetype.Striker ? 1.05f : 0.92f;
-            meleeDamage *= 0.88f;
+            meleeDamage *= 0.72f;
+            bossPlayerHitCooldown = Mathf.Max(0.38f, bossPlayerHitCooldown);
             bossPatternTimer = Random.Range(1.5f, 3f);
         }
 
@@ -226,14 +239,20 @@ public class BasicEnemyAI : MonoBehaviour, IDamageable
 
         if (priorityMarker != null && priorityMarker.gameObject.activeSelf)
         {
-            priorityMarker.Rotate(Vector3.forward, 80f * Time.deltaTime, Space.Self);
+            priorityMarker.Rotate(Vector3.up, 64f * Time.deltaTime, Space.Self);
             float pulse = 0.9f + Mathf.Sin(Time.time * 7f) * 0.16f;
-            priorityMarker.localScale = new Vector3(pulse, 0.03f, pulse);
-            if (priorityMarkerRenderer != null)
+            if (priorityMarkerRing != null)
+                priorityMarkerRing.localScale = new Vector3(1.55f * pulse, 0.035f, 1.55f * pulse);
+            if (priorityMarkerBeam != null)
+                priorityMarkerBeam.localScale = new Vector3(0.14f * pulse, 5.4f, 0.14f * pulse);
+            if (priorityMarkerRenderers != null)
             {
                 Color c = new Color(1f, 0.86f, 0.32f, 0.72f + Mathf.Sin(Time.time * 7f) * 0.08f);
-                if (priorityMarkerRenderer.material.HasProperty("_BaseColor")) priorityMarkerRenderer.material.SetColor("_BaseColor", c);
-                if (priorityMarkerRenderer.material.HasProperty("_Color")) priorityMarkerRenderer.material.SetColor("_Color", c);
+                for (int i = 0; i < priorityMarkerRenderers.Length; i++)
+                {
+                    Renderer markerRenderer = priorityMarkerRenderers[i];
+                    ApplyTransientFxRenderer(markerRenderer, c, 1.45f);
+                }
             }
         }
 
@@ -245,6 +264,7 @@ public class BasicEnemyAI : MonoBehaviour, IDamageable
         if (flyingVolleyCooldown > 0f) flyingVolleyCooldown -= Time.deltaTime;
         if (bossAttackCooldown > 0f) bossAttackCooldown -= Time.deltaTime;
         if (bossSpecialCooldown > 0f) bossSpecialCooldown -= Time.deltaTime;
+        if (bossPlayerHitTimer > 0f) bossPlayerHitTimer -= Time.deltaTime;
         if (meleeStunTimer > 0f) meleeStunTimer -= Time.deltaTime;
 
         if (player == null) return;
@@ -375,14 +395,15 @@ public class BasicEnemyAI : MonoBehaviour, IDamageable
                         transform.position = Vector3.MoveTowards(transform.position, strafing, moveSpeed * Time.deltaTime);
                     }
 
-                    if (hasGroundAnchor && Mathf.Abs(transform.position.y - groundY) <= floorSnapTolerance)
+                    if (!usedPath && hasGroundAnchor && Mathf.Abs(transform.position.y - groundY) <= floorSnapTolerance)
                     {
                         Vector3 grounded = transform.position;
                         grounded.y = groundY;
                         transform.position = grounded;
                     }
 
-                    ClampToAccessibleSpace();
+                    if (!usedPath)
+                        ClampToAccessibleSpace();
 
                     Quaternion targetRotation = Quaternion.LookRotation(moveDir);
                     transform.rotation = Quaternion.Slerp(transform.rotation, targetRotation, turnSpeed * Time.deltaTime);
@@ -461,7 +482,8 @@ public class BasicEnemyAI : MonoBehaviour, IDamageable
         else if (enemyType == EnemyType.Flying)
         {
             bool dashing = droneDashTimeRemaining > 0f;
-            if (!dashing && distanceToPlayer <= stoppingDistance + 8f && flyingVolleyCooldown <= 0f && droneDashTimer <= 0f)
+            float droneEngageDistance = Mathf.Max(stoppingDistance + 10f, dronePreferredDistance * 1.8f);
+            if (!dashing && distanceToPlayer <= droneEngageDistance && flyingVolleyCooldown <= 0f && droneDashTimer <= 0f)
             {
                 ShootWithSpread(-9f);
                 ShootWithSpread(0f);
@@ -469,8 +491,14 @@ public class BasicEnemyAI : MonoBehaviour, IDamageable
                 Vector3 toPlayer = player != null ? player.position - transform.position : transform.forward;
                 toPlayer.y = 0f;
                 Vector3 lateral = toPlayer.sqrMagnitude > 0.01f ? Vector3.Cross(Vector3.up, toPlayer.normalized) : transform.right;
-                BeginDroneDash((lateral * (Random.value < 0.5f ? -1f : 1f)).normalized);
-                flyingVolleyCooldown = Random.Range(1.1f, 1.8f);
+                Vector3 dashDirection = lateral * (Random.value < 0.5f ? -1f : 1f);
+                float flatDistance = toPlayer.magnitude;
+                if (flatDistance < dronePreferredDistance * 0.72f)
+                    dashDirection += -toPlayer.normalized * 0.85f;
+                else if (flatDistance > dronePreferredDistance * 1.35f)
+                    dashDirection += toPlayer.normalized * 0.65f;
+
+                BeginDroneDash(dashDirection.normalized);
             }
         }
     }
@@ -493,23 +521,31 @@ public class BasicEnemyAI : MonoBehaviour, IDamageable
             transform.position += droneDashVelocity * Time.deltaTime;
             ClampFlyingHeight();
             FacePlayer();
+            if (droneDashTimeRemaining <= 0f)
+                flyingVolleyCooldown = Mathf.Max(flyingVolleyCooldown, dronePostDashShootDelay);
             return;
         }
 
         droneDashTimer -= Time.deltaTime;
-        float desiredDistance = Mathf.Max(stoppingDistance + 2f, dronePreferredDistance);
-        if (droneDashTimer <= 0f && distance < desiredDistance * 0.72f)
-        {
-            BeginDroneDash((-towardPlayer + lateral * Random.Range(-0.55f, 0.55f)).normalized);
-        }
-        else if (droneDashTimer <= 0f && distance > desiredDistance * 1.55f)
-        {
-            BeginDroneDash((towardPlayer + lateral * Random.Range(-0.35f, 0.35f)).normalized);
-        }
 
         Vector3 pos = transform.position;
         float targetY = player.position.y + hoverHeight + Mathf.Sin(flyPhase * 1.25f) * bobAmplitude;
-        pos.y = Mathf.MoveTowards(pos.y, targetY, flySpeed * 0.75f * Time.deltaTime);
+        UpdateFlyingGroundAnchor();
+        if (hasGroundAnchor)
+            targetY = Mathf.Max(targetY, groundY + hoverHeight);
+        pos.y = Mathf.MoveTowards(pos.y, targetY, flySpeed * 0.28f * Time.deltaTime);
+        if (distance < dronePreferredDistance * 0.78f)
+        {
+            pos += -towardPlayer * droneRangeCorrectionSpeed * Time.deltaTime;
+        }
+        else if (distance > dronePreferredDistance * 1.28f)
+        {
+            pos += towardPlayer * droneRangeCorrectionSpeed * 0.72f * Time.deltaTime;
+        }
+        else
+        {
+            pos += lateral * Mathf.Sin(flyPhase * 0.55f) * droneRangeCorrectionSpeed * 0.18f * Time.deltaTime;
+        }
         transform.position = pos;
         ClampFlyingHeight();
         FacePlayer();
@@ -520,7 +556,8 @@ public class BasicEnemyAI : MonoBehaviour, IDamageable
         if (direction.sqrMagnitude < 0.01f)
             direction = transform.right;
 
-        droneDashVelocity = (direction.normalized + Vector3.up * Random.Range(-0.18f, 0.28f)).normalized * droneDashSpeed;
+        direction.y = 0f;
+        droneDashVelocity = direction.normalized * droneDashSpeed;
         droneDashTimeRemaining = droneDashDuration;
         droneDashTimer = Random.Range(droneDashIntervalMin, droneDashIntervalMax);
     }
@@ -528,13 +565,21 @@ public class BasicEnemyAI : MonoBehaviour, IDamageable
     private void ClampFlyingHeight()
     {
         Vector3 pos = transform.position;
+        UpdateFlyingGroundAnchor();
         float floorY = hasGroundAnchor ? groundY : player != null ? player.position.y : pos.y - hoverHeight;
         float minY = floorY + 1.7f;
         float maxY = floorY + 6.5f;
         pos.y = Mathf.Clamp(pos.y, minY, maxY);
         transform.position = pos;
+    }
 
-        ClampToAccessibleSpace();
+    private void UpdateFlyingGroundAnchor()
+    {
+        if (TryFindGroundBelow(12f, out RaycastHit hit))
+        {
+            groundY = hit.point.y + 0.05f;
+            hasGroundAnchor = true;
+        }
     }
 
     private void HandleBossCombat(float distanceToPlayer)
@@ -707,7 +752,6 @@ public class BasicEnemyAI : MonoBehaviour, IDamageable
                          groundPathIndex >= groundPath.Count ||
                          repathTimer <= 0f ||
                          Vector3.Distance(lastRequestedPathTarget, target) > 2.5f ||
-                         Mathf.Abs(transform.position.y - player.position.y) > 1.6f ||
                          !HasLineOfSightTo(player.position + Vector3.up * 1.1f);
 
         if (needsPath)
@@ -730,28 +774,26 @@ public class BasicEnemyAI : MonoBehaviour, IDamageable
         bool verticalConnector = Mathf.Abs(next.y - current.y) > 0.18f || Mathf.Abs(next.y - groundY) > floorSnapTolerance;
         Vector3 moveTarget = verticalConnector
             ? next
-            : new Vector3(next.x, current.y, next.z);
+            : new Vector3(next.x, Mathf.MoveTowards(current.y, next.y, speed * 4f * Time.deltaTime), next.z);
         Vector3 move = Vector3.MoveTowards(current, moveTarget, speed * Time.deltaTime);
         transform.position = move;
 
         if (verticalConnector)
         {
-            groundY = Mathf.MoveTowards(groundY, next.y, speed * Time.deltaTime);
+            groundY = Mathf.MoveTowards(groundY, next.y, speed * 2.5f * Time.deltaTime);
             hasGroundAnchor = true;
         }
         else
         {
-            ClampToAccessibleSpace();
-        }
-
-        if (!verticalConnector && TryFindGroundBelow(2.2f, out RaycastHit groundHit))
-        {
-            groundY = groundHit.point.y + 0.05f;
+            groundY = Mathf.MoveTowards(groundY, next.y, speed * 4f * Time.deltaTime);
             hasGroundAnchor = true;
         }
 
-        Vector3 flatPosition = new Vector3(transform.position.x, next.y, transform.position.z);
-        if (Vector3.Distance(flatPosition, next) <= pathNodeReachDistance)
+        bool reachedNode = verticalConnector
+            ? Vector3.Distance(transform.position, next) <= Mathf.Max(pathNodeReachDistance, 0.55f)
+            : Vector2.Distance(new Vector2(transform.position.x, transform.position.z), new Vector2(next.x, next.z)) <= pathNodeReachDistance &&
+              Mathf.Abs(transform.position.y - next.y) <= 0.45f;
+        if (reachedNode)
             groundPathIndex++;
 
         if (groundPathIndex >= groundPath.Count)
@@ -774,7 +816,7 @@ public class BasicEnemyAI : MonoBehaviour, IDamageable
             if (signedDelta > 0.35f)
                 return;
 
-            float settleSpeed = delta <= floorSnapTolerance ? 18f : 26f;
+            float settleSpeed = delta <= floorSnapTolerance ? 14f : 5.5f;
             p.y = Mathf.MoveTowards(p.y, targetY, Time.deltaTime * settleSpeed);
             transform.position = p;
             groundY = targetY;
@@ -801,6 +843,7 @@ public class BasicEnemyAI : MonoBehaviour, IDamageable
             RaycastHit hit = hits[i];
             if (hit.collider == null) continue;
             if (hit.collider.transform == transform || hit.collider.transform.IsChildOf(transform)) continue;
+            if (!IsWalkableGroundCollider(hit.collider)) continue;
             if (hit.point.y > transform.position.y + 0.35f) continue;
             if (hit.distance >= bestDistance) continue;
 
@@ -809,6 +852,21 @@ public class BasicEnemyAI : MonoBehaviour, IDamageable
         }
 
         return bestDistance < float.PositiveInfinity;
+    }
+
+    private bool IsWalkableGroundCollider(Collider collider)
+    {
+        if (collider == null)
+            return false;
+
+        string objectName = collider.gameObject.name;
+        return objectName.StartsWith("Floor_") ||
+               objectName.StartsWith("Bridge_") ||
+               objectName.StartsWith("Platform_") ||
+               objectName.StartsWith("UpperPlatform_") ||
+               objectName.StartsWith("Spawn_") ||
+               objectName.StartsWith("Exit_") ||
+               objectName.StartsWith("Step_");
     }
 
     private bool HasLineOfSightTo(Vector3 targetPos)
@@ -858,7 +916,7 @@ public class BasicEnemyAI : MonoBehaviour, IDamageable
         if (playerController == null) return;
 
         attackPulseTimer = 0.16f;
-        playerController.TakeDamage(meleeDamage);
+        TryDamagePlayer(playerController, meleeDamage, isBoss);
     }
 
     private void StartShooterBurst()
@@ -886,7 +944,7 @@ public class BasicEnemyAI : MonoBehaviour, IDamageable
             if (hit == null) continue;
             PlayerController playerController = hit.GetComponentInParent<PlayerController>();
             if (playerController == null) continue;
-            playerController.TakeDamage(meleeDamage * 0.85f);
+            TryDamagePlayer(playerController, meleeDamage * 0.85f, false);
         }
     }
 
@@ -1149,7 +1207,7 @@ public class BasicEnemyAI : MonoBehaviour, IDamageable
         Vector3 flatPlayer = player.position;
         flatPlayer.y = center.y;
         if (Vector3.Distance(flatPlayer, center) <= radius)
-            playerController.TakeDamage(damage);
+            TryDamagePlayer(playerController, damage, isBoss);
     }
 
     private void DamagePlayerNearLine(Vector3 start, Vector3 end, float width, float damage)
@@ -1165,7 +1223,22 @@ public class BasicEnemyAI : MonoBehaviour, IDamageable
         float t = Mathf.Clamp01(Vector3.Dot(playerPos - start, line) / lengthSq);
         Vector3 closest = start + line * t;
         if (Vector3.Distance(playerPos, closest) <= width)
-            playerController.TakeDamage(damage);
+            TryDamagePlayer(playerController, damage, isBoss);
+    }
+
+    private bool TryDamagePlayer(PlayerController playerController, float damage, bool useBossGate)
+    {
+        if (playerController == null || damage <= 0f)
+            return false;
+        if (useBossGate)
+        {
+            if (bossPlayerHitTimer > 0f)
+                return false;
+            bossPlayerHitTimer = bossPlayerHitCooldown;
+        }
+
+        playerController.TakeDamage(damage);
+        return true;
     }
 
     private void SpawnTelegraphDisc(Vector3 center, float radius, Color color, float lifetime)
@@ -1477,8 +1550,22 @@ public class BasicEnemyAI : MonoBehaviour, IDamageable
         if (priorityMarker != null)
             priorityMarker.gameObject.SetActive(false);
         CybergrindRunState.GetOrCreate().RegisterEnemyDefeated();
+        RewardPlayerOnDeath();
         SpawnDeathBurst();
         Destroy(gameObject);
+    }
+
+    private void RewardPlayerOnDeath()
+    {
+        int reward = isBoss ? bossCoinReward : coinReward;
+        if (reward <= 0) return;
+
+        PlayerController playerController = player != null
+            ? player.GetComponent<PlayerController>()
+            : FindAnyObjectByType<PlayerController>();
+        if (playerController == null) return;
+
+        playerController.AddCurrency(reward);
     }
 
     private void ApplyDefaultDisplayName()
@@ -1515,11 +1602,7 @@ public class BasicEnemyAI : MonoBehaviour, IDamageable
             shard.transform.position = transform.position + Vector3.up * 1f;
             shard.transform.localScale = Vector3.one * Random.Range(isBoss ? 0.16f : 0.12f, isBoss ? 0.34f : 0.24f);
             Renderer renderer = shard.GetComponent<Renderer>();
-            if (renderer != null)
-            {
-                renderer.material = new Material(Shader.Find("Universal Render Pipeline/Unlit") ?? Shader.Find("Sprites/Default"));
-                renderer.material.color = burstColor;
-            }
+            ApplyTransientFxRenderer(renderer, burstColor, 1.6f);
 
             Collider collider = shard.GetComponent<Collider>();
             if (collider != null)
@@ -1541,12 +1624,7 @@ public class BasicEnemyAI : MonoBehaviour, IDamageable
         if (ringCollider != null)
             Destroy(ringCollider);
         Renderer ringRenderer = ring.GetComponent<Renderer>();
-        if (ringRenderer != null)
-        {
-            Material ringMat = new Material(Shader.Find("Universal Render Pipeline/Unlit") ?? Shader.Find("Sprites/Default"));
-            ringMat.color = new Color(burstColor.r, burstColor.g, burstColor.b, 0.55f);
-            ringRenderer.material = ringMat;
-        }
+        ApplyTransientFxRenderer(ringRenderer, new Color(burstColor.r, burstColor.g, burstColor.b, 0.55f), 1.8f);
         Destroy(ring, 0.4f);
     }
 
@@ -1561,14 +1639,6 @@ public class BasicEnemyAI : MonoBehaviour, IDamageable
             shooterColor;
 
         float size = Mathf.Clamp(0.42f + amount * 0.012f, 0.48f, isBoss ? 1.45f : 0.95f);
-        Material mat = new Material(FindVisualShader(true)) { name = "EnemyHitGlint" };
-        mat.color = new Color(color.r, color.g, color.b, 0.72f);
-        if (mat.HasProperty("_EmissionColor"))
-        {
-            mat.EnableKeyword("_EMISSION");
-            mat.SetColor("_EmissionColor", color * 2.2f);
-        }
-
         Vector3 center = transform.position + Vector3.up * (isBoss ? 1.85f : 1.15f);
         GameObject vertical = GameObject.CreatePrimitive(PrimitiveType.Cube);
         vertical.name = "EnemyHitGlintVertical";
@@ -1578,9 +1648,10 @@ public class BasicEnemyAI : MonoBehaviour, IDamageable
         Collider verticalCollider = vertical.GetComponent<Collider>();
         if (verticalCollider != null) Destroy(verticalCollider);
         Renderer verticalRenderer = vertical.GetComponent<Renderer>();
-        if (verticalRenderer != null) verticalRenderer.material = mat;
+        Color fxColor = new Color(color.r, color.g, color.b, 0.72f);
+        ApplyTransientFxRenderer(verticalRenderer, fxColor, 2.2f);
         Destroy(vertical, 0.2f);
-        StartCoroutine(ScaleAndFadeHitFx(vertical.transform, vertical.transform.localScale, 0.11f));
+        StartCoroutine(ScaleAndFadeHitFx(vertical.transform, vertical.transform.localScale, 0.11f, fxColor, 2.2f));
 
         GameObject horizontal = GameObject.CreatePrimitive(PrimitiveType.Cube);
         horizontal.name = "EnemyHitGlintHorizontal";
@@ -1590,9 +1661,9 @@ public class BasicEnemyAI : MonoBehaviour, IDamageable
         Collider horizontalCollider = horizontal.GetComponent<Collider>();
         if (horizontalCollider != null) Destroy(horizontalCollider);
         Renderer horizontalRenderer = horizontal.GetComponent<Renderer>();
-        if (horizontalRenderer != null) horizontalRenderer.material = mat;
+        ApplyTransientFxRenderer(horizontalRenderer, fxColor, 2.2f);
         Destroy(horizontal, 0.2f);
-        StartCoroutine(ScaleAndFadeHitFx(horizontal.transform, horizontal.transform.localScale, 0.09f));
+        StartCoroutine(ScaleAndFadeHitFx(horizontal.transform, horizontal.transform.localScale, 0.09f, fxColor, 2.2f));
     }
 
     private void SpawnDeathRing(Color burstColor, float radius, float life)
@@ -1606,43 +1677,30 @@ public class BasicEnemyAI : MonoBehaviour, IDamageable
         Collider collider = ring.GetComponent<Collider>();
         if (collider != null) Destroy(collider);
         Renderer renderer = ring.GetComponent<Renderer>();
-        if (renderer != null)
-        {
-            Material mat = new Material(FindVisualShader(true)) { name = "EnemyDeathRingMat" };
-            mat.color = new Color(burstColor.r, burstColor.g, burstColor.b, 0.5f);
-            if (mat.HasProperty("_EmissionColor"))
-            {
-                mat.EnableKeyword("_EMISSION");
-                mat.SetColor("_EmissionColor", burstColor * 1.8f);
-            }
-            renderer.material = mat;
-        }
+        Color ringColor = new Color(burstColor.r, burstColor.g, burstColor.b, 0.5f);
+        ApplyTransientFxRenderer(renderer, ringColor, 1.8f);
 
         Destroy(ring, life + 0.08f);
-        StartCoroutine(ScaleAndFadeHitFx(ring.transform, new Vector3(radius, 0.025f, radius), life));
+        StartCoroutine(ScaleAndFadeHitFx(ring.transform, new Vector3(radius, 0.025f, radius), life, ringColor, 1.8f));
     }
 
-    private IEnumerator ScaleAndFadeHitFx(Transform fx, Vector3 endScale, float lifetime)
+    private IEnumerator ScaleAndFadeHitFx(Transform fx, Vector3 endScale, float lifetime, Color color, float emissionStrength)
     {
         if (fx == null) yield break;
 
         Vector3 startScale = fx.localScale;
         Renderer renderer = fx.GetComponent<Renderer>();
-        Material mat = renderer != null ? renderer.material : null;
-        Color startColor = mat != null ? mat.color : Color.white;
         float elapsed = 0f;
         while (elapsed < lifetime && fx != null)
         {
             elapsed += Time.deltaTime;
             float t = Mathf.Clamp01(elapsed / Mathf.Max(0.01f, lifetime));
             fx.localScale = Vector3.Lerp(startScale, endScale, Mathf.SmoothStep(0f, 1f, t));
-            if (mat != null)
+            if (renderer != null)
             {
-                Color c = startColor;
+                Color c = color;
                 c.a *= 1f - t;
-                mat.color = c;
-                if (mat.HasProperty("_EmissionColor"))
-                    mat.SetColor("_EmissionColor", c * 1.8f);
+                ApplyTransientFxRenderer(renderer, c, emissionStrength);
             }
             yield return null;
         }
@@ -1808,6 +1866,33 @@ public class BasicEnemyAI : MonoBehaviour, IDamageable
         }
     }
 
+    private void ApplyTransientFxRenderer(Renderer renderer, Color color, float emissionStrength)
+    {
+        if (renderer == null)
+            return;
+
+        if (transientFxMaterial == null)
+        {
+            transientFxMaterial = new Material(FindVisualShader(true)) { name = "Enemy Transient FX" };
+            if (transientFxMaterial.HasProperty("_EmissionColor"))
+                transientFxMaterial.EnableKeyword("_EMISSION");
+        }
+
+        renderer.sharedMaterial = transientFxMaterial;
+
+        if (transientFxBlock == null)
+            transientFxBlock = new MaterialPropertyBlock();
+
+        renderer.GetPropertyBlock(transientFxBlock);
+        if (transientFxMaterial.HasProperty("_BaseColor"))
+            transientFxBlock.SetColor("_BaseColor", color);
+        if (transientFxMaterial.HasProperty("_Color"))
+            transientFxBlock.SetColor("_Color", color);
+        if (transientFxMaterial.HasProperty("_EmissionColor"))
+            transientFxBlock.SetColor("_EmissionColor", color * emissionStrength);
+        renderer.SetPropertyBlock(transientFxBlock);
+    }
+
     private Shader FindVisualShader(bool unlit)
     {
         Shader shader = Shader.Find(unlit ? "Universal Render Pipeline/Unlit" : "Universal Render Pipeline/Lit");
@@ -1883,32 +1968,57 @@ public class BasicEnemyAI : MonoBehaviour, IDamageable
         if (priorityMarker != null)
             return;
 
-        GameObject marker = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
-        marker.name = "PriorityMarker";
+        GameObject marker = new GameObject("PriorityMarker");
         marker.transform.SetParent(transform, false);
-        marker.transform.localPosition = new Vector3(0f, 3.15f, 0f);
-        marker.transform.localScale = new Vector3(0.95f, 0.03f, 0.95f);
-        marker.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
+        marker.transform.localPosition = Vector3.zero;
+        marker.transform.localRotation = Quaternion.identity;
+        marker.transform.localScale = Vector3.one;
 
-        Collider collider = marker.GetComponent<Collider>();
-        if (collider != null)
-            Destroy(collider);
+        GameObject ring = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+        ring.name = "PriorityMarkerRing";
+        ring.transform.SetParent(marker.transform, false);
+        ring.transform.localPosition = new Vector3(0f, 3.35f, 0f);
+        ring.transform.localScale = new Vector3(1.55f, 0.035f, 1.55f);
 
-        priorityMarkerRenderer = marker.GetComponent<Renderer>();
-        if (priorityMarkerRenderer != null)
+        GameObject beam = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        beam.name = "PriorityMarkerBeam";
+        beam.transform.SetParent(marker.transform, false);
+        beam.transform.localPosition = new Vector3(0f, 5.45f, 0f);
+        beam.transform.localScale = new Vector3(0.14f, 5.4f, 0.14f);
+
+        GameObject cap = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+        cap.name = "PriorityMarkerCap";
+        cap.transform.SetParent(marker.transform, false);
+        cap.transform.localPosition = new Vector3(0f, 8.25f, 0f);
+        cap.transform.localScale = new Vector3(0.44f, 0.44f, 0.44f);
+
+        GameObject[] markerParts = { ring, beam, cap };
+        for (int i = 0; i < markerParts.Length; i++)
         {
-            Shader shader = Shader.Find("Universal Render Pipeline/Unlit");
-            if (shader == null) shader = Shader.Find("Sprites/Default");
-            Material mat = new Material(shader);
-            Color c = new Color(1f, 0.86f, 0.32f, 0.78f);
-            if (mat.HasProperty("_BaseColor")) mat.SetColor("_BaseColor", c);
-            if (mat.HasProperty("_Color")) mat.SetColor("_Color", c);
-            if (mat.HasProperty("_EmissionColor"))
+            Collider partCollider = markerParts[i].GetComponent<Collider>();
+            if (partCollider != null)
             {
-                mat.EnableKeyword("_EMISSION");
-                mat.SetColor("_EmissionColor", new Color(1f, 0.62f, 0.12f, 1f));
+                if (Application.isPlaying) Destroy(partCollider);
+                else DestroyImmediate(partCollider);
             }
-            priorityMarkerRenderer.material = mat;
+        }
+
+        priorityMarkerRing = ring.transform;
+        priorityMarkerBeam = beam.transform;
+        priorityMarkerRenderers = marker.GetComponentsInChildren<Renderer>(true);
+        priorityMarkerRenderer = priorityMarkerRenderers != null && priorityMarkerRenderers.Length > 0 ? priorityMarkerRenderers[0] : null;
+        marker.name = "PriorityMarker";
+        if (priorityMarkerRenderers != null)
+        {
+            Color c = new Color(1f, 0.86f, 0.32f, 0.78f);
+            for (int i = 0; i < priorityMarkerRenderers.Length; i++)
+            {
+                Renderer markerRenderer = priorityMarkerRenderers[i];
+                if (markerRenderer == null) continue;
+                markerRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+                markerRenderer.receiveShadows = false;
+                ApplyTransientFxRenderer(markerRenderer, c, 1.45f);
+            }
         }
 
         priorityMarker = marker.transform;
