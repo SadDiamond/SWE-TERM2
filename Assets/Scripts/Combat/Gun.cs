@@ -92,6 +92,16 @@ public class Gun : MonoBehaviour
     public float swaySmooth = 8f;
     public float swayMultiplier = 2f;
     public float maxSwayAmount = 5f;
+    public float bobFrequency = 10.5f;
+    public float bobSpeedReference = 16f;
+    public float bobAmplitudeX = 0.026f;
+    public float bobAmplitudeY = 0.04f;
+    public float bobAmplitudeZ = 0.006f;
+    public float bobRotationAmount = 0.55f;
+    public float airBobFrequency = 3.2f;
+    public float airBobAmplitudeY = 0.018f;
+    public float airBobAmplitudeZ = 0.01f;
+    public float airBobRotationAmount = 0.22f;
 
     [Header("Recoil Settings")]
     public float recoilForce = 5f;
@@ -502,6 +512,7 @@ public class Gun : MonoBehaviour
     {
         currentRecoilPosition = Vector3.Lerp(currentRecoilPosition, initialLocalPosition, Time.deltaTime * recoilRecoverySpeed);
         Vector3 bobOffset = Vector3.zero;
+        Quaternion bobRotation = Quaternion.identity;
         if (player != null)
         {
             CharacterController controller = player.GetComponent<CharacterController>();
@@ -511,12 +522,31 @@ public class Gun : MonoBehaviour
                 float speed = planarVelocity.magnitude;
                 if (speed > 0.1f)
                 {
-                    float bobTime = Time.time * (player.isGrounded ? 9.5f : 6f);
-                    float bobAmount = Mathf.Clamp01(speed / 18f);
-                    bobOffset = new Vector3(
-                        Mathf.Sin(bobTime * 0.5f) * 0.012f * bobAmount,
-                        Mathf.Abs(Mathf.Sin(bobTime)) * -0.02f * bobAmount,
-                        0f);
+                    float bobAmount = Mathf.Clamp01(speed / Mathf.Max(1f, bobSpeedReference));
+                    if (player.isGrounded)
+                    {
+                        float bobTime = Time.time * bobFrequency;
+                        bobOffset = new Vector3(
+                            Mathf.Sin(bobTime * 0.5f) * bobAmplitudeX * bobAmount,
+                            Mathf.Abs(Mathf.Sin(bobTime)) * -bobAmplitudeY * bobAmount,
+                            Mathf.Sin(bobTime) * bobAmplitudeZ * bobAmount);
+                        bobRotation = Quaternion.Euler(
+                            Mathf.Sin(bobTime) * bobRotationAmount * 0.55f * bobAmount,
+                            0f,
+                            Mathf.Sin(bobTime * 0.5f) * bobRotationAmount * bobAmount);
+                    }
+                    else
+                    {
+                        float airTime = Time.time * airBobFrequency;
+                        bobOffset = new Vector3(
+                            Mathf.Sin(airTime * 0.65f) * bobAmplitudeX * 0.25f * bobAmount,
+                            Mathf.Sin(airTime) * airBobAmplitudeY * bobAmount,
+                            Mathf.Cos(airTime * 0.8f) * airBobAmplitudeZ * bobAmount);
+                        bobRotation = Quaternion.Euler(
+                            Mathf.Sin(airTime * 0.9f) * airBobRotationAmount * bobAmount,
+                            0f,
+                            Mathf.Sin(airTime * 0.45f) * airBobRotationAmount * bobAmount);
+                    }
                 }
             }
         }
@@ -529,7 +559,7 @@ public class Gun : MonoBehaviour
         float swayY = Mathf.Clamp(mouseDelta.x * swayMultiplier, -maxSwayAmount, maxSwayAmount);
         float swayX = Mathf.Clamp(-mouseDelta.y * swayMultiplier, -maxSwayAmount, maxSwayAmount);
 
-        Quaternion targetRotation = Quaternion.Euler(swayX, swayY, 0f) * initialLocalRotation;
+        Quaternion targetRotation = bobRotation * Quaternion.Euler(swayX, swayY, 0f) * initialLocalRotation;
         transform.localRotation = Quaternion.Slerp(transform.localRotation, targetRotation, swaySmooth * Time.deltaTime);
     }
 

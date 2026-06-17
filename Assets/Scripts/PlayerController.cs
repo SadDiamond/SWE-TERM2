@@ -26,7 +26,7 @@ public class PlayerController : MonoBehaviour, IDamageable
     private float damageInvulnerabilityTimer;
 
     [Header("Movement (Core)")]
-    public float moveSpeed = 13.5f;
+    public float moveSpeed = 10.8f;
     public float groundAcceleration = 24f;
     public float groundDeceleration = 38f;
     public float airAcceleration = 15f;
@@ -38,19 +38,22 @@ public class PlayerController : MonoBehaviour, IDamageable
 
     [Header("Movement (Dash)")]
     public float dashForce = 24f;
-    public float dashCooldown = 0.85f;
-    public float dashDuration = 0.09f;
-    public float dashTargetSpeed = 22f;
-    public float dashExitSpeed = 7.2f;
-    public float launchCarrySpeedLimit = 15.5f;
+    public float dashCooldown = 0.78f;
+    public float dashDuration = 0.18f;
+    public float dashTargetSpeed = 23f;
+    public float dashExitSpeed = 7f;
+    public float launchCarrySpeedLimit = 22f;
     [Range(0.2f, 1f)] public float dashNoInputExitMultiplier = 0.62f;
+    [Range(1, 5)] public int maxDashCharges = 3;
 
     [Header("Movement (Slide & Slam)")]
-    public float slideBaseSpeed = 18f;
+    public float slideBaseSpeed = 16.2f;
     public float slideFriction = 0.34f;
     public float fallSpeedToSlideBoost = 0.58f; // Hitting the ground hard speeds up your slide
-    public float maxSlideStartSpeed = 21f;
-    public float maxSlideJumpCarrySpeed = 22f;
+    public float maxSlideStartSpeed = 18.8f;
+    public float maxSlideJumpCarrySpeed = 23f;
+    public float slideJumpSpeedMultiplier = 1.24f;
+    public float slideJumpVerticalMultiplier = 1.08f;
     public float slideHeight = 1f;
     public float slideCooldown = 0.45f;
     public float slamSpeed = 40f; // How fast you plummet downwards
@@ -58,17 +61,19 @@ public class PlayerController : MonoBehaviour, IDamageable
     public float slamReleaseDelay = 0.12f;
     public float slideCameraDrop = 0.42f;
     public float slideGroundGrace = 0.12f;
-    public float slideHoldSpeed = 18f;
+    public float slideHoldSpeed = 16.2f;
     public float slideSteerStrength = 18f;
     public float slideMinDuration = 0.7f;
-    public float slideMinHoldSpeed = 16.5f;
-    public float airTurnDamping = 7.5f;
-    public float airNoInputBrake = 9.2f;
+    public float slideMinHoldSpeed = 13.5f;
+    public float airTurnDamping = 1.8f;
+    public float airNoInputBrake = 0.15f;
+    [Range(0.05f, 0.45f)] public float airControlImpulseScale = 0.18f;
+    public float groundReleaseBrakeMultiplier = 0.72f;
     private float defaultHeight;
     private Vector3 defaultControllerCenter;
 
     [Header("Movement (Limits)")]
-    public float maxSpeedLimit = 22f;
+    public float maxSpeedLimit = 26f;
     public float groundedStopSpeed = 0.2f;
 
     [Header("FX & Polish")]
@@ -127,10 +132,13 @@ public class PlayerController : MonoBehaviour, IDamageable
     private int jumpsRemaining;
     private float dashCooldownTimer;
     private float dashTimer;
+    private int dashCharges;
     private bool isSliding;
     private bool isSlamming;
     private bool slideRequiresRelease;
     private Vector3 momentum;
+    private Vector3 lastSideHitNormal;
+    private float lastSideHitTime;
     private Vector3 dashVelocity;
     private float lastFrameVelocityY;
     private float disableGroundCheckTimer = 0f;
@@ -158,11 +166,17 @@ public class PlayerController : MonoBehaviour, IDamageable
     private float CurrentMaxHealth => maxHealth + maxHealthBonus;
     public float EffectiveMaxHealth => CurrentMaxHealth;
     public float Health01 => CurrentMaxHealth <= 0.01f ? 0f : Mathf.Clamp01(currentHealth / CurrentMaxHealth);
+    public float PlanarSpeed => new Vector3(momentum.x, 0f, momentum.z).magnitude;
     public bool DebugIsSliding => isSliding;
     public bool DebugIsSlamming => isSlamming;
     public float DebugDashTimer => dashTimer;
     public Vector3 DebugMomentum => momentum;
     public Vector3 DebugDashVelocity => dashVelocity;
+    public int DashCharges => Mathf.Clamp(dashCharges, 0, MaxDashCharges);
+    public int MaxDashCharges => Mathf.Clamp(maxDashCharges, 1, 5);
+    public float DashRecharge01 => DashCharges >= MaxDashCharges || dashCooldown <= 0.01f
+        ? 1f
+        : 1f - Mathf.Clamp01(dashCooldownTimer / dashCooldown);
 
     private const string MouseSensitivityPrefKey = "project_structure.mouse_sensitivity";
     private const string BaseFovPrefKey = "project_structure.base_fov";
@@ -200,6 +214,7 @@ public class PlayerController : MonoBehaviour, IDamageable
             defaultControllerCenter = controller.center;
         }
         ApplyMovementTuningDefaults();
+        dashCharges = MaxDashCharges;
         Cursor.lockState = CursorLockMode.Locked;
         currentHealth = CurrentMaxHealth;
         currency = 0;
@@ -715,7 +730,7 @@ public class PlayerController : MonoBehaviour, IDamageable
         }
 
         float previousDashTimer = dashTimer;
-        if (dashCooldownTimer > 0) dashCooldownTimer -= Time.deltaTime;
+        RechargeDashCharges(Time.deltaTime);
         if (dashTimer > 0f) dashTimer = Mathf.Max(0f, dashTimer - Time.deltaTime);
         if (slideLockoutTimer > 0f) slideLockoutTimer -= Time.deltaTime;
         if (slideCooldownTimer > 0f) slideCooldownTimer -= Time.deltaTime;
@@ -758,11 +773,13 @@ public class PlayerController : MonoBehaviour, IDamageable
         if (UnityEngine.InputSystem.Keyboard.current.spaceKey.wasPressedThisFrame)
             jumpBufferTimer = jumpBufferTime;
 
-        if (UnityEngine.InputSystem.Keyboard.current.leftShiftKey.wasPressedThisFrame && dashCooldownTimer <= 0)
+        if (UnityEngine.InputSystem.Keyboard.current.leftShiftKey.wasPressedThisFrame && dashTimer <= 0f && dashCharges > 0)
         {
-            dashCooldownTimer = dashCooldown;
+            dashCharges = Mathf.Max(0, dashCharges - 1);
+            if (dashCharges < MaxDashCharges && dashCooldownTimer <= 0f)
+                dashCooldownTimer = dashCooldown;
             Vector3 dashDir = inputDir.magnitude > 0.1f ? inputDir : transform.forward;
-            float dashSpeed = Mathf.Clamp(dashTargetSpeed + dashForceBonus * 0.25f, CurrentMoveSpeed * 1.1f, CurrentMoveSpeed + 10f);
+            float dashSpeed = Mathf.Clamp(dashTargetSpeed + dashForceBonus * 0.25f, CurrentMoveSpeed * 2.05f, CurrentMoveSpeed * 2.25f);
             dashVelocity = dashDir * dashSpeed;
             momentum = dashVelocity;
             dashTimer = dashDuration;
@@ -876,8 +893,15 @@ public class PlayerController : MonoBehaviour, IDamageable
 
             if (isSliding)
             {
+                Vector3 planar = Vector3.ProjectOnPlane(momentum, Vector3.up);
+                Vector3 jumpDir = planar.sqrMagnitude > 0.01f ? planar.normalized : transform.forward;
+                float superSpeed = Mathf.Clamp(
+                    Mathf.Max(planar.magnitude, slideHoldSpeed) * slideJumpSpeedMultiplier,
+                    slideBaseSpeed * 1.08f,
+                    maxSlideJumpCarrySpeed);
                 ExitSlide(false);
-                momentum = Vector3.ClampMagnitude(momentum, maxSlideJumpCarrySpeed);
+                momentum = jumpDir * superSpeed;
+                velocity.y *= slideJumpVerticalMultiplier;
                 slideCooldownTimer = slideCooldown;
             }
         }
@@ -898,8 +922,13 @@ public class PlayerController : MonoBehaviour, IDamageable
             if (isSliding)
                 ExitSlide(false);
         }
-        if ((collisionFlags & CollisionFlags.Sides) != 0 && dashTimer > 0f)
-            FinishDash(inputDir);
+        if ((collisionFlags & CollisionFlags.Sides) != 0)
+        {
+            ClipHorizontalMomentumAgainstWall();
+            if (dashTimer > 0f)
+                FinishDash(inputDir);
+            ClipHorizontalMomentumAgainstWall();
+        }
         if (dashTimer <= 0f && !isSliding)
         {
             float stateLimit = isGrounded
@@ -1016,6 +1045,7 @@ public class PlayerController : MonoBehaviour, IDamageable
         if (clearCooldowns)
         {
             dashCooldownTimer = 0f;
+            dashCharges = MaxDashCharges;
             slideCooldownTimer = 0f;
             slideLockoutTimer = 0f;
         }
@@ -1040,25 +1070,33 @@ public class PlayerController : MonoBehaviour, IDamageable
 
     private void ApplyMovementTuningDefaults()
     {
-        moveSpeed = Mathf.Max(moveSpeed, 13.5f);
+        moveSpeed = Mathf.Clamp(moveSpeed, 9.5f, 10.8f);
         dashForce = Mathf.Min(dashForce, 24f);
-        dashTargetSpeed = Mathf.Min(dashTargetSpeed, 22f);
-        dashExitSpeed = Mathf.Min(dashExitSpeed, 7.2f);
+        dashCooldown = Mathf.Clamp(dashCooldown, 0.55f, 0.95f);
+        dashDuration = Mathf.Clamp(dashDuration, 0.18f, 0.2f);
+        dashTargetSpeed = Mathf.Clamp(dashTargetSpeed, CurrentMoveSpeed * 2.05f, CurrentMoveSpeed * 2.25f);
+        dashExitSpeed = Mathf.Clamp(dashExitSpeed, CurrentMoveSpeed * 0.62f, CurrentMoveSpeed * 0.82f);
         dashNoInputExitMultiplier = Mathf.Clamp(dashNoInputExitMultiplier, 0.2f, 0.72f);
+        maxDashCharges = Mathf.Clamp(maxDashCharges, 1, 5);
         airAcceleration = Mathf.Max(airAcceleration, 15f);
-        airTurnDamping = Mathf.Max(airTurnDamping, 7.5f);
-        airNoInputBrake = Mathf.Max(airNoInputBrake, 9.2f);
+        airTurnDamping = Mathf.Clamp(airTurnDamping, 0.8f, 2.4f);
+        airNoInputBrake = Mathf.Clamp(airNoInputBrake, 0f, 0.35f);
+        airControlImpulseScale = Mathf.Clamp(airControlImpulseScale, 0.05f, 0.45f);
+        groundReleaseBrakeMultiplier = Mathf.Clamp(groundReleaseBrakeMultiplier, 0.45f, 1.4f);
         groundAcceleration = Mathf.Max(groundAcceleration, 24f);
         groundDeceleration = Mathf.Max(groundDeceleration, 38f);
-        launchCarrySpeedLimit = Mathf.Min(launchCarrySpeedLimit, 15.5f);
+        launchCarrySpeedLimit = Mathf.Clamp(launchCarrySpeedLimit, CurrentMoveSpeed * 1.85f, CurrentMoveSpeed * 2.35f);
         slideFriction = Mathf.Min(slideFriction, 0.34f);
-        maxSlideStartSpeed = Mathf.Min(maxSlideStartSpeed, 21f);
-        maxSlideJumpCarrySpeed = Mathf.Min(maxSlideJumpCarrySpeed, 22f);
-        slideHoldSpeed = Mathf.Max(slideHoldSpeed, 18f);
-        slideMinHoldSpeed = Mathf.Clamp(slideMinHoldSpeed, 10f, slideHoldSpeed);
+        slideBaseSpeed = Mathf.Clamp(slideBaseSpeed, CurrentMoveSpeed * 1.45f, CurrentMoveSpeed * 1.5f);
+        maxSlideStartSpeed = Mathf.Clamp(maxSlideStartSpeed, slideBaseSpeed * 1.08f, CurrentMoveSpeed * 1.8f);
+        maxSlideJumpCarrySpeed = Mathf.Clamp(maxSlideJumpCarrySpeed, slideBaseSpeed * 1.22f, CurrentMoveSpeed * 2.25f);
+        slideJumpSpeedMultiplier = Mathf.Clamp(slideJumpSpeedMultiplier, 1.12f, 1.38f);
+        slideJumpVerticalMultiplier = Mathf.Clamp(slideJumpVerticalMultiplier, 1f, 1.18f);
+        slideHoldSpeed = Mathf.Clamp(slideHoldSpeed, slideBaseSpeed, maxSlideStartSpeed);
+        slideMinHoldSpeed = Mathf.Clamp(slideMinHoldSpeed, CurrentMoveSpeed * 1.12f, slideHoldSpeed);
         slideMinDuration = Mathf.Clamp(slideMinDuration, 0.55f, 0.95f);
         slideSteerStrength = Mathf.Max(slideSteerStrength, 18f);
-        maxSpeedLimit = Mathf.Min(maxSpeedLimit, 22f);
+        maxSpeedLimit = Mathf.Clamp(maxSpeedLimit, CurrentMoveSpeed * 2.05f, CurrentMoveSpeed * 2.35f);
         groundedStopSpeed = Mathf.Min(groundedStopSpeed, 0.2f);
     }
 
@@ -1135,6 +1173,22 @@ public class PlayerController : MonoBehaviour, IDamageable
         dashTimer = 0f;
     }
 
+    private void RechargeDashCharges(float deltaTime)
+    {
+        if (dashCharges >= MaxDashCharges)
+        {
+            dashCharges = MaxDashCharges;
+            dashCooldownTimer = 0f;
+            return;
+        }
+
+        dashCooldownTimer -= Mathf.Max(0f, deltaTime);
+        if (dashCooldownTimer > 0f) return;
+
+        dashCharges = Mathf.Min(MaxDashCharges, dashCharges + 1);
+        dashCooldownTimer = dashCharges < MaxDashCharges ? dashCooldown : 0f;
+    }
+
     private void ApplyGroundMovement(Vector3 inputDir, float deltaTime)
     {
         deltaTime = Mathf.Max(0f, deltaTime);
@@ -1142,7 +1196,7 @@ public class PlayerController : MonoBehaviour, IDamageable
 
         if (inputDir.sqrMagnitude <= 0.0001f)
         {
-            float stopRate = groundDeceleration * Mathf.Max(CurrentMoveSpeed, 1f) * 5.2f * deltaTime;
+            float stopRate = groundDeceleration * Mathf.Max(CurrentMoveSpeed, 1f) * groundReleaseBrakeMultiplier * deltaTime;
             horizontalMomentum = Vector3.MoveTowards(horizontalMomentum, Vector3.zero, stopRate);
             if (horizontalMomentum.magnitude <= groundedStopSpeed)
                 horizontalMomentum = Vector3.zero;
@@ -1190,22 +1244,17 @@ public class PlayerController : MonoBehaviour, IDamageable
     {
         deltaTime = Mathf.Max(0f, deltaTime);
         Vector3 horizontalMomentum = Vector3.ProjectOnPlane(momentum, Vector3.up);
+        float startingSpeed = horizontalMomentum.magnitude;
         float airCarryLimit = GetAirCarryLimit();
 
         if (inputDir.sqrMagnitude > 0.0001f)
         {
             Vector3 wishDir = inputDir.normalized;
             float currentSpeed = Vector3.Dot(horizontalMomentum, wishDir);
-            float targetAirSpeed = Mathf.Min(Mathf.Max(CurrentMoveSpeed * 1.02f, currentSpeed), CurrentMoveSpeed * 1.12f);
-            float addSpeed = Mathf.Max(0f, targetAirSpeed - currentSpeed);
-            float accel = airAcceleration * CurrentMoveSpeed * 1.65f * deltaTime;
-            accel = Mathf.Min(accel, addSpeed);
-            horizontalMomentum += wishDir * accel;
-
-            float forwardAfterAccel = Vector3.Dot(horizontalMomentum, wishDir);
-            Vector3 lateral = horizontalMomentum - (wishDir * forwardAfterAccel);
-            lateral = Vector3.MoveTowards(lateral, Vector3.zero, airTurnDamping * CurrentMoveSpeed * deltaTime);
-            horizontalMomentum = wishDir * forwardAfterAccel + lateral;
+            float maxWishSpeed = CurrentMoveSpeed * 1.05f;
+            float addSpeed = Mathf.Max(0f, maxWishSpeed - currentSpeed);
+            float controlImpulse = airAcceleration * CurrentMoveSpeed * airControlImpulseScale * deltaTime;
+            horizontalMomentum += wishDir * Mathf.Min(controlImpulse, addSpeed);
         }
         else
         {
@@ -1213,7 +1262,42 @@ public class PlayerController : MonoBehaviour, IDamageable
             horizontalMomentum = Vector3.MoveTowards(horizontalMomentum, Vector3.zero, airBrake);
         }
 
-        momentum = Vector3.ClampMagnitude(horizontalMomentum, airCarryLimit);
+        float allowedSpeed = inputDir.sqrMagnitude > 0.0001f
+            ? Mathf.Min(Mathf.Max(startingSpeed, CurrentMoveSpeed * 1.05f), airCarryLimit)
+            : airCarryLimit;
+        momentum = Vector3.ClampMagnitude(horizontalMomentum, allowedSpeed);
+    }
+
+    private void ClipHorizontalMomentumAgainstWall()
+    {
+        if (Time.time - lastSideHitTime > 0.08f) return;
+
+        Vector3 normal = Vector3.ProjectOnPlane(lastSideHitNormal, Vector3.up);
+        if (normal.sqrMagnitude <= 0.0001f) return;
+        normal.Normalize();
+
+        Vector3 horizontalMomentum = Vector3.ProjectOnPlane(momentum, Vector3.up);
+        if (Vector3.Dot(horizontalMomentum, normal) < 0f)
+            horizontalMomentum = Vector3.ProjectOnPlane(horizontalMomentum, normal);
+
+        if (horizontalMomentum.magnitude < groundedStopSpeed)
+            horizontalMomentum = Vector3.zero;
+
+        momentum = horizontalMomentum;
+
+        Vector3 horizontalDash = Vector3.ProjectOnPlane(dashVelocity, Vector3.up);
+        if (Vector3.Dot(horizontalDash, normal) < 0f)
+        {
+            horizontalDash = Vector3.ProjectOnPlane(horizontalDash, normal);
+            dashVelocity = horizontalDash + Vector3.up * dashVelocity.y;
+        }
+    }
+
+    private void OnControllerColliderHit(ControllerColliderHit hit)
+    {
+        if (hit.normal.y > 0.45f) return;
+        lastSideHitNormal = hit.normal;
+        lastSideHitTime = Time.time;
     }
 
 #if UNITY_EDITOR
@@ -1236,6 +1320,17 @@ public class PlayerController : MonoBehaviour, IDamageable
         dashTimer = Mathf.Max(0f, timer);
     }
 
+    public void DebugSetDashChargesForTest(int charges, float rechargeTimer)
+    {
+        dashCharges = Mathf.Clamp(charges, 0, MaxDashCharges);
+        dashCooldownTimer = Mathf.Max(0f, rechargeTimer);
+    }
+
+    public void DebugRechargeDashForTest(float deltaTime)
+    {
+        RechargeDashCharges(deltaTime);
+    }
+
     public void DebugApplyGroundMovementForTest(Vector3 inputDir, float deltaTime)
     {
         ApplyGroundMovement(inputDir, deltaTime);
@@ -1244,6 +1339,13 @@ public class PlayerController : MonoBehaviour, IDamageable
     public void DebugApplyAirMovementForTest(Vector3 inputDir, float deltaTime)
     {
         ApplyAirMovement(inputDir, deltaTime);
+    }
+
+    public void DebugClipMomentumAgainstWallForTest(Vector3 wallNormal)
+    {
+        lastSideHitNormal = wallNormal;
+        lastSideHitTime = Time.time;
+        ClipHorizontalMomentumAgainstWall();
     }
 
     public void DebugFinishDashForTest(Vector3 inputDir)

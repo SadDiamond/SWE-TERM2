@@ -9,10 +9,25 @@ using UnityEngine.UI;
 public class CybergrindTransitionController : MonoBehaviour
 {
     [Header("Structure Shift Timing")]
+    public bool useElevatorHologramTransition = true;
     [Min(0.05f)] public float oldArenaDropDuration = 2.15f;
     [Min(0.05f)] public float newArenaRiseDuration = 2.45f;
     [Min(0f)] public float swapHoldDuration = 0.58f;
     public AnimationCurve shiftCurve = AnimationCurve.EaseInOut(0f, 0f, 1f, 1f);
+
+    [Header("Elevator Hologram Transition")]
+    public float elevatorTravelDistance = 7.2f;
+    public float elevatorSinkDuration = 1.05f;
+    public float elevatorRiseDuration = 1.05f;
+    public float hologramSpinDuration = 2.1f;
+    public float hologramSize = 5.8f;
+    public float hologramHeight = 2.15f;
+    public float elevatorRoomSize = 5.8f;
+    public float elevatorRoomHeight = 3.6f;
+    public float hologramWallDistance = 2.72f;
+    public bool forceElevatorNorth = true;
+    public Color loadingBlockColor = new Color(1f, 0.82f, 0.28f, 0.88f);
+    public Color hologramColor = new Color(0.48f, 0.96f, 1f, 0.72f);
 
     [Header("Structure Shift Motion")]
     public float oldArenaDropDistance = 18f;
@@ -93,6 +108,12 @@ public class CybergrindTransitionController : MonoBehaviour
 
     private IEnumerator ExitTransitionRoutine(CybergrindArenaGenerator generator, PlayerController player, Action swapAction)
     {
+        if (useElevatorHologramTransition)
+        {
+            yield return ElevatorHologramTransitionRoutine(generator, player, swapAction);
+            yield break;
+        }
+
         IsTransitioning = true;
         DebugStage = "Start";
         onTransitionStarted?.Invoke();
@@ -180,6 +201,408 @@ public class CybergrindTransitionController : MonoBehaviour
     public IEnumerator DebugPreviewTransitionLook(CybergrindArenaGenerator generator, float duration)
     {
         yield return DebugPreviewReconfigureTransition(generator, duration);
+    }
+
+    private IEnumerator ElevatorHologramTransitionRoutine(CybergrindArenaGenerator generator, PlayerController player, Action swapAction)
+    {
+        if (IsTransitioning) yield break;
+
+        IsTransitioning = true;
+        DebugStage = "ElevatorStart";
+        onTransitionStarted?.Invoke();
+
+        string themeLabel = generator != null ? generator.GetThemeLabel() : "Arena";
+        ShowTransitionBanner("FLOOR SHIFT", $"{themeLabel}. Rebuilding arena.");
+        StartTransitionRoutine(PulseFlash(flashColor, flashDuration));
+
+        if (player != null)
+        {
+            player.ToggleUIMode(false);
+            player.SetTransitionLock(true);
+        }
+
+        Vector3 anchor = player != null
+            ? player.transform.position
+            : transform.position + Vector3.up * 1.2f;
+        Vector3 forward = ResolveElevatorForward(generator);
+        FacePlayerToward(player, forward);
+
+        Transform oldRoot = generator != null ? generator.CurrentArenaRoot : null;
+        GameObject elevatorRoom = CreateElevatorIntermissionRoom(anchor, forward, generator);
+        GameObject loadingPreview = CreateKlotskiLoadingPreview(anchor, forward, generator);
+        if (loadingPreview != null && elevatorRoom != null)
+            loadingPreview.transform.SetParent(elevatorRoom.transform, true);
+
+        DebugStage = "ElevatorClose";
+        yield return AnimateElevatorRoom(elevatorRoom, true, elevatorSinkDuration);
+
+        DebugStage = "ElevatorDown";
+        if (player != null)
+            yield return MoveElevatorCabin(player, elevatorRoom, -Mathf.Abs(elevatorTravelDistance), elevatorSinkDuration);
+
+        DebugStage = "Loading";
+        if (loadingPreview != null)
+            yield return AnimateKlotskiLoadingPreview(loadingPreview, hologramSpinDuration);
+        else if (hologramSpinDuration > 0f)
+            yield return new WaitForSecondsRealtime(hologramSpinDuration);
+
+        if (generator != null)
+            generator.skipPlayerPlacementOnce = true;
+
+        yield return null;
+
+        DebugStage = "Swap";
+        DestroyTransientContent(oldRoot);
+        onSwapMoment?.Invoke();
+        swapAction?.Invoke();
+        yield return null;
+
+        DebugStage = "PlacePlayer";
+        if (generator != null && player != null)
+        {
+            generator.PlacePlayerAtSpawn();
+            anchor = player.transform.position;
+            forward = ResolveElevatorForward(generator);
+            FacePlayerToward(player, forward);
+            TeleportPlayerForTransition(player, anchor + Vector3.down * Mathf.Abs(elevatorTravelDistance));
+            if (elevatorRoom != null)
+            {
+                elevatorRoom.transform.position = player.transform.position;
+                elevatorRoom.transform.rotation = Quaternion.LookRotation(forward, Vector3.up);
+            }
+        }
+
+        string nextThemeLabel = generator != null ? generator.GetThemeLabel() : themeLabel;
+        string nextDirectiveTitle = generator != null ? generator.GetThemeDirectiveTitle() : string.Empty;
+        ShowTransitionBanner("NEXT FLOOR", string.IsNullOrWhiteSpace(nextDirectiveTitle) ? nextThemeLabel : $"{nextThemeLabel}. {nextDirectiveTitle}");
+        StartTransitionRoutine(PulseFlash(new Color(hologramColor.r, hologramColor.g, hologramColor.b, 0.22f), flashDuration * 1.2f));
+
+        DebugStage = "ElevatorUp";
+        if (player != null)
+            yield return MoveElevatorCabin(player, elevatorRoom, Mathf.Abs(elevatorTravelDistance), elevatorRiseDuration);
+
+        DebugStage = "ElevatorOpen";
+        yield return AnimateElevatorRoom(elevatorRoom, false, elevatorRiseDuration);
+
+        if (elevatorRoom != null)
+            DestroyTransitionObject(elevatorRoom);
+        if (oldRoot != null && generator != null && oldRoot != generator.CurrentArenaRoot)
+            DestroyTransitionObject(oldRoot.gameObject);
+
+        if (player != null)
+            player.SetTransitionLock(false);
+
+        IsTransitioning = false;
+        DebugStage = "Complete";
+        onTransitionFinished?.Invoke();
+    }
+
+    private Vector3 ResolveElevatorForward(CybergrindArenaGenerator generator)
+    {
+        Vector3 forward = forceElevatorNorth || generator == null
+            ? Vector3.forward
+            : Vector3.ProjectOnPlane(generator.transform.forward, Vector3.up);
+
+        if (forward.sqrMagnitude <= 0.0001f)
+            forward = Vector3.forward;
+
+        return forward.normalized;
+    }
+
+    private void FacePlayerToward(PlayerController player, Vector3 forward)
+    {
+        if (player == null || forward.sqrMagnitude <= 0.0001f) return;
+        player.transform.rotation = Quaternion.LookRotation(Vector3.ProjectOnPlane(forward, Vector3.up).normalized, Vector3.up);
+    }
+
+    private GameObject CreateElevatorIntermissionRoom(Vector3 center, Vector3 forward, CybergrindArenaGenerator generator)
+    {
+        GameObject root = new GameObject("TransitionElevatorRoom");
+        root.transform.position = center;
+        root.transform.rotation = Quaternion.LookRotation(forward, Vector3.up);
+
+        float size = Mathf.Max(3.8f, elevatorRoomSize);
+        float height = Mathf.Max(2.4f, elevatorRoomHeight);
+        float half = size * 0.5f;
+        float thickness = 0.12f;
+
+        Material wallMaterial = BuildTransparentMaterial(new Color(0.018f, 0.032f, 0.038f, 0.96f), true);
+        Material insetMaterial = BuildTransparentMaterial(new Color(0.035f, 0.075f, 0.09f, 0.88f), true);
+        Material glassMaterial = BuildTransparentMaterial(new Color(hologramColor.r, hologramColor.g, hologramColor.b, 0.11f), true);
+        Material lightMaterial = BuildTransparentMaterial(new Color(hologramColor.r, hologramColor.g, hologramColor.b, 0.72f), true);
+        Material trimMaterial = BuildTransparentMaterial(new Color(0.34f, 0.43f, 0.46f, 0.92f), true);
+
+        CreateRoomPanel(root.transform, "ElevatorFloorBase", new Vector3(0f, -1.08f, 0f), new Vector3(size, thickness * 1.4f, size), wallMaterial);
+        CreateRoomPanel(root.transform, "ElevatorFloorInset", new Vector3(0f, -0.98f, 0f), new Vector3(size * 0.72f, thickness * 0.55f, size * 0.72f), insetMaterial);
+        CreateRoomPanel(root.transform, "ElevatorCeilingBase", new Vector3(0f, height - 1.05f, 0f), new Vector3(size, thickness, size), wallMaterial);
+        CreateRoomPanel(root.transform, "ElevatorCeilingInset", new Vector3(0f, height - 1.12f, 0f), new Vector3(size * 0.62f, thickness * 0.5f, size * 0.62f), lightMaterial);
+        CreateRoomPanel(root.transform, "ElevatorBackWall", new Vector3(0f, height * 0.42f, -half), new Vector3(size, height, thickness), wallMaterial);
+        CreateRoomPanel(root.transform, "ElevatorLeftWall", new Vector3(-half, height * 0.42f, 0f), new Vector3(thickness, height, size), wallMaterial);
+        CreateRoomPanel(root.transform, "ElevatorRightWall", new Vector3(half, height * 0.42f, 0f), new Vector3(thickness, height, size), wallMaterial);
+        CreateRoomPanel(root.transform, "ElevatorPreviewWall", new Vector3(0f, height * 0.42f, half), new Vector3(size, height, thickness), glassMaterial);
+        CreateRoomPanel(root.transform, "ElevatorPreviewFrameTop", new Vector3(0f, height * 0.70f, half - 0.035f), new Vector3(size * 0.78f, 0.055f, 0.06f), trimMaterial);
+        CreateRoomPanel(root.transform, "ElevatorPreviewFrameBottom", new Vector3(0f, height * 0.11f, half - 0.035f), new Vector3(size * 0.78f, 0.055f, 0.06f), trimMaterial);
+        CreateRoomPanel(root.transform, "ElevatorPreviewFrameLeft", new Vector3(-size * 0.39f, height * 0.405f, half - 0.035f), new Vector3(0.055f, height * 0.58f, 0.06f), trimMaterial);
+        CreateRoomPanel(root.transform, "ElevatorPreviewFrameRight", new Vector3(size * 0.39f, height * 0.405f, half - 0.035f), new Vector3(0.055f, height * 0.58f, 0.06f), trimMaterial);
+
+        for (int i = -1; i <= 1; i += 2)
+        {
+            CreateRoomPanel(root.transform, $"ElevatorLightFront{i}", new Vector3(i * size * 0.43f, height * 0.43f, half - 0.05f), new Vector3(0.035f, height * 0.70f, 0.035f), lightMaterial);
+            CreateRoomPanel(root.transform, $"ElevatorLightBack{i}", new Vector3(i * size * 0.43f, height * 0.43f, -half + 0.05f), new Vector3(0.035f, height * 0.70f, 0.035f), lightMaterial);
+            CreateRoomPanel(root.transform, $"ElevatorFloorRail{i}", new Vector3(i * size * 0.28f, -0.91f, 0f), new Vector3(0.035f, 0.035f, size * 0.76f), trimMaterial);
+        }
+
+        return root;
+    }
+
+    private void CreateRoomPanel(Transform parent, string name, Vector3 localPosition, Vector3 localScale, Material material)
+    {
+        GameObject panel = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        panel.name = name;
+        panel.transform.SetParent(parent, false);
+        panel.transform.localPosition = localPosition;
+        panel.transform.localScale = localScale;
+        panel.transform.localRotation = Quaternion.identity;
+        if (panel.TryGetComponent(out Renderer renderer))
+            renderer.material = material;
+
+        Collider collider = panel.GetComponent<Collider>();
+        if (collider != null)
+        {
+            if (Application.isPlaying) Destroy(collider);
+            else DestroyImmediate(collider);
+        }
+    }
+
+    private IEnumerator AnimateElevatorRoom(GameObject room, bool closing, float duration)
+    {
+        if (room == null) yield break;
+
+        float elapsed = 0f;
+        Vector3 from = closing ? new Vector3(1f, 0.08f, 1f) : Vector3.one;
+        Vector3 to = closing ? Vector3.one : new Vector3(1f, 0.08f, 1f);
+
+        while (elapsed < duration)
+        {
+            elapsed += GetTransitionDelta(duration);
+            float t = Mathf.Clamp01(elapsed / Mathf.Max(0.01f, duration));
+            float eased = shiftCurve != null ? shiftCurve.Evaluate(t) : Mathf.SmoothStep(0f, 1f, t);
+            room.transform.localScale = Vector3.LerpUnclamped(from, to, eased);
+            yield return null;
+        }
+
+        room.transform.localScale = to;
+    }
+
+    private IEnumerator MoveElevatorCabin(PlayerController player, GameObject room, float distance, float duration)
+    {
+        if (player == null) yield break;
+
+        CharacterController controller = player.GetComponent<CharacterController>();
+        bool controllerWasEnabled = controller != null && controller.enabled;
+        if (controllerWasEnabled)
+            controller.enabled = false;
+
+        float elapsed = 0f;
+        Vector3 playerStart = player.transform.position;
+        Vector3 playerEnd = playerStart + Vector3.up * distance;
+        Vector3 roomStart = room != null ? room.transform.position : playerStart;
+        Vector3 roomEnd = roomStart + Vector3.up * distance;
+
+        while (elapsed < duration)
+        {
+            elapsed += GetTransitionDelta(duration);
+            float t = Mathf.Clamp01(elapsed / Mathf.Max(0.01f, duration));
+            float eased = shiftCurve != null ? shiftCurve.Evaluate(t) : Mathf.SmoothStep(0f, 1f, t);
+            Vector3 nextPlayer = Vector3.LerpUnclamped(playerStart, playerEnd, eased);
+
+            player.transform.position = nextPlayer;
+            if (room != null)
+                room.transform.position = Vector3.LerpUnclamped(roomStart, roomEnd, eased);
+
+            yield return null;
+        }
+
+        player.transform.position = playerEnd;
+        if (room != null)
+            room.transform.position = roomEnd;
+
+        if (controllerWasEnabled)
+            controller.enabled = true;
+    }
+
+    private void TeleportPlayerForTransition(PlayerController player, Vector3 position)
+    {
+        if (player == null) return;
+
+        CharacterController controller = player.GetComponent<CharacterController>();
+        bool wasEnabled = controller != null && controller.enabled;
+        if (wasEnabled)
+            controller.enabled = false;
+        player.transform.position = position;
+        if (wasEnabled)
+            controller.enabled = true;
+    }
+
+    private GameObject CreateKlotskiLoadingPreview(Vector3 playerAnchor, Vector3 forward, CybergrindArenaGenerator generator)
+    {
+        GameObject root = new GameObject("ArenaKlotskiLoadingPreview");
+        if (forward.sqrMagnitude <= 0.0001f)
+            forward = Vector3.forward;
+
+        root.transform.position = playerAnchor + forward.normalized * Mathf.Max(1.4f, hologramWallDistance) + Vector3.up * hologramHeight;
+        root.transform.rotation = Quaternion.LookRotation(forward.normalized, Vector3.up);
+
+        Material frameMaterial = BuildTransparentMaterial(new Color(0.06f, 0.14f, 0.17f, 0.86f), true);
+        Material blockMaterial = BuildTransparentMaterial(new Color(hologramColor.r * 0.82f, hologramColor.g * 0.92f, hologramColor.b, 0.82f), true);
+        Material blockAltMaterial = BuildTransparentMaterial(new Color(0.24f, 0.58f, 0.72f, 0.78f), true);
+        Material keyMaterial = BuildTransparentMaterial(loadingBlockColor, true);
+        Material slotMaterial = BuildTransparentMaterial(new Color(0.015f, 0.05f, 0.06f, 0.46f), true);
+
+        int seed = generator != null && generator.lastGeneratedSeed != 0
+            ? generator.lastGeneratedSeed
+            : Mathf.Abs(Environment.TickCount);
+        var rng = new System.Random(unchecked(seed ^ 0x51f15e));
+
+        const int cols = 6;
+        const int rows = 4;
+        float cell = 0.34f;
+        float gap = 0.035f;
+        float boardWidth = cols * cell;
+        float boardHeight = rows * cell;
+        Vector3 boardOrigin = new Vector3(-(cols - 1) * cell * 0.5f, -(rows - 1) * cell * 0.5f, 0f);
+
+        CreateLoadingPiece(root.transform, "LoadingFrameTop", new Vector3(0f, boardHeight * 0.5f + 0.11f, 0f), new Vector3(boardWidth + 0.34f, 0.055f, 0.035f), frameMaterial);
+        CreateLoadingPiece(root.transform, "LoadingFrameBottom", new Vector3(0f, -boardHeight * 0.5f - 0.11f, 0f), new Vector3(boardWidth + 0.34f, 0.055f, 0.035f), frameMaterial);
+        CreateLoadingPiece(root.transform, "LoadingFrameLeft", new Vector3(-boardWidth * 0.5f - 0.11f, 0f, 0f), new Vector3(0.055f, boardHeight + 0.22f, 0.035f), frameMaterial);
+        CreateLoadingPiece(root.transform, "LoadingExitTop", new Vector3(boardWidth * 0.5f + 0.11f, 0.43f, 0f), new Vector3(0.055f, 0.62f, 0.035f), frameMaterial);
+        CreateLoadingPiece(root.transform, "LoadingExitBottom", new Vector3(boardWidth * 0.5f + 0.11f, -0.43f, 0f), new Vector3(0.055f, 0.62f, 0.035f), frameMaterial);
+
+        for (int col = 0; col < cols; col++)
+        {
+            for (int row = 0; row < rows; row++)
+            {
+                Vector3 slotPosition = CellToKlotskiLocal(boardOrigin, cell, col, row);
+                slotPosition.z = 0.035f;
+                CreateLoadingPiece(root.transform, "KlotskiSlot", slotPosition, KlotskiScale(cell, gap * 1.8f, 1f, 1f), slotMaterial);
+            }
+        }
+
+        bool flip = (rng.Next() & 1) == 0;
+        float upperShift = flip ? 0.08f : -0.02f;
+        float lowerShift = -upperShift;
+
+        CreateLoadingPiece(root.transform, "KlotskiKeyBlock", CellToKlotskiLocal(boardOrigin, cell, 1, 1.5f), KlotskiScale(cell, gap, 2f, 1f), keyMaterial);
+        CreateLoadingPiece(root.transform, "KlotskiBlockA", CellToKlotskiLocal(boardOrigin, cell, 3, 2.5f + upperShift), KlotskiScale(cell, gap, 2f, 1f), blockMaterial);
+        CreateLoadingPiece(root.transform, "KlotskiBlockB", CellToKlotskiLocal(boardOrigin, cell, 3, 0.5f + lowerShift), KlotskiScale(cell, gap, 2f, 1f), blockMaterial);
+        CreateLoadingPiece(root.transform, "KlotskiBlockC", CellToKlotskiLocal(boardOrigin, cell, 4.5f, 1.5f), KlotskiScale(cell, gap, 1f, 2f), blockAltMaterial);
+        CreateLoadingPiece(root.transform, "KlotskiBlockD", CellToKlotskiLocal(boardOrigin, cell, 0, 2.5f), KlotskiScale(cell, gap, 1f, 1f), blockAltMaterial);
+        CreateLoadingPiece(root.transform, "KlotskiBlockE", CellToKlotskiLocal(boardOrigin, cell, 0, 0.5f), KlotskiScale(cell, gap, 1f, 1f), blockAltMaterial);
+        if (rng.NextDouble() > 0.45)
+        {
+            CreateLoadingPiece(root.transform, "KlotskiBlockF", CellToKlotskiLocal(boardOrigin, cell, 5, 3f), KlotskiScale(cell, gap, 1f, 1f), blockMaterial);
+            CreateLoadingPiece(root.transform, "KlotskiBlockG", CellToKlotskiLocal(boardOrigin, cell, 5, 0f), KlotskiScale(cell, gap, 1f, 1f), blockMaterial);
+        }
+
+        CreateLoadingPiece(root.transform, "LoadingFillBack", new Vector3(0f, -boardHeight * 0.5f - 0.36f, 0.018f), new Vector3(boardWidth + 0.12f, 0.075f, 0.025f), frameMaterial);
+        CreateLoadingPiece(root.transform, "LoadingFill", new Vector3(-boardWidth * 0.5f, -boardHeight * 0.5f - 0.36f, 0f), new Vector3(0.08f, 0.07f, 0.035f), keyMaterial);
+
+        return root;
+    }
+
+    private Vector3 CellToKlotskiLocal(Vector3 origin, float cell, float col, float row)
+    {
+        return origin + new Vector3(col * cell, row * cell, -0.02f);
+    }
+
+    private Vector3 KlotskiScale(float cell, float gap, float cols, float rows)
+    {
+        return new Vector3(Mathf.Max(0.05f, cols * cell - gap), Mathf.Max(0.05f, rows * cell - gap), 0.045f);
+    }
+
+    private GameObject CreateLoadingPiece(Transform parent, string name, Vector3 localPosition, Vector3 localScale, Material material)
+    {
+        GameObject piece = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        piece.name = name;
+        piece.transform.SetParent(parent, false);
+        piece.transform.localPosition = localPosition;
+        piece.transform.localScale = localScale;
+        piece.transform.localRotation = Quaternion.identity;
+        if (piece.TryGetComponent(out Renderer renderer))
+            renderer.material = material;
+
+        Collider collider = piece.GetComponent<Collider>();
+        if (collider != null)
+        {
+            if (Application.isPlaying) Destroy(collider);
+            else DestroyImmediate(collider);
+        }
+
+        return piece;
+    }
+
+    private IEnumerator AnimateKlotskiLoadingPreview(GameObject preview, float duration)
+    {
+        if (preview == null) yield break;
+
+        Transform key = preview.transform.Find("KlotskiKeyBlock");
+        Transform blockA = preview.transform.Find("KlotskiBlockA");
+        Transform blockB = preview.transform.Find("KlotskiBlockB");
+        Transform blockC = preview.transform.Find("KlotskiBlockC");
+        Transform blockD = preview.transform.Find("KlotskiBlockD");
+        Transform blockE = preview.transform.Find("KlotskiBlockE");
+        Transform blockF = preview.transform.Find("KlotskiBlockF");
+        Transform blockG = preview.transform.Find("KlotskiBlockG");
+        Transform fill = preview.transform.Find("LoadingFill");
+
+        Vector3 keyStart = key != null ? key.localPosition : Vector3.zero;
+        Vector3 blockAStart = blockA != null ? blockA.localPosition : Vector3.zero;
+        Vector3 blockBStart = blockB != null ? blockB.localPosition : Vector3.zero;
+        Vector3 blockCStart = blockC != null ? blockC.localPosition : Vector3.zero;
+        Vector3 blockDStart = blockD != null ? blockD.localPosition : Vector3.zero;
+        Vector3 blockEStart = blockE != null ? blockE.localPosition : Vector3.zero;
+        Vector3 blockFStart = blockF != null ? blockF.localPosition : Vector3.zero;
+        Vector3 blockGStart = blockG != null ? blockG.localPosition : Vector3.zero;
+        Vector3 fillStart = fill != null ? fill.localPosition : Vector3.zero;
+        float fillMaxWidth = 2.16f;
+
+        float elapsed = 0f;
+        while (elapsed < duration)
+        {
+            elapsed += GetTransitionDelta(duration);
+            float t = Mathf.Clamp01(elapsed / Mathf.Max(0.01f, duration));
+
+            float pair = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(t / 0.28f));
+            float side = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01((t - 0.16f) / 0.28f));
+            float gate = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01((t - 0.34f) / 0.28f));
+            float corner = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01((t - 0.46f) / 0.22f));
+            float keyMove = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01((t - 0.62f) / 0.34f));
+
+            if (blockA != null) blockA.localPosition = blockAStart + Vector3.up * (0.36f * pair);
+            if (blockB != null) blockB.localPosition = blockBStart + Vector3.down * (0.36f * pair);
+            if (blockD != null) blockD.localPosition = blockDStart + Vector3.left * (0.25f * side);
+            if (blockE != null) blockE.localPosition = blockEStart + Vector3.left * (0.25f * side);
+            if (blockC != null) blockC.localPosition = blockCStart + Vector3.up * (0.48f * gate) + Vector3.right * (0.20f * gate);
+            if (blockF != null) blockF.localPosition = blockFStart + Vector3.up * (0.18f * corner);
+            if (blockG != null) blockG.localPosition = blockGStart + Vector3.down * (0.18f * corner);
+            if (key != null) key.localPosition = Vector3.LerpUnclamped(keyStart, new Vector3(1.12f, keyStart.y, keyStart.z), keyMove);
+            if (fill != null)
+            {
+                fill.localScale = new Vector3(Mathf.Lerp(0.08f, fillMaxWidth, t), fill.localScale.y, fill.localScale.z);
+                fill.localPosition = new Vector3(Mathf.Lerp(fillStart.x, 0f, t), fillStart.y, fillStart.z);
+            }
+
+            preview.transform.localScale = Vector3.one * (1f + Mathf.Sin(t * Mathf.PI * 10f) * 0.01f);
+            yield return null;
+        }
+
+        if (key != null) key.localPosition = new Vector3(1.12f, keyStart.y, keyStart.z);
+        if (fill != null)
+        {
+            fill.localScale = new Vector3(fillMaxWidth, fill.localScale.y, fill.localScale.z);
+            fill.localPosition = new Vector3(0f, fillStart.y, fillStart.z);
+        }
+        preview.transform.localScale = Vector3.one;
     }
 
     public IEnumerator DebugPreviewReconfigureTransition(CybergrindArenaGenerator generator, float duration)
@@ -1509,6 +1932,7 @@ public class CybergrindTransitionController : MonoBehaviour
             bannerTitleText = banner.Find("TransitionBannerTitle")?.GetComponent<TMP_Text>();
             bannerSubtitleText = banner.Find("TransitionBannerSubtitle")?.GetComponent<TMP_Text>();
         }
+
     }
 
     private TMP_Text CreateBannerText(Transform parent, string name, float fontSize, Vector2 anchor, Color color)

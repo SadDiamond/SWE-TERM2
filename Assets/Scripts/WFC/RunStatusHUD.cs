@@ -17,10 +17,14 @@ public class RunStatusHUD : MonoBehaviour
     public TMP_Text objectiveText;
     public TMP_Text seedText;
     public TMP_Text coreProgressText;
+    public TMP_Text speedText;
+    public TMP_Text dashText;
     public TMP_Text hpText;
     public TMP_Text coinText;
     public Image coreProgressFill;
     public Image hpFill;
+    public Image dashRechargeFill;
+    public Image[] dashPips = new Image[5];
     public Image headerPanel;
     public Image objectivePanel;
     public Image vitalsPanel;
@@ -205,6 +209,11 @@ public class RunStatusHUD : MonoBehaviour
             hpText.text = $"HP {Mathf.CeilToInt(player.currentHealth)}/{Mathf.CeilToInt(player.EffectiveMaxHealth)}";
         if (coinText != null)
             coinText.text = $"Coins {player.currency}";
+        if (speedText != null)
+            speedText.text = $"Speed {player.PlanarSpeed:0.0} u/s";
+        if (dashText != null)
+            dashText.text = "Dash";
+        RefreshDashPips(player);
         if (hpFill != null)
             hpFill.fillAmount = Mathf.Clamp01(player.currentHealth / Mathf.Max(1f, player.EffectiveMaxHealth));
     }
@@ -279,32 +288,85 @@ public class RunStatusHUD : MonoBehaviour
     {
         EnsurePanels();
 
-        floorText = floorText != null ? floorText : CreateHudText("FloorText", new Vector2(18f, -70f), 16f);
-        ApplyTextLayout(floorText, new Vector2(18f, -70f), new Vector2(320f, 20f), 16f);
-        cycleText = cycleText != null ? cycleText : CreateHudText("CycleText", new Vector2(18f, -92f), 12.5f);
-        ApplyTextLayout(cycleText, new Vector2(18f, -92f), new Vector2(320f, 20f), 12.5f);
-        directiveText = directiveText != null ? directiveText : CreateHudText("DirectiveText", new Vector2(18f, -110f), 9.5f);
+        floorText = floorText != null ? floorText : CreateHudText("FloorText", new Vector2(22f, -68f), 18f);
+        ApplyTextLayout(floorText, new Vector2(22f, -68f), new Vector2(330f, 22f), 18f);
+        ApplyTextStyle(floorText, new Color(0.90f, 1f, 0.96f, 1f), FontStyles.Bold);
+        cycleText = cycleText != null ? cycleText : CreateHudText("CycleText", new Vector2(22f, -93f), 12f);
+        ApplyTextLayout(cycleText, new Vector2(22f, -93f), new Vector2(330f, 18f), 12f);
+        ApplyTextStyle(cycleText, new Color(0.55f, 0.92f, 1f, 0.95f), FontStyles.Normal);
+        directiveText = directiveText != null ? directiveText : CreateHudText("DirectiveText", new Vector2(22f, -110f), 9.5f);
         if (directiveText != null)
         {
             directiveText.textWrappingMode = TextWrappingModes.Normal;
-            ApplyTextLayout(directiveText, new Vector2(18f, -110f), new Vector2(310f, 28f), 9.5f);
+            ApplyTextLayout(directiveText, new Vector2(22f, -110f), new Vector2(320f, 28f), 9.5f);
+            ApplyTextStyle(directiveText, new Color(0.72f, 0.78f, 0.82f, 0.92f), FontStyles.Normal);
         }
-        objectiveText = objectiveText != null ? objectiveText : CreateHudText("ObjectiveText", new Vector2(18f, -146f), 13f);
-        ApplyTextLayout(objectiveText, new Vector2(18f, -146f), new Vector2(320f, 20f), 13f);
-        seedText = seedText != null ? seedText : CreateHudText("SeedText", new Vector2(18f, -168f), 9f);
-        ApplyTextLayout(seedText, new Vector2(18f, -168f), new Vector2(320f, 18f), 9f);
-        coreProgressText = coreProgressText != null ? coreProgressText : CreateHudText("CoreProgressText", new Vector2(18f, -186f), 9f);
-        ApplyTextLayout(coreProgressText, new Vector2(18f, -186f), new Vector2(320f, 18f), 9f);
+        objectiveText = objectiveText != null ? objectiveText : CreateHudText("ObjectiveText", new Vector2(22f, -150f), 14f);
+        ApplyTextLayout(objectiveText, new Vector2(22f, -150f), new Vector2(330f, 21f), 14f);
+        ApplyTextStyle(objectiveText, new Color(1f, 0.92f, 0.62f, 1f), FontStyles.Bold);
+        seedText = seedText != null ? seedText : CreateHudText("SeedText", new Vector2(22f, -174f), 9f);
+        ApplyTextLayout(seedText, new Vector2(22f, -174f), new Vector2(330f, 18f), 9f);
+        ApplyTextStyle(seedText, new Color(0.62f, 0.70f, 0.74f, 0.9f), FontStyles.Normal);
+        coreProgressText = coreProgressText != null ? coreProgressText : CreateHudText("CoreProgressText", new Vector2(22f, -193f), 10f);
+        ApplyTextLayout(coreProgressText, new Vector2(22f, -193f), new Vector2(330f, 18f), 10f);
+        ApplyTextStyle(coreProgressText, new Color(0.80f, 0.96f, 1f, 0.95f), FontStyles.Normal);
         if (coreProgressFill == null)
-            coreProgressFill = CreateProgressBar("CoreProgressBar", new Vector2(18f, -204f), new Vector2(156f, 6f), new Color(0.74f, 0.95f, 1f, 0.95f));
-        ApplyProgressLayout(coreProgressFill, new Vector2(18f, -204f), new Vector2(156f, 6f));
-        hpText = hpText != null ? hpText : CreateHudText("HPText", new Vector2(18f, -244f), 12f);
-        ApplyTextLayout(hpText, new Vector2(18f, -244f), new Vector2(150f, 20f), 12f);
-        coinText = coinText != null ? coinText : CreateHudText("CoinText", new Vector2(188f, -244f), 12f);
-        ApplyTextLayout(coinText, new Vector2(188f, -244f), new Vector2(140f, 20f), 12f);
+            coreProgressFill = CreateProgressBar("CoreProgressBar", new Vector2(22f, -213f), new Vector2(178f, 8f), new Color(0.74f, 0.95f, 1f, 0.95f));
+        ApplyProgressLayout(coreProgressFill, new Vector2(22f, -213f), new Vector2(178f, 8f));
+        speedText = speedText != null ? speedText : CreateHudText("SpeedText", new Vector2(22f, -246f), 14f);
+        ApplyTextLayout(speedText, new Vector2(22f, -246f), new Vector2(220f, 22f), 14f);
+        ApplyTextStyle(speedText, new Color(0.88f, 1f, 0.62f, 1f), FontStyles.Bold);
+        dashText = dashText != null ? dashText : CreateHudText("DashText", new Vector2(22f, -270f), 11f);
+        ApplyTextLayout(dashText, new Vector2(22f, -270f), new Vector2(60f, 18f), 11f);
+        ApplyTextStyle(dashText, new Color(0.70f, 0.92f, 1f, 0.96f), FontStyles.Bold);
+        EnsureDashPips();
+        hpText = hpText != null ? hpText : CreateHudText("HPText", new Vector2(22f, -296f), 13f);
+        ApplyTextLayout(hpText, new Vector2(22f, -296f), new Vector2(160f, 20f), 13f);
+        ApplyTextStyle(hpText, new Color(0.70f, 1f, 0.62f, 1f), FontStyles.Bold);
+        coinText = coinText != null ? coinText : CreateHudText("CoinText", new Vector2(204f, -296f), 12f);
+        ApplyTextLayout(coinText, new Vector2(204f, -296f), new Vector2(145f, 20f), 12f);
+        ApplyTextStyle(coinText, new Color(1f, 0.85f, 0.42f, 0.96f), FontStyles.Bold);
         if (hpFill == null)
-            hpFill = CreateProgressBar("HPProgressBar", new Vector2(18f, -264f), new Vector2(260f, 7f), new Color(0.78f, 1f, 0.72f, 0.95f));
-        ApplyProgressLayout(hpFill, new Vector2(18f, -264f), new Vector2(260f, 7f));
+            hpFill = CreateProgressBar("HPProgressBar", new Vector2(22f, -320f), new Vector2(285f, 10f), new Color(0.45f, 1f, 0.34f, 0.95f));
+        ApplyProgressLayout(hpFill, new Vector2(22f, -320f), new Vector2(285f, 10f));
+    }
+
+    private void EnsureDashPips()
+    {
+        if (dashPips == null || dashPips.Length != 5)
+            dashPips = new Image[5];
+
+        for (int i = 0; i < dashPips.Length; i++)
+        {
+            string name = $"DashPip{i + 1}";
+            dashPips[i] = dashPips[i] != null ? dashPips[i] : CreateDashPip(name, new Vector2(76f + i * 31f, -272f), new Vector2(24f, 10f));
+            ApplyDashPipLayout(dashPips[i], new Vector2(76f + i * 31f, -272f), new Vector2(24f, 10f));
+        }
+    }
+
+    private void RefreshDashPips(PlayerController player)
+    {
+        if (player == null) return;
+        EnsureDashPips();
+
+        int max = Mathf.Clamp(player.MaxDashCharges, 1, dashPips.Length);
+        int charges = Mathf.Clamp(player.DashCharges, 0, max);
+        float recharge = player.DashRecharge01;
+
+        for (int i = 0; i < dashPips.Length; i++)
+        {
+            Image pip = dashPips[i];
+            if (pip == null) continue;
+
+            GameObject pipRoot = pip.transform.parent != null ? pip.transform.parent.gameObject : pip.gameObject;
+            pipRoot.SetActive(i < max);
+            if (i >= max) continue;
+
+            pip.fillAmount = i < charges ? 1f : (i == charges ? recharge : 0f);
+            pip.color = i < charges
+                ? new Color(0.50f, 0.95f, 1f, 0.96f)
+                : new Color(0.50f, 0.95f, 1f, 0.58f);
+        }
     }
 
     private TMP_Text CreateHudText(string name, Vector2 anchoredPos, float fontSize)
@@ -332,6 +394,9 @@ public class RunStatusHUD : MonoBehaviour
         text.color = Color.white;
         text.textWrappingMode = TextWrappingModes.NoWrap;
         text.overflowMode = TextOverflowModes.Ellipsis;
+        Shadow shadow = go.AddComponent<Shadow>();
+        shadow.effectColor = new Color(0f, 0f, 0f, 0.7f);
+        shadow.effectDistance = new Vector2(1.5f, -1.5f);
         return text;
     }
 
@@ -352,17 +417,24 @@ public class RunStatusHUD : MonoBehaviour
         text.overflowMode = TextOverflowModes.Ellipsis;
     }
 
+    private void ApplyTextStyle(TMP_Text text, Color color, FontStyles style)
+    {
+        if (text == null) return;
+        text.color = color;
+        text.fontStyle = style;
+    }
+
     private void EnsurePanels()
     {
         RectTransform parentRect = transform as RectTransform;
         if (parentRect == null) return;
 
-        headerPanel = headerPanel != null ? headerPanel : CreatePanel("HeaderPanel", new Vector2(10f, -64f), new Vector2(342f, 62f));
-        ApplyPanelLayout(headerPanel, new Vector2(10f, -64f), new Vector2(342f, 62f));
-        objectivePanel = objectivePanel != null ? objectivePanel : CreatePanel("ObjectivePanel", new Vector2(10f, -136f), new Vector2(342f, 86f));
-        ApplyPanelLayout(objectivePanel, new Vector2(10f, -136f), new Vector2(342f, 86f));
-        vitalsPanel = vitalsPanel != null ? vitalsPanel : CreatePanel("VitalsPanel", new Vector2(10f, -234f), new Vector2(342f, 48f));
-        ApplyPanelLayout(vitalsPanel, new Vector2(10f, -234f), new Vector2(342f, 48f));
+        headerPanel = headerPanel != null ? headerPanel : CreatePanel("HeaderPanel", new Vector2(12f, -60f), new Vector2(360f, 72f));
+        ApplyPanelLayout(headerPanel, new Vector2(12f, -60f), new Vector2(360f, 72f));
+        objectivePanel = objectivePanel != null ? objectivePanel : CreatePanel("ObjectivePanel", new Vector2(12f, -140f), new Vector2(360f, 94f));
+        ApplyPanelLayout(objectivePanel, new Vector2(12f, -140f), new Vector2(360f, 94f));
+        vitalsPanel = vitalsPanel != null ? vitalsPanel : CreatePanel("VitalsPanel", new Vector2(12f, -238f), new Vector2(360f, 104f));
+        ApplyPanelLayout(vitalsPanel, new Vector2(12f, -238f), new Vector2(360f, 104f));
     }
 
     private Image CreatePanel(string name, Vector2 anchoredPos, Vector2 size)
@@ -382,7 +454,10 @@ public class RunStatusHUD : MonoBehaviour
         rect.sizeDelta = size;
 
         Image image = go.AddComponent<Image>();
-        image.color = new Color(0.02f, 0.05f, 0.08f, 0.8f);
+        image.color = new Color(0.01f, 0.025f, 0.035f, 0.82f);
+        Outline outline = go.AddComponent<Outline>();
+        outline.effectColor = new Color(0.20f, 0.85f, 1f, 0.22f);
+        outline.effectDistance = new Vector2(1.5f, -1.5f);
         return image;
     }
 
@@ -413,7 +488,10 @@ public class RunStatusHUD : MonoBehaviour
         backRect.sizeDelta = size;
 
         Image backImage = back.AddComponent<Image>();
-        backImage.color = new Color(0.08f, 0.09f, 0.12f, 0.95f);
+        backImage.color = new Color(0.015f, 0.02f, 0.025f, 0.95f);
+        Outline outline = back.AddComponent<Outline>();
+        outline.effectColor = new Color(0.75f, 1f, 0.95f, 0.24f);
+        outline.effectDistance = new Vector2(1f, -1f);
 
         GameObject fill = new GameObject("Fill");
         fill.transform.SetParent(back.transform, false);
@@ -431,7 +509,57 @@ public class RunStatusHUD : MonoBehaviour
         return fillImage;
     }
 
+    private Image CreateDashPip(string name, Vector2 anchoredPos, Vector2 size)
+    {
+        Transform existing = transform.Find(name);
+        if (existing != null)
+            return existing.Find("Fill")?.GetComponent<Image>();
+
+        GameObject back = new GameObject(name);
+        back.transform.SetParent(transform, false);
+        RectTransform backRect = back.AddComponent<RectTransform>();
+        backRect.anchorMin = new Vector2(0f, 1f);
+        backRect.anchorMax = new Vector2(0f, 1f);
+        backRect.pivot = new Vector2(0f, 1f);
+        backRect.anchoredPosition = anchoredPos;
+        backRect.sizeDelta = size;
+
+        Image backImage = back.AddComponent<Image>();
+        backImage.color = new Color(0.015f, 0.025f, 0.035f, 0.92f);
+        Outline outline = back.AddComponent<Outline>();
+        outline.effectColor = new Color(0.50f, 0.95f, 1f, 0.38f);
+        outline.effectDistance = new Vector2(1f, -1f);
+
+        GameObject fill = new GameObject("Fill");
+        fill.transform.SetParent(back.transform, false);
+        RectTransform fillRect = fill.AddComponent<RectTransform>();
+        fillRect.anchorMin = Vector2.zero;
+        fillRect.anchorMax = Vector2.one;
+        fillRect.offsetMin = Vector2.zero;
+        fillRect.offsetMax = Vector2.zero;
+
+        Image fillImage = fill.AddComponent<Image>();
+        fillImage.type = Image.Type.Filled;
+        fillImage.fillMethod = Image.FillMethod.Horizontal;
+        fillImage.fillAmount = 1f;
+        fillImage.color = new Color(0.50f, 0.95f, 1f, 0.96f);
+        return fillImage;
+    }
+
     private void ApplyProgressLayout(Image fill, Vector2 anchoredPos, Vector2 size)
+    {
+        if (fill == null || fill.transform.parent == null) return;
+        RectTransform backRect = fill.transform.parent as RectTransform;
+        if (backRect == null) return;
+
+        backRect.anchorMin = new Vector2(0f, 1f);
+        backRect.anchorMax = new Vector2(0f, 1f);
+        backRect.pivot = new Vector2(0f, 1f);
+        backRect.anchoredPosition = anchoredPos;
+        backRect.sizeDelta = size;
+    }
+
+    private void ApplyDashPipLayout(Image fill, Vector2 anchoredPos, Vector2 size)
     {
         if (fill == null || fill.transform.parent == null) return;
         RectTransform backRect = fill.transform.parent as RectTransform;
