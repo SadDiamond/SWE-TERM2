@@ -5,6 +5,9 @@ using UnityEngine.UI;
 
 public class ProjectStructureSettingsMenu : MonoBehaviour
 {
+    private const float MinSensitivityPercent = 0f;
+    private const float MaxSensitivityPercent = 200f;
+    private const float SensitivityStepPercent = 5f;
     public PlayerController player;
     public KeyCode toggleKey = KeyCode.Escape;
 
@@ -131,7 +134,7 @@ public class ProjectStructureSettingsMenu : MonoBehaviour
         switch (selectedIndex)
         {
             case 0:
-                sensitivity = Mathf.Clamp(sensitivity + direction * 5f, 20f, 220f);
+                sensitivity = Mathf.Clamp(sensitivity + direction * SensitivityStepPercent, MinSensitivityPercent, MaxSensitivityPercent);
                 break;
             case 1:
                 baseFov = Mathf.Clamp(baseFov + direction * 2f, 70f, 120f);
@@ -250,7 +253,7 @@ public class ProjectStructureSettingsMenu : MonoBehaviour
         string restartLabel = presentation != null && presentation.IsTitleVisible ? "Start Run" : "Restart Run";
         bodyText.text =
             BuildStatusLine() + "\n\n" +
-            $"{GetLine(0, $"Sensitivity     {Mathf.RoundToInt(sensitivity),3}   {BuildMeter(Mathf.InverseLerp(20f, 220f, sensitivity), 12)}")}\n" +
+            $"{GetLine(0, $"Sensitivity     {Mathf.RoundToInt(sensitivity),3}%  {BuildMeter(Mathf.InverseLerp(MinSensitivityPercent, MaxSensitivityPercent, sensitivity), 12)}")}\n" +
             $"{GetLine(1, $"Field of View      {Mathf.RoundToInt(baseFov),3}   {BuildMeter(Mathf.InverseLerp(70f, 120f, baseFov), 12)}")}\n" +
             $"{GetLine(2, $"Volume             {Mathf.RoundToInt(masterVolume * 100f),3}%  {BuildMeter(masterVolume, 12)}")}\n" +
             $"{GetLine(3, $"UI Scale           {Mathf.RoundToInt(uiScale * 100f),3}%  {BuildMeter(Mathf.InverseLerp(ProjectStructureUIRoot.MinUIScale, ProjectStructureUIRoot.MaxUIScale, uiScale), 12)}")}\n" +

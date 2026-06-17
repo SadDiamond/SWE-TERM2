@@ -8,6 +8,15 @@ using UnityEngine.UI;
 
 public class CybergrindTransitionController : MonoBehaviour
 {
+    [Header("Transition Mode")]
+    public bool useScreenSpaceTransition = true;
+
+    [Header("Screen Space Transition")]
+    [Min(0.05f)] public float curtainCloseDuration = 0.55f;
+    [Min(0f)] public float curtainHoldDuration = 1.35f;
+    [Min(0.05f)] public float curtainOpenDuration = 0.55f;
+    public Color curtainColor = new Color(0.008f, 0.016f, 0.022f, 1f);
+
     [Header("Structure Shift Timing")]
     public bool useElevatorHologramTransition = true;
     [Min(0.05f)] public float oldArenaDropDuration = 2.15f;
@@ -84,6 +93,15 @@ public class CybergrindTransitionController : MonoBehaviour
     public float DebugLastMaxVerticalDelta { get; private set; }
 
     private Image flashOverlay;
+    private Image transitionCurtain;
+    private CanvasGroup klotskiLoaderGroup;
+    private Transform loadingCubeRoot;
+    private Camera loadingCubeCamera;
+    private RenderTexture loadingCubeTexture;
+    private readonly List<Renderer> loadingCubeRenderers = new List<Renderer>();
+    private readonly List<Color> loadingCubeStartColors = new List<Color>();
+    private readonly List<Transform> loadingCubePieces = new List<Transform>();
+    private readonly List<Vector3Int> loadingCubeCoordinates = new List<Vector3Int>();
     private CanvasGroup bannerGroup;
     private TMP_Text bannerTitleText;
     private TMP_Text bannerSubtitleText;
@@ -108,6 +126,12 @@ public class CybergrindTransitionController : MonoBehaviour
 
     private IEnumerator ExitTransitionRoutine(CybergrindArenaGenerator generator, PlayerController player, Action swapAction)
     {
+        if (useScreenSpaceTransition)
+        {
+            yield return ScreenSpaceTransitionRoutine(generator, player, swapAction);
+            yield break;
+        }
+
         if (useElevatorHologramTransition)
         {
             yield return ElevatorHologramTransitionRoutine(generator, player, swapAction);
@@ -196,6 +220,228 @@ public class CybergrindTransitionController : MonoBehaviour
         IsTransitioning = false;
         DebugStage = "Complete";
         onTransitionFinished?.Invoke();
+    }
+
+    private IEnumerator ScreenSpaceTransitionRoutine(CybergrindArenaGenerator generator, PlayerController player, Action swapAction)
+    {
+        if (IsTransitioning) yield break;
+
+        IsTransitioning = true;
+        DebugStage = "CurtainClose";
+        onTransitionStarted?.Invoke();
+
+        string themeLabel = generator != null ? generator.GetThemeLabel() : "Arena";
+        ShowTransitionBanner("FLOOR SHIFT", $"{themeLabel}. Rebuilding arena.");
+
+        if (player != null)
+        {
+            player.ToggleUIMode(false);
+            player.SetTransitionLock(true);
+        }
+
+        Transform oldRoot = generator != null ? generator.CurrentArenaRoot : null;
+        ShowKlotskiLoader(true);
+        StartTransitionRoutine(AnimateScreenSpaceKlotski());
+        yield return FadeTransitionCurtain(0f, 1f, curtainCloseDuration);
+
+        DebugStage = "Swap";
+        if (oldRoot != null)
+            oldRoot.gameObject.SetActive(false);
+
+        if (generator != null)
+            generator.skipPlayerPlacementOnce = true;
+
+        DestroyTransientContent(oldRoot);
+        onSwapMoment?.Invoke();
+        swapAction?.Invoke();
+        yield return null;
+
+        Transform newRoot = generator != null ? generator.CurrentArenaRoot : null;
+        if (newRoot != null)
+            newRoot.gameObject.SetActive(true);
+
+        DebugStage = "PlacePlayer";
+        if (generator != null && player != null)
+            generator.PlacePlayerAtSpawn();
+
+        if (oldRoot != null && oldRoot != newRoot)
+            DestroyTransitionObject(oldRoot.gameObject);
+
+        string nextThemeLabel = generator != null ? generator.GetThemeLabel() : themeLabel;
+        string nextDirectiveTitle = generator != null ? generator.GetThemeDirectiveTitle() : string.Empty;
+        ShowTransitionBanner(
+            "NEXT FLOOR",
+            string.IsNullOrWhiteSpace(nextDirectiveTitle)
+                ? nextThemeLabel
+                : $"{nextThemeLabel}. {nextDirectiveTitle}");
+
+        if (curtainHoldDuration > 0f)
+        {
+            DebugStage = "CurtainHold";
+            yield return new WaitForSecondsRealtime(curtainHoldDuration);
+        }
+
+        DebugStage = "CurtainOpen";
+        yield return FadeTransitionCurtain(1f, 0f, curtainOpenDuration);
+        ShowKlotskiLoader(false);
+
+        if (player != null)
+            player.SetTransitionLock(false);
+
+        IsTransitioning = false;
+        DebugStage = "Complete";
+        onTransitionFinished?.Invoke();
+    }
+
+    private IEnumerator FadeTransitionCurtain(float fromAlpha, float toAlpha, float duration)
+    {
+        EnsureOverlay();
+        if (transitionCurtain == null) yield break;
+
+        ProjectStructureUIRoot.BringToFront(transitionCurtain.transform);
+        transitionCurtain.enabled = true;
+        float elapsed = 0f;
+        while (elapsed < duration)
+        {
+            elapsed += GetTransitionDelta(duration);
+            float t = Mathf.Clamp01(elapsed / Mathf.Max(0.01f, duration));
+            float eased = shiftCurve != null
+                ? Mathf.Clamp01(shiftCurve.Evaluate(t))
+                : Mathf.SmoothStep(0f, 1f, t);
+            Color color = curtainColor;
+            color.a *= Mathf.Lerp(fromAlpha, toAlpha, eased);
+            transitionCurtain.color = color;
+            yield return null;
+        }
+
+        Color finalColor = curtainColor;
+        finalColor.a *= toAlpha;
+        transitionCurtain.color = finalColor;
+        transitionCurtain.enabled = toAlpha > 0.001f;
+    }
+
+    private void ShowKlotskiLoader(bool visible)
+    {
+        EnsureOverlay();
+        if (klotskiLoaderGroup == null) return;
+        klotskiLoaderGroup.gameObject.SetActive(visible);
+        klotskiLoaderGroup.alpha = visible ? 1f : 0f;
+        if (loadingCubeCamera != null)
+            loadingCubeCamera.enabled = visible;
+        if (visible)
+        {
+            for (int i = 0; i < loadingCubeRenderers.Count && i < loadingCubeStartColors.Count; i++)
+                if (loadingCubeRenderers[i] != null)
+                    loadingCubeRenderers[i].material.color = loadingCubeStartColors[i];
+            PrepareLoadingCubeScramble();
+        }
+    }
+
+    private IEnumerator AnimateScreenSpaceKlotski()
+    {
+        if (klotskiLoaderGroup == null || loadingCubeRoot == null) yield break;
+        loadingCubeRoot.localRotation = Quaternion.Euler(18f, -28f, 8f);
+        yield return new WaitForSecondsRealtime(0.2f);
+
+        // A short, readable inverse scramble: every move turns one complete 3x3 slice.
+        yield return RotateLoadingCubeSlice(0, 1, -1, 0.28f);
+        yield return RotateLoadingCubeSlice(1, -1, 1, 0.28f);
+        yield return RotateLoadingCubeSlice(2, 1, -1, 0.28f);
+        yield return RotateLoadingCubeSlice(0, -1, 1, 0.28f);
+        yield return RotateLoadingCubeSlice(1, 1, -1, 0.28f);
+
+        while (klotskiLoaderGroup != null && klotskiLoaderGroup.gameObject.activeSelf)
+        {
+            loadingCubeRoot.Rotate(Vector3.up, 9f * Time.unscaledDeltaTime, Space.World);
+            yield return null;
+        }
+    }
+
+    private IEnumerator RotateLoadingCubeSlice(int axis, int layer, int direction, float duration)
+    {
+        GameObject pivotObject = new GameObject("CubeSlicePivot");
+        Transform pivot = pivotObject.transform;
+        pivot.SetParent(loadingCubeRoot, false);
+        List<int> selected = new List<int>(9);
+        for (int i = 0; i < loadingCubePieces.Count; i++)
+        {
+            Vector3Int coordinate = loadingCubeCoordinates[i];
+            int value = axis == 0 ? coordinate.x : axis == 1 ? coordinate.y : coordinate.z;
+            if (value != layer || loadingCubePieces[i] == null) continue;
+            selected.Add(i);
+            loadingCubePieces[i].SetParent(pivot, true);
+        }
+
+        Vector3 rotationAxis = axis == 0 ? Vector3.right : axis == 1 ? Vector3.up : Vector3.forward;
+        float elapsed = 0f;
+        while (elapsed < duration)
+        {
+            elapsed += Time.unscaledDeltaTime;
+            float t = Mathf.Clamp01(elapsed / duration);
+            float eased = t * t * (3f - 2f * t);
+            pivot.localRotation = Quaternion.AngleAxis(90f * direction * eased, rotationAxis);
+            yield return null;
+        }
+
+        pivot.localRotation = Quaternion.AngleAxis(90f * direction, rotationAxis);
+        for (int i = 0; i < selected.Count; i++)
+        {
+            int index = selected[i];
+            Transform piece = loadingCubePieces[index];
+            piece.SetParent(loadingCubeRoot, true);
+            piece.localPosition = SnapCubeVector(piece.localPosition, 0.72f);
+            piece.localRotation = SnapCubeRotation(piece.localRotation);
+            loadingCubeCoordinates[index] = Vector3Int.RoundToInt(piece.localPosition / 0.72f);
+        }
+        Destroy(pivotObject);
+        yield return new WaitForSecondsRealtime(0.06f);
+    }
+
+    private void PrepareLoadingCubeScramble()
+    {
+        loadingCubeRoot.localRotation = Quaternion.Euler(18f, -28f, 8f);
+        for (int i = 0; i < loadingCubePieces.Count; i++)
+        {
+            Transform piece = loadingCubePieces[i];
+            Vector3Int coordinate = loadingCubeCoordinates[i];
+            if (piece == null) continue;
+            piece.SetParent(loadingCubeRoot, false);
+            piece.localPosition = new Vector3(coordinate.x, coordinate.y, coordinate.z) * 0.72f;
+            piece.localRotation = Quaternion.identity;
+        }
+
+        ApplyLoadingCubeSliceInstant(1, 1, 1);
+        ApplyLoadingCubeSliceInstant(0, -1, -1);
+        ApplyLoadingCubeSliceInstant(2, 1, 1);
+        ApplyLoadingCubeSliceInstant(1, -1, -1);
+        ApplyLoadingCubeSliceInstant(0, 1, 1);
+    }
+
+    private void ApplyLoadingCubeSliceInstant(int axis, int layer, int direction)
+    {
+        Vector3 rotationAxis = axis == 0 ? Vector3.right : axis == 1 ? Vector3.up : Vector3.forward;
+        Quaternion rotation = Quaternion.AngleAxis(90f * direction, rotationAxis);
+        for (int i = 0; i < loadingCubePieces.Count; i++)
+        {
+            Vector3Int coordinate = loadingCubeCoordinates[i];
+            int value = axis == 0 ? coordinate.x : axis == 1 ? coordinate.y : coordinate.z;
+            if (value != layer || loadingCubePieces[i] == null) continue;
+            Transform piece = loadingCubePieces[i];
+            piece.localPosition = SnapCubeVector(rotation * piece.localPosition, 0.72f);
+            piece.localRotation = SnapCubeRotation(rotation * piece.localRotation);
+            loadingCubeCoordinates[i] = Vector3Int.RoundToInt(piece.localPosition / 0.72f);
+        }
+    }
+
+    private static Vector3 SnapCubeVector(Vector3 value, float step)
+    {
+        return new Vector3(Mathf.Round(value.x / step), Mathf.Round(value.y / step), Mathf.Round(value.z / step)) * step;
+    }
+
+    private static Quaternion SnapCubeRotation(Quaternion value)
+    {
+        Vector3 euler = value.eulerAngles;
+        return Quaternion.Euler(Mathf.Round(euler.x / 90f) * 90f, Mathf.Round(euler.y / 90f) * 90f, Mathf.Round(euler.z / 90f) * 90f);
     }
 
     public IEnumerator DebugPreviewTransitionLook(CybergrindArenaGenerator generator, float duration)
@@ -1885,10 +2131,32 @@ public class CybergrindTransitionController : MonoBehaviour
 
     private void EnsureOverlay()
     {
-        if (flashOverlay != null && bannerGroup != null) return;
+        if (flashOverlay != null && transitionCurtain != null && bannerGroup != null) return;
 
         Canvas canvas = ProjectStructureUIRoot.GetOrCreateCanvas();
         if (canvas == null) return;
+
+        Transform curtain = canvas.transform.Find("TransitionCurtain");
+        if (curtain == null)
+        {
+            GameObject curtainGo = new GameObject("TransitionCurtain");
+            curtainGo.transform.SetParent(canvas.transform, false);
+            RectTransform rect = curtainGo.AddComponent<RectTransform>();
+            rect.anchorMin = Vector2.zero;
+            rect.anchorMax = Vector2.one;
+            rect.offsetMin = Vector2.zero;
+            rect.offsetMax = Vector2.zero;
+            transitionCurtain = curtainGo.AddComponent<Image>();
+            transitionCurtain.raycastTarget = false;
+            transitionCurtain.color = new Color(curtainColor.r, curtainColor.g, curtainColor.b, 0f);
+            transitionCurtain.enabled = false;
+        }
+        else
+        {
+            transitionCurtain = curtain.GetComponent<Image>();
+        }
+
+        EnsureScreenSpaceKlotski(transitionCurtain.transform);
 
         Transform flash = canvas.transform.Find("TransitionFlashOverlay");
         if (flash == null)
@@ -1933,6 +2201,83 @@ public class CybergrindTransitionController : MonoBehaviour
             bannerSubtitleText = banner.Find("TransitionBannerSubtitle")?.GetComponent<TMP_Text>();
         }
 
+    }
+
+    private void EnsureScreenSpaceKlotski(Transform curtain)
+    {
+        if (klotskiLoaderGroup != null || curtain == null) return;
+
+        GameObject root = new GameObject("RubikCubeLoader");
+        root.transform.SetParent(curtain, false);
+        RectTransform rootRect = root.AddComponent<RectTransform>();
+        rootRect.anchorMin = rootRect.anchorMax = new Vector2(1f, 0f);
+        rootRect.pivot = new Vector2(1f, 0f);
+        rootRect.anchoredPosition = new Vector2(-38f, 38f);
+        rootRect.sizeDelta = new Vector2(176f, 176f);
+        klotskiLoaderGroup = root.AddComponent<CanvasGroup>();
+
+        loadingCubeTexture = new RenderTexture(256, 256, 16, RenderTextureFormat.ARGB32);
+        loadingCubeTexture.name = "TransitionCubeTexture";
+        RawImage preview = root.AddComponent<RawImage>();
+        preview.texture = loadingCubeTexture;
+        preview.raycastTarget = false;
+        preview.color = Color.white;
+
+        GameObject cameraObject = new GameObject("TransitionCubeCamera");
+        cameraObject.transform.SetParent(transform, false);
+        loadingCubeCamera = cameraObject.AddComponent<Camera>();
+        loadingCubeCamera.targetTexture = loadingCubeTexture;
+        loadingCubeCamera.clearFlags = CameraClearFlags.SolidColor;
+        loadingCubeCamera.backgroundColor = new Color(0f, 0f, 0f, 0f);
+        loadingCubeCamera.cullingMask = 1 << 30;
+        loadingCubeCamera.fieldOfView = 32f;
+        loadingCubeCamera.nearClipPlane = 0.1f;
+        loadingCubeCamera.farClipPlane = 50f;
+
+        loadingCubeRoot = new GameObject("TransitionRubikCube").transform;
+        loadingCubeRoot.SetParent(transform, false);
+        loadingCubeRoot.localPosition = new Vector3(10000f, 10000f, 10012f);
+        cameraObject.transform.localPosition = new Vector3(10004.8f, 10004.2f, 10005.2f);
+        cameraObject.transform.LookAt(loadingCubeRoot.position);
+        BuildLoadingCube(loadingCubeRoot);
+        loadingCubeCamera.enabled = false;
+        root.SetActive(false);
+    }
+
+    private void BuildLoadingCube(Transform parent)
+    {
+        loadingCubeRenderers.Clear();
+        loadingCubeStartColors.Clear();
+        loadingCubePieces.Clear();
+        loadingCubeCoordinates.Clear();
+        Color solvedGrey = new Color(0.58f, 0.62f, 0.66f, 1f);
+        Shader shader = Shader.Find("Universal Render Pipeline/Lit") ?? Shader.Find("Standard");
+        for (int x = -1; x <= 1; x++)
+        for (int y = -1; y <= 1; y++)
+        for (int z = -1; z <= 1; z++)
+        {
+            GameObject piece = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            piece.name = $"Cube_{x}_{y}_{z}";
+            piece.layer = 30;
+            piece.transform.SetParent(parent, false);
+            piece.transform.localPosition = new Vector3(x, y, z) * 0.72f;
+            piece.transform.localScale = Vector3.one * 0.64f;
+            Collider collider = piece.GetComponent<Collider>();
+            if (collider != null) Destroy(collider);
+            Material material = new Material(shader);
+            material.color = solvedGrey;
+            if (material.HasProperty("_EmissionColor"))
+            {
+                material.EnableKeyword("_EMISSION");
+                material.SetColor("_EmissionColor", material.color * 0.35f);
+            }
+            Renderer renderer = piece.GetComponent<Renderer>();
+            renderer.material = material;
+            loadingCubeRenderers.Add(renderer);
+            loadingCubeStartColors.Add(material.color);
+            loadingCubePieces.Add(piece.transform);
+            loadingCubeCoordinates.Add(new Vector3Int(x, y, z));
+        }
     }
 
     private TMP_Text CreateBannerText(Transform parent, string name, float fontSize, Vector2 anchor, Color color)

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using TMPro;
 using UnityEngine;
 using UnityEngine.Rendering;
 using UnityEngine.Rendering.Universal;
@@ -40,8 +41,8 @@ public class CybergrindArenaGenerator : MonoBehaviour
     [NonSerialized] public int debugLastReconfigureDistricts;
 
     [Header("Performance")]
-    [Range(0f, 1f)] public float decorativeDensity = 0.38f;
-    [Range(0f, 1f)] public float microDetailDensity = 0.12f;
+    [Range(0f, 1f)] public float decorativeDensity = 0.26f;
+    [Range(0f, 1f)] public float microDetailDensity = 0.06f;
 
     public enum ArenaMode
     {
@@ -99,7 +100,7 @@ public class CybergrindArenaGenerator : MonoBehaviour
     [Header("Playability")]
     [Range(0f, 0.25f)] public float outerGapChance = 0.08f;
     [Range(0f, 0.20f)] public float hazardChance = 0.05f;
-    [Range(0f, 0.20f)] public float coverChance = 0.08f;
+    [Range(0f, 0.20f)] public float coverChance = 0.055f;
     [Range(0f, 0.20f)] public float itemChance = 0.08f;
     [Min(0)] public int safeRadiusAroundSpawn = 4;
     [Min(0)] public int safeRadiusAroundExit = 4;
@@ -3039,7 +3040,6 @@ public class CybergrindArenaGenerator : MonoBehaviour
             shop.cost = i == 0 ? 2 : (i == 1 ? 4 : (heavyAvailable ? 6 : 4));
             shop.displayRenderer = stall.GetComponent<Renderer>();
 
-            CreateCube(root, $"ShopBlade_{presetIndex}", CellCenter(cell.x, cell.y, y + 1.6f), new Vector3(0.18f, 1.4f, 0.18f), accentMaterial, false);
             BuildShopStationModel(stall.transform, CybergrindShopStation.ShopService.Refit, refitLabels[i]);
             BuildShopWeaponHologram(stall.transform, presetIndex, refitLabels[i]);
             CreateShopDescriptionLabel(stall.transform, refitLabels[i], shop.cost <= 0 ? "FREE" : $"{shop.cost}C", new Color(0.76f, 0.88f, 1f));
@@ -3180,17 +3180,25 @@ public class CybergrindArenaGenerator : MonoBehaviour
 
     private void BuildShopStationModel(Transform parent, CybergrindShopStation.ShopService service, string label)
     {
+        parent = GetShopVisualRoot(parent);
+        Renderer legacyShell = parent.parent != null ? parent.parent.GetComponent<Renderer>() : null;
+        if (legacyShell != null)
+            legacyShell.enabled = false;
         Material glow = accentMaterial != null ? accentMaterial : itemMaterial;
         Material body = darkMaterial != null ? darkMaterial : floorMaterial;
 
-        CreateChildCube(parent, $"{label}_FootA", new Vector3(0f, -0.62f, 0f), new Vector3(1.85f, 0.12f, 1.2f), body, false);
-        CreateChildCube(parent, $"{label}_FootGlow", new Vector3(0f, -0.52f, 0f), new Vector3(1.52f, 0.05f, 0.86f), glow, false);
-        CreateChildCube(parent, $"{label}_BaseTrim", Vector3.up * 0.82f, new Vector3(1.45f, 0.12f, 0.82f), body, false);
-        CreateChildCube(parent, $"{label}_BackPlate", new Vector3(0f, 1.38f, -0.54f), new Vector3(1.32f, 1.42f, 0.12f), body, false);
-        CreateChildCube(parent, $"{label}_BackGlow", new Vector3(0f, 1.38f, -0.46f), new Vector3(1.02f, 1.08f, 0.05f), glow, false);
-        CreateChildCube(parent, $"{label}_SignPole", Vector3.up * 1.95f, new Vector3(0.12f, 1.2f, 0.12f), body, false);
-        CreateChildCube(parent, $"{label}_Sign", Vector3.up * 2.7f, new Vector3(1.35f, 0.18f, 0.16f), glow, false);
-        CreateChildCube(parent, $"{label}_LightColumn", new Vector3(0f, 1.42f, 0.08f), new Vector3(0.09f, 1.36f, 0.09f), glow, false);
+        CreateChildCube(parent, $"{label}_Plinth", new Vector3(0f, -0.56f, 0f), new Vector3(2.05f, 0.18f, 1.36f), body, false);
+        CreateChildCube(parent, $"{label}_PlinthInset", new Vector3(0f, -0.45f, 0.08f), new Vector3(1.72f, 0.05f, 1.04f), glow, false);
+        CreateChildCube(parent, $"{label}_Cabinet", new Vector3(0f, 0.22f, -0.34f), new Vector3(1.62f, 1.35f, 0.62f), body, false);
+        CreateChildCube(parent, $"{label}_BayBack", new Vector3(0f, 1.34f, -0.48f), new Vector3(1.55f, 0.92f, 0.12f), body, false);
+        CreateChildCube(parent, $"{label}_BayLight", new Vector3(0f, 1.72f, -0.39f), new Vector3(1.2f, 0.05f, 0.05f), glow, false);
+        CreateChildCube(parent, $"{label}_RailL", new Vector3(-0.88f, 0.72f, -0.08f), new Vector3(0.14f, 2.35f, 0.82f), body, false);
+        CreateChildCube(parent, $"{label}_RailR", new Vector3(0.88f, 0.72f, -0.08f), new Vector3(0.14f, 2.35f, 0.82f), body, false);
+        CreateChildCube(parent, $"{label}_Counter", new Vector3(0f, 0.72f, 0.38f), new Vector3(1.6f, 0.16f, 0.68f), body, false);
+        CreateChildCube(parent, $"{label}_ControlStrip", new Vector3(0f, 0.82f, 0.48f), new Vector3(1.22f, 0.035f, 0.18f), glow, false);
+        if (parent.GetComponent<ShopStationPresentation>() == null)
+            parent.gameObject.AddComponent<ShopStationPresentation>();
+        CreateShopDisplayLight(parent, glow != null ? glow.color : Color.cyan);
 
         switch (service)
         {
@@ -3223,6 +3231,7 @@ public class CybergrindArenaGenerator : MonoBehaviour
 
     private void BuildShopWeaponHologram(Transform parent, int presetIndex, string label)
     {
+        parent = GetShopVisualRoot(parent);
         Color color = presetIndex < 3
             ? new Color(0.72f, 0.95f, 1f, 0.86f)
             : presetIndex < 6
@@ -3234,15 +3243,15 @@ public class CybergrindArenaGenerator : MonoBehaviour
         float width = presetIndex < 3 ? 0.22f : presetIndex < 6 ? 0.36f : 0.42f;
         GameObject holoRoot = new GameObject($"{label}_HologramModel");
         holoRoot.transform.SetParent(parent, false);
-        holoRoot.transform.localPosition = new Vector3(0f, 2.92f, 0.04f);
-        holoRoot.transform.localRotation = Quaternion.Euler(0f, 24f, 0f);
+        holoRoot.transform.localPosition = new Vector3(0f, 1.42f, 0.02f);
+        holoRoot.transform.localRotation = Quaternion.Euler(0f, 90f, 0f);
         ArenaPulseFx pulse = holoRoot.AddComponent<ArenaPulseFx>();
-        pulse.scalePulse = 0.035f;
+        pulse.scalePulse = 0.012f;
         pulse.pulseSpeed = 2.2f;
-        pulse.rotationDegreesPerSecond = new Vector3(0f, 52f, 0f);
+        pulse.rotationDegreesPerSecond = Vector3.zero;
         pulse.emissionColor = color;
         pulse.emissionStrength = 1.5f;
-        pulse.emissionPulse = 0.45f;
+        pulse.emissionPulse = 0.2f;
 
         CreateChildCube(holoRoot.transform, $"{label}_HoloBody", new Vector3(0f, 0f, 0f), new Vector3(width * 1.18f, 0.22f, length * 1.18f), holo, false);
         CreateChildCube(holoRoot.transform, $"{label}_HoloBarrel", new Vector3(0f, 0.02f, length * 0.66f), new Vector3(width * 0.52f, 0.13f, 0.52f), holo, false);
@@ -3252,10 +3261,13 @@ public class CybergrindArenaGenerator : MonoBehaviour
         CreateChildCube(holoRoot.transform, $"{label}_HoloRing", new Vector3(0f, -0.52f, 0f), new Vector3(1.25f, 0.035f, 1.25f), holo, false);
         CreateChildCube(holoRoot.transform, $"{label}_HoloVariantA", new Vector3(width * 0.9f, 0.16f, length * 0.22f), new Vector3(0.1f, 0.32f, 0.28f), holo, false);
         CreateChildCube(holoRoot.transform, $"{label}_HoloVariantB", new Vector3(-width * 0.65f, 0.14f, length * 0.08f), new Vector3(0.1f, 0.28f, 0.22f), holo, false);
+        ShopStationPresentation presentation = parent.GetComponent<ShopStationPresentation>();
+        if (presentation != null) presentation.productRoot = holoRoot.transform;
     }
 
     private void BuildShopModHologram(Transform parent, Gun.PassiveMod passive, Gun.AltFireMod alt, string label)
     {
+        parent = GetShopVisualRoot(parent);
         Color color = passive switch
         {
             Gun.PassiveMod.SharpenedRounds => new Color(1f, 0.52f, 0.28f, 0.88f),
@@ -3264,21 +3276,25 @@ public class CybergrindArenaGenerator : MonoBehaviour
             _ => new Color(1f, 0.82f, 0.62f, 0.88f)
         };
         Material holo = BuildHologramMaterial(color);
+        Material chassis = darkMaterial != null ? darkMaterial : holo;
 
         GameObject root = new GameObject($"{label}_ModHologramModel");
         root.transform.SetParent(parent, false);
-        root.transform.localPosition = new Vector3(0f, 2.86f, 0.18f);
-        root.transform.localRotation = Quaternion.Euler(0f, 34f, 0f);
+        root.transform.localPosition = new Vector3(0f, 1.42f, 0.08f);
+        root.transform.localRotation = Quaternion.Euler(0f, 90f, 0f);
 
         ArenaPulseFx pulse = root.AddComponent<ArenaPulseFx>();
-        pulse.scalePulse = 0.045f;
+        pulse.scalePulse = 0.012f;
         pulse.pulseSpeed = 2.8f;
-        pulse.rotationDegreesPerSecond = new Vector3(0f, 64f, 0f);
+        pulse.rotationDegreesPerSecond = Vector3.zero;
         pulse.emissionColor = color;
         pulse.emissionStrength = 1.8f;
         pulse.emissionPulse = 0.55f;
 
-        CreateChildCube(root.transform, $"{label}_UpgradeCore", Vector3.zero, new Vector3(0.5f, 0.42f, 0.5f), holo, false);
+        CreateChildCube(root.transform, $"{label}_WeaponBody", Vector3.zero, new Vector3(0.46f, 0.24f, 1.35f), chassis, false);
+        CreateChildCube(root.transform, $"{label}_WeaponBarrel", new Vector3(0f, 0.02f, 0.9f), new Vector3(0.2f, 0.16f, 0.72f), chassis, false);
+        CreateChildCube(root.transform, $"{label}_WeaponGrip", new Vector3(-0.22f, -0.34f, -0.2f), new Vector3(0.2f, 0.58f, 0.24f), chassis, false);
+        CreateChildCube(root.transform, $"{label}_UpgradeCore", new Vector3(0.32f, 0.12f, 0.08f), new Vector3(0.28f, 0.34f, 0.52f), holo, false);
         CreateChildCube(root.transform, $"{label}_UpgradeMount", new Vector3(0f, -0.32f, 0f), new Vector3(0.86f, 0.08f, 0.86f), holo, false);
         CreateChildCube(root.transform, $"{label}_UpgradeBarrelA", new Vector3(0f, 0.02f, 0.62f), new Vector3(0.16f, 0.16f, 0.62f), holo, false);
         CreateChildCube(root.transform, $"{label}_UpgradeBarrelB", new Vector3(0.34f, 0.06f, 0.18f), new Vector3(0.12f, 0.42f, 0.18f), holo, false);
@@ -3295,24 +3311,85 @@ public class CybergrindArenaGenerator : MonoBehaviour
             CreateChildCube(root.transform, $"{label}_ChargeBarA", new Vector3(-0.22f, 0.28f, 0f), new Vector3(0.09f, 0.38f, 0.42f), holo, false);
             CreateChildCube(root.transform, $"{label}_ChargeBarB", new Vector3(0.22f, 0.28f, 0f), new Vector3(0.09f, 0.38f, 0.42f), holo, false);
         }
+        ShopStationPresentation presentation = parent.GetComponent<ShopStationPresentation>();
+        if (presentation != null) presentation.productRoot = root.transform;
     }
 
     private void CreateShopDescriptionLabel(Transform parent, string title, string detail, Color color)
     {
-        CreateWorldLabel(parent, $"{title}_ShopDescription", $"{title}\n{detail}", new Vector3(0f, 3.42f, 0.92f), color);
+        parent = GetShopVisualRoot(parent);
+        CreateShopNameplate(parent, title, detail, color);
+    }
+
+    private Transform GetShopVisualRoot(Transform station)
+    {
+        if (station == null) return null;
+
+        Transform existing = station.Find("ShopVisualRoot");
+        if (existing != null) return existing;
+
+        GameObject rootObject = new GameObject("ShopVisualRoot");
+        Transform root = rootObject.transform;
+        root.SetParent(station, false);
+        Vector3 scale = station.localScale;
+        root.localScale = new Vector3(
+            Mathf.Abs(scale.x) > 0.0001f ? 1f / scale.x : 1f,
+            Mathf.Abs(scale.y) > 0.0001f ? 1f / scale.y : 1f,
+            Mathf.Abs(scale.z) > 0.0001f ? 1f / scale.z : 1f);
+        return root;
+    }
+
+    private void CreateShopNameplate(Transform parent, string title, string detail, Color color)
+    {
+        Material body = darkMaterial != null ? darkMaterial : floorMaterial;
+        Material accent = BuildHologramMaterial(color);
+        CreateChildCube(parent, $"{title}_NameplateBack", new Vector3(0f, 2.28f, -0.08f), new Vector3(1.72f, 0.5f, 0.09f), body, false);
+        CreateChildCube(parent, $"{title}_NameplateHeader", new Vector3(0f, 2.51f, -0.02f), new Vector3(1.72f, 0.045f, 0.045f), accent, false);
+
+        GameObject labelObject = new GameObject($"{title}_ShopNameplate");
+        labelObject.transform.SetParent(parent, false);
+        labelObject.transform.localPosition = new Vector3(0f, 2.28f, 0f);
+        labelObject.transform.localRotation = Quaternion.Euler(0f, 180f, 0f);
+
+        TextMeshPro text = labelObject.AddComponent<TextMeshPro>();
+        ProjectStructureUIRoot.ApplyDefaultFont(text);
+        text.text = $"<b>{title}</b>\n<size=65%>{detail}</size>";
+        text.fontSize = 2.2f;
+        text.alignment = TextAlignmentOptions.Center;
+        text.color = Color.white;
+        text.enableWordWrapping = false;
+        text.rectTransform.sizeDelta = new Vector2(1.55f, 0.42f);
+        text.sortingOrder = 4;
+
     }
 
     private Material BuildHologramMaterial(Color color)
     {
-        Material mat = new Material(Shader.Find("Universal Render Pipeline/Unlit") ?? Shader.Find("Sprites/Default"));
+        Material mat = new Material(Shader.Find("Universal Render Pipeline/Lit") ?? Shader.Find("Universal Render Pipeline/Simple Lit") ?? Shader.Find("Sprites/Default"));
         mat.name = "ShopWeaponHologram";
-        mat.color = color;
+        mat.color = Color.Lerp(color, new Color(0.16f, 0.19f, 0.22f, 1f), 0.42f);
         if (mat.HasProperty("_EmissionColor"))
         {
             mat.EnableKeyword("_EMISSION");
             mat.SetColor("_EmissionColor", color * 2.4f);
         }
         return mat;
+    }
+
+    private void CreateShopDisplayLight(Transform parent, Color color)
+    {
+        GameObject lightObject = new GameObject("DisplayLight");
+        lightObject.transform.SetParent(parent, false);
+        lightObject.transform.localPosition = new Vector3(0f, 2.45f, 0.55f);
+        Light light = lightObject.AddComponent<Light>();
+        light.type = LightType.Point;
+        light.color = color;
+        light.range = 3.6f;
+        light.intensity = 1.4f;
+        light.shadows = LightShadows.None;
+        ShopStationPresentation presentation = parent.GetComponent<ShopStationPresentation>();
+        if (presentation != null)
+            presentation.displayLight = light;
     }
 
     private GameObject CreateChildCube(Transform parent, string name, Vector3 localPosition, Vector3 scale, Material material, bool collider = true)
@@ -4123,7 +4200,7 @@ public class ArenaWorldBillboard : MonoBehaviour
         if (targetCamera == null)
             return;
 
-        Vector3 toCamera = transform.position - targetCamera.transform.position;
+        Vector3 toCamera = targetCamera.transform.position - transform.position;
         if (keepUpright)
             toCamera.y = 0f;
         if (toCamera.sqrMagnitude < 0.001f)

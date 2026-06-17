@@ -35,7 +35,15 @@ public class ProjectStructurePresentation : MonoBehaviour
         if (player == null) player = FindAnyObjectByType<PlayerController>();
         EnsureRuntimePresentation();
         BuildOverlay();
-        ShowTitleScreen();
+        bool launchSandbox = StartMenuController.ConsumeSandboxLaunch();
+        if (StartMenuController.ConsumeArenaLaunch())
+        {
+            StartRun();
+            if (launchSandbox)
+                gameObject.AddComponent<WeaponSandboxController>();
+        }
+        else
+            ShowTitleScreen();
     }
 
     private void Update()
@@ -103,17 +111,22 @@ public class ProjectStructurePresentation : MonoBehaviour
         rootRect.offsetMax = Vector2.zero;
 
         panelImage = panelRoot.AddComponent<Image>();
-        panelImage.color = new Color(0.01f, 0.02f, 0.03f, 0.92f);
+        panelImage.color = new Color(0.006f, 0.012f, 0.018f, 0.76f);
 
-        CreateOverlayPanel(panelRoot.transform, "TitleBandTop", new Vector2(0.5f, 0.78f), new Vector2(860f, 3f), new Color(0.42f, 0.9f, 1f, 0.42f));
-        CreateOverlayPanel(panelRoot.transform, "TitleBandBottom", new Vector2(0.5f, 0.42f), new Vector2(860f, 3f), new Color(0.42f, 0.9f, 1f, 0.24f));
-        CreateOverlayPanel(panelRoot.transform, "TitleStartPlate", new Vector2(0.5f, 0.31f), new Vector2(420f, 44f), new Color(0.02f, 0.045f, 0.06f, 0.58f));
+        CreateOverlayPanel(panelRoot.transform, "TitleRail", new Vector2(0.075f, 0.57f), new Vector2(5f, 410f), new Color(0.2f, 0.9f, 1f, 0.86f));
+        CreateOverlayPanel(panelRoot.transform, "TitleBandTop", new Vector2(0.3f, 0.78f), new Vector2(560f, 2f), new Color(0.42f, 0.9f, 1f, 0.5f));
+        CreateOverlayPanel(panelRoot.transform, "TitleStartPlate", new Vector2(0.22f, 0.29f), new Vector2(300f, 42f), new Color(0.015f, 0.035f, 0.045f, 0.9f));
 
-        overlayText = CreateText(panelRoot.transform, "OverlayTitle", 72, TextAlignmentOptions.Center, new Vector2(0.5f, 0.64f), new Vector2(1120f, 116f));
-        rankText = CreateText(panelRoot.transform, "OverlayRank", 15, TextAlignmentOptions.Center, new Vector2(0.5f, 0.51f), new Vector2(760f, 34f));
-        subtitleText = CreateText(panelRoot.transform, "OverlaySubtitle", 18, TextAlignmentOptions.Center, new Vector2(0.5f, 0.34f), new Vector2(720f, 92f));
-        detailText = CreateText(panelRoot.transform, "OverlayDetail", 13, TextAlignmentOptions.Center, new Vector2(0.5f, 0.22f), new Vector2(760f, 54f));
-        footerText = CreateText(panelRoot.transform, "OverlayFooter", 13, TextAlignmentOptions.Center, new Vector2(0.5f, 0.09f), new Vector2(840f, 42f));
+        overlayText = CreateText(panelRoot.transform, "OverlayTitle", 64, TextAlignmentOptions.Left, new Vector2(0.09f, 0.65f), new Vector2(920f, 150f));
+        rankText = CreateText(panelRoot.transform, "OverlayRank", 14, TextAlignmentOptions.Left, new Vector2(0.09f, 0.53f), new Vector2(620f, 34f));
+        subtitleText = CreateText(panelRoot.transform, "OverlaySubtitle", 18, TextAlignmentOptions.Left, new Vector2(0.09f, 0.38f), new Vector2(620f, 92f));
+        detailText = CreateText(panelRoot.transform, "OverlayDetail", 12, TextAlignmentOptions.Left, new Vector2(0.09f, 0.2f), new Vector2(620f, 54f));
+        footerText = CreateText(panelRoot.transform, "OverlayFooter", 11, TextAlignmentOptions.Left, new Vector2(0.09f, 0.08f), new Vector2(720f, 42f));
+        overlayText.rectTransform.pivot = new Vector2(0f, 0.5f);
+        rankText.rectTransform.pivot = new Vector2(0f, 0.5f);
+        subtitleText.rectTransform.pivot = new Vector2(0f, 0.5f);
+        detailText.rectTransform.pivot = new Vector2(0f, 0.5f);
+        footerText.rectTransform.pivot = new Vector2(0f, 0.5f);
         if (rankText != null)
             rankText.color = new Color(0.82f, 0.94f, 1f);
         if (detailText != null)
@@ -176,14 +189,14 @@ public class ProjectStructurePresentation : MonoBehaviour
         overlayText.color = ResolveOverlayAccent();
         CybergrindRunState runState = CybergrindRunState.GetOrCreate();
         if (rankText != null)
-            rankText.text = "FAST ARENA SHOOTER";
+            rankText.text = "MOMENTUM / COMBAT / DESCENT";
         subtitleText.text =
             BuildTitleIntro() + "\n\n" +
-            "Enter / Space to start\nEsc for settings";
+            "ENTER  Start run     ESC  Settings";
         if (detailText != null)
             detailText.text = BuildTitleDetail(runState);
         if (footerText != null)
-            footerText.text = "WASD move   Shift dash   Ctrl slide   Space jump   E interact   F melee";
+            footerText.text = "WASD  MOVE     SHIFT  DASH     CTRL  SLIDE     SPACE  JUMP     F  MELEE";
 
         Time.timeScale = 0f;
         if (player != null) player.ToggleUIMode(true);

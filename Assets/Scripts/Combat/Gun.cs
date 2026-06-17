@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
@@ -58,15 +59,15 @@ public class Gun : MonoBehaviour
     [Header("Weapon Presets")]
     public WeaponPreset[] presets =
     {
-        new WeaponPreset { displayName = "Pistol - Marksman", family = WeaponFamily.Pistol, archetype = WeaponArchetype.Marksman, accentColor = new Color(0.0f, 0.62f, 0.9f), fireRate = 0.23f, bulletSpeed = 82f, damage = 24f, pelletCount = 1, spreadDegrees = 0.05f, recoilForce = 3.6f, modelScale = 0.78f },
-        new WeaponPreset { displayName = "Pistol - Rail", family = WeaponFamily.Pistol, archetype = WeaponArchetype.Rail, accentColor = new Color(0.92f, 0.16f, 0.08f), fireRate = 0.7f, bulletSpeed = 115f, damage = 72f, pelletCount = 1, spreadDegrees = 0f, recoilForce = 8.8f, modelScale = 0.82f },
-        new WeaponPreset { displayName = "Pistol - Splitter", family = WeaponFamily.Pistol, archetype = WeaponArchetype.Splitter, accentColor = new Color(0.1f, 0.85f, 0.28f), fireRate = 0.2f, bulletSpeed = 70f, damage = 11f, pelletCount = 3, spreadDegrees = 2.1f, recoilForce = 4.2f, modelScale = 0.74f },
-        new WeaponPreset { displayName = "Shotgun - Core Eject", family = WeaponFamily.Shotgun, archetype = WeaponArchetype.CoreEject, accentColor = new Color(0.95f, 0.58f, 0.08f), fireRate = 0.78f, bulletSpeed = 55f, damage = 8.5f, pelletCount = 9, spreadDegrees = 5.2f, recoilForce = 8.8f, modelScale = 0.76f },
-        new WeaponPreset { displayName = "Shotgun - Magnet", family = WeaponFamily.Shotgun, archetype = WeaponArchetype.Magnet, accentColor = new Color(0.78f, 0.08f, 0.75f), fireRate = 0.48f, bulletSpeed = 62f, damage = 6.5f, pelletCount = 6, spreadDegrees = 3.6f, recoilForce = 6.5f, modelScale = 0.72f },
-        new WeaponPreset { displayName = "Shotgun - Slab", family = WeaponFamily.Shotgun, archetype = WeaponArchetype.Slab, accentColor = new Color(0.52f, 0.38f, 0.95f), fireRate = 1.05f, bulletSpeed = 105f, damage = 95f, pelletCount = 1, spreadDegrees = 0.08f, recoilForce = 11f, modelScale = 0.78f },
-        new WeaponPreset { displayName = "Heavy - Mortar", family = WeaponFamily.Heavy, archetype = WeaponArchetype.Mortar, accentColor = new Color(1f, 0.42f, 0.22f), fireRate = 1.1f, bulletSpeed = 72f, damage = 54f, pelletCount = 1, spreadDegrees = 0.35f, recoilForce = 10.2f, modelScale = 0.92f },
-        new WeaponPreset { displayName = "Heavy - Driver", family = WeaponFamily.Heavy, archetype = WeaponArchetype.Driver, accentColor = new Color(0.58f, 0.92f, 1f), fireRate = 0.92f, bulletSpeed = 128f, damage = 68f, pelletCount = 1, spreadDegrees = 0.02f, recoilForce = 10.8f, modelScale = 0.88f },
-        new WeaponPreset { displayName = "Heavy - Arc", family = WeaponFamily.Heavy, archetype = WeaponArchetype.Arc, accentColor = new Color(0.84f, 0.78f, 0.28f), fireRate = 0.62f, bulletSpeed = 78f, damage = 36f, pelletCount = 2, spreadDegrees = 1.5f, recoilForce = 9.6f, modelScale = 0.9f }
+        new WeaponPreset { displayName = "Vesper", family = WeaponFamily.Pistol, archetype = WeaponArchetype.Marksman, accentColor = new Color(0.05f, 0.72f, 1f), fireRate = 0.2f, bulletSpeed = 90f, damage = 23f, pelletCount = 1, spreadDegrees = 0.02f, recoilForce = 3.2f, modelScale = 0.78f },
+        new WeaponPreset { displayName = "Redline", family = WeaponFamily.Pistol, archetype = WeaponArchetype.Rail, accentColor = new Color(1f, 0.16f, 0.08f), fireRate = 0.72f, bulletSpeed = 130f, damage = 76f, pelletCount = 1, spreadDegrees = 0f, recoilForce = 9.2f, modelScale = 0.84f },
+        new WeaponPreset { displayName = "Trident", family = WeaponFamily.Pistol, archetype = WeaponArchetype.Splitter, accentColor = new Color(0.18f, 0.95f, 0.38f), fireRate = 0.19f, bulletSpeed = 74f, damage = 10f, pelletCount = 3, spreadDegrees = 1.8f, recoilForce = 3.8f, modelScale = 0.76f },
+        new WeaponPreset { displayName = "Kiln", family = WeaponFamily.Shotgun, archetype = WeaponArchetype.CoreEject, accentColor = new Color(1f, 0.55f, 0.06f), fireRate = 0.76f, bulletSpeed = 58f, damage = 8.5f, pelletCount = 10, spreadDegrees = 5f, recoilForce = 9f, modelScale = 0.78f },
+        new WeaponPreset { displayName = "Lodestar", family = WeaponFamily.Shotgun, archetype = WeaponArchetype.Magnet, accentColor = new Color(0.92f, 0.16f, 0.82f), fireRate = 0.42f, bulletSpeed = 68f, damage = 6.2f, pelletCount = 6, spreadDegrees = 3.2f, recoilForce = 6f, modelScale = 0.74f },
+        new WeaponPreset { displayName = "Breach", family = WeaponFamily.Shotgun, archetype = WeaponArchetype.Slab, accentColor = new Color(0.64f, 0.48f, 1f), fireRate = 1.02f, bulletSpeed = 115f, damage = 98f, pelletCount = 1, spreadDegrees = 0f, recoilForce = 12f, modelScale = 0.82f },
+        new WeaponPreset { displayName = "Cinder", family = WeaponFamily.Heavy, archetype = WeaponArchetype.Mortar, accentColor = new Color(1f, 0.34f, 0.12f), fireRate = 1.08f, bulletSpeed = 72f, damage = 52f, pelletCount = 1, spreadDegrees = 0.25f, recoilForce = 10f, modelScale = 0.94f },
+        new WeaponPreset { displayName = "Pile Driver", family = WeaponFamily.Heavy, archetype = WeaponArchetype.Driver, accentColor = new Color(0.45f, 0.94f, 1f), fireRate = 0.88f, bulletSpeed = 140f, damage = 70f, pelletCount = 1, spreadDegrees = 0f, recoilForce = 11f, modelScale = 0.9f },
+        new WeaponPreset { displayName = "Tempest", family = WeaponFamily.Heavy, archetype = WeaponArchetype.Arc, accentColor = new Color(0.95f, 0.86f, 0.22f), fireRate = 0.56f, bulletSpeed = 82f, damage = 34f, pelletCount = 2, spreadDegrees = 1.2f, recoilForce = 8.8f, modelScale = 0.92f }
     };
 
     [Range(0, 8)] public int activePresetIndex = 0;
@@ -132,6 +133,15 @@ public class Gun : MonoBehaviour
     private AltFireMod shotgunAltMod = AltFireMod.None;
     private AltFireMod heavyAltMod = AltFireMod.None;
     private ProjectStructureAudioDirector combatAudioDirector;
+    private readonly List<Transform> tridentNeedles = new List<Transform>();
+    private readonly List<WeaponAbilityObject> vesperCoins = new List<WeaponAbilityObject>();
+    private readonly List<WeaponAbilityObject> cinderBombs = new List<WeaponAbilityObject>();
+    private WeaponAbilityObject lodestarAnchor;
+    private Vector3? firstTetherPoint;
+    private float redlineChargeStart = -1f;
+    private float tempestStormTimer;
+    private float tempestPulseTimer;
+    private Transform redlineChargeFx;
 
     private static readonly int BaseColorId = Shader.PropertyToID("_BaseColor");
     private static readonly int ColorId = Shader.PropertyToID("_Color");
@@ -182,6 +192,26 @@ public class Gun : MonoBehaviour
 
         bool wantsAltFire = Mouse.current.rightButton.wasPressedThisFrame;
 
+        if (preset != null && preset.archetype == WeaponArchetype.Rail)
+        {
+            if (Mouse.current.rightButton.wasPressedThisFrame)
+            {
+                redlineChargeStart = Time.time;
+                BeginRedlineChargeFx(preset);
+            }
+            if (redlineChargeStart >= 0f)
+                UpdateRedlineChargeFx(Mathf.Clamp01((Time.time - redlineChargeStart) / 1.35f), preset);
+            if (Mouse.current.rightButton.wasReleasedThisFrame && redlineChargeStart >= 0f)
+            {
+                FireRedlineCharge(Mathf.Clamp01((Time.time - redlineChargeStart) / 1.35f));
+                redlineChargeStart = -1f;
+                if (redlineChargeFx != null) Destroy(redlineChargeFx.gameObject);
+            }
+            wantsAltFire = false;
+        }
+
+        UpdatePersistentAbilities(preset);
+
         if (wantsFire && Time.time >= nextTimeToFire)
         {
             nextTimeToFire = Time.time + GetEffectiveFireRate(preset);
@@ -216,12 +246,7 @@ public class Gun : MonoBehaviour
         if (removeLegacyChildMeshes)
             ClearLegacyVisualChildren(root);
 
-        if (preset.family == WeaponFamily.Pistol)
-            BuildHandgunModel(root, preset);
-        else if (preset.family == WeaponFamily.Shotgun)
-            BuildShotgunModel(root, preset);
-        else
-            BuildHeavyModel(root, preset);
+        BuildWeaponWithFlexibleBuilder(root, preset);
 
         BuildInstalledModModel(root, preset);
 
@@ -305,8 +330,8 @@ public class Gun : MonoBehaviour
     private void SetFamily(WeaponFamily family)
     {
         activeFamily = family;
-        int variant = GetVariantForFamily(family);
-        ApplyPreset(GetNextUnlockedPreset(GetPresetIndex(family, variant), family, 1));
+        SetVariantForFamily(family, 0);
+        ApplyPreset(GetNextUnlockedPreset(GetPresetIndex(family, 0), family, 1));
     }
 
     private void CycleVariant(int direction)
@@ -523,7 +548,7 @@ public class Gun : MonoBehaviour
                 if (speed > 0.1f)
                 {
                     float bobAmount = Mathf.Clamp01(speed / Mathf.Max(1f, bobSpeedReference));
-                    if (player.isGrounded)
+                    if (player.isGrounded && !player.DebugIsSliding)
                     {
                         float bobTime = Time.time * bobFrequency;
                         bobOffset = new Vector3(
@@ -581,6 +606,12 @@ public class Gun : MonoBehaviour
         Vector3 cameraPos = mainCam != null ? mainCam.transform.position : transform.position;
         Vector3 cameraForward = GetFireForward(mainCam, preset);
 
+        if (preset.archetype == WeaponArchetype.Mortar)
+        {
+            SpawnCinderBomb(cameraPos, cameraForward, preset);
+            return;
+        }
+
         if (preset.archetype == WeaponArchetype.Rail)
         {
             FirePiercingLine(cameraPos, cameraForward, baseDamage, preset, 0.1f, 3.4f);
@@ -603,8 +634,13 @@ public class Gun : MonoBehaviour
             if (didHit)
             {
                 hitPoint = hit.point;
+                WeaponAbilityObject abilityObject = hit.collider.GetComponentInParent<WeaponAbilityObject>();
+                if (abilityObject != null)
+                    abilityObject.Hit(baseDamage, direction);
                 ApplyHitScanDamage(hit, baseDamage);
                 ApplyWeaponOnHit(preset, hit, baseDamage);
+                if (preset.archetype == WeaponArchetype.Splitter && tridentNeedles.Count < 24)
+                    AddEmbeddedNeedle(hit.point, hit.normal, preset.accentColor);
             }
 
             Vector3 barrelPos = GetBarrelWorldPosition(cameraPos);
@@ -644,7 +680,11 @@ public class Gun : MonoBehaviour
         switch (preset.archetype)
         {
             case WeaponArchetype.Marksman:
-                FirePiercingLine(cameraPos, forward, baseDamage * 1.65f, preset, 4.5f, 2.2f);
+                vesperCoins.RemoveAll(coin => coin == null);
+                if (vesperCoins.Count < 4)
+                    vesperCoins.Add(SpawnAbilityObject(WeaponAbilityObject.Kind.Coin, cameraPos + forward * 1.4f, forward * 7f + Vector3.up * 5f, 0.32f, preset.accentColor));
+                else
+                    nextAltFireTime = Time.time + 0.12f;
                 break;
 
             case WeaponArchetype.Rail:
@@ -652,32 +692,463 @@ public class Gun : MonoBehaviour
                 break;
 
             case WeaponArchetype.Splitter:
-                FireFanBurst(cameraPos, forward, preset, 9, Mathf.Max(4.8f, GetEffectiveSpread(preset) * 2.2f), baseDamage * 0.9f);
+                RecallTridentNeedles(cameraPos, preset, baseDamage);
                 break;
 
             case WeaponArchetype.CoreEject:
-                FirePiercingLine(cameraPos, forward, baseDamage * 0.9f, preset, 5.5f, 1.4f);
+                SpawnAbilityObject(WeaponAbilityObject.Kind.Core, cameraPos + forward * 1.5f, forward * 11f + Vector3.up * 3f, 0.34f, preset.accentColor);
                 break;
 
             case WeaponArchetype.Magnet:
-                TagEnemy(cameraPos, forward, preset);
+                PlaceLodestarAnchor(cameraPos, forward, preset);
                 break;
 
             case WeaponArchetype.Slab:
-                FireShockwave(cameraPos, forward, preset);
+                StartCoroutine(BreachGuard(preset));
                 break;
 
             case WeaponArchetype.Mortar:
-                FirePiercingLine(cameraPos, forward, baseDamage * 0.9f, preset, 6.4f, 2.2f);
+                if (cinderBombs.Count > 0) DetonateCinderBombs(preset, baseDamage);
+                else SpawnCinderBomb(cameraPos, forward, preset);
                 break;
 
             case WeaponArchetype.Driver:
-                FirePiercingLine(cameraPos, forward, baseDamage * 1.1f, preset, 2.8f, 4.6f);
+                PlaceTetherSpike(cameraPos, forward, preset, baseDamage);
                 break;
 
             case WeaponArchetype.Arc:
-                FireFanBurst(cameraPos, forward, preset, 5, 2.4f, baseDamage * 0.8f);
+                tempestStormTimer = 5f;
+                tempestPulseTimer = 0f;
+                SpawnRadialAbilityBurst(cameraPos + forward * 2f, 3f, preset.accentColor, 12);
                 break;
+        }
+    }
+
+    private void FireCoreDetonation(Vector3 origin, Vector3 direction, WeaponPreset preset, float damage)
+    {
+        Vector3 point = origin + direction * 18f;
+        if (TryGetAimHit(origin, direction, out RaycastHit hit))
+            point = hit.point;
+        float radius = preset.archetype == WeaponArchetype.Mortar ? 7.2f : 5.2f;
+        ApplySplashDamage(point, radius, damage, null);
+        SpawnVisualTracer(GetBarrelWorldPosition(origin), (point - GetBarrelWorldPosition(origin)).normalized, preset);
+        SpawnImpactBurst(point, preset.accentColor, radius * 0.1f, 0.34f);
+        SpawnRadialAbilityBurst(point, radius, preset.accentColor, preset.archetype == WeaponArchetype.Mortar ? 16 : 10);
+    }
+
+    private WeaponAbilityObject SpawnAbilityObject(WeaponAbilityObject.Kind kind, Vector3 position, Vector3 velocity, float size, Color color)
+    {
+        PrimitiveType primitive = kind == WeaponAbilityObject.Kind.Coin
+            ? PrimitiveType.Quad
+            : kind == WeaponAbilityObject.Kind.Bomb
+                ? PrimitiveType.Capsule
+                : PrimitiveType.Sphere;
+        GameObject go = GameObject.CreatePrimitive(primitive);
+        go.name = $"Ability_{kind}";
+        go.transform.position = position;
+        go.transform.localScale = kind == WeaponAbilityObject.Kind.Coin
+            ? new Vector3(size, size, 1f)
+            : kind == WeaponAbilityObject.Kind.Bomb
+                ? new Vector3(size, size * 1.5f, size)
+                : Vector3.one * size;
+        if (kind == WeaponAbilityObject.Kind.Coin)
+        {
+            Collider oldCollider = go.GetComponent<Collider>();
+            if (oldCollider != null) Destroy(oldCollider);
+            BoxCollider coinCollider = go.AddComponent<BoxCollider>();
+            coinCollider.size = new Vector3(1f, 1f, 0.08f);
+        }
+        go.GetComponent<Renderer>().material = GetFxMaterial(color, 1.8f);
+        Rigidbody body = go.AddComponent<Rigidbody>();
+        body.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
+        body.linearVelocity = velocity;
+        WeaponAbilityObject ability = go.AddComponent<WeaponAbilityObject>();
+        ability.kind = kind;
+        ability.owner = this;
+        ability.lifetime = kind == WeaponAbilityObject.Kind.Coin ? 3.5f : 12f;
+        return ability;
+    }
+
+    public void HandleAbilityObjectHit(WeaponAbilityObject ability, float damage, Vector3 direction)
+    {
+        if (ability == null) return;
+        WeaponPreset preset = ActivePreset;
+        Color color = preset != null ? preset.accentColor : Color.white;
+        switch (ability.kind)
+        {
+            case WeaponAbilityObject.Kind.Coin:
+                Collider[] targets = Physics.OverlapSphere(ability.transform.position, 18f, ~0, QueryTriggerInteraction.Ignore);
+                IDamageable best = null;
+                Vector3 bestPoint = ability.transform.position + direction * 18f;
+                float bestDistance = float.MaxValue;
+                for (int i = 0; i < targets.Length; i++)
+                {
+                    IDamageable candidate = targets[i].GetComponentInParent<IDamageable>();
+                    if (candidate == null || candidate is PlayerController) continue;
+                    float distance = Vector3.Distance(ability.transform.position, targets[i].bounds.center);
+                    if (distance >= bestDistance) continue;
+                    best = candidate;
+                    bestPoint = targets[i].bounds.center;
+                    bestDistance = distance;
+                }
+                float coinMultiplier = preset != null && preset.archetype == WeaponArchetype.Rail ? 3.4f : 2.2f;
+                if (best != null) DealDamage(best, damage * coinMultiplier, color);
+                SpawnVisualTracer(ability.transform.position, (bestPoint - ability.transform.position).normalized, preset);
+                SpawnImpactBurst(ability.transform.position, color, 0.32f, 0.16f);
+                TriggerHeavyImpact(coinMultiplier > 3f ? 0.085f : 0.045f, coinMultiplier > 3f ? 0.16f : 0.1f);
+                Destroy(ability.gameObject);
+                break;
+            case WeaponAbilityObject.Kind.Core:
+                float coreMultiplier = preset != null && preset.archetype == WeaponArchetype.Rail ? 4f : 2.4f;
+                ApplySplashDamage(ability.transform.position, 6f, damage * coreMultiplier, null);
+                ApplyRadialForce(ability.transform.position, 6f, 14f);
+                SpawnRadialAbilityBurst(ability.transform.position, 6f, color, 14);
+                ChainDetonateExplosives(ability.transform.position, 8f, ability);
+                if (player != null)
+                {
+                    float distance = Vector3.Distance(player.transform.position, ability.transform.position);
+                    if (distance < 6f) player.TakeDamage(damage * Mathf.Lerp(0.75f, 0.1f, distance / 6f));
+                }
+                TriggerHeavyImpact(0.09f, 0.2f);
+                Destroy(ability.gameObject);
+                break;
+            case WeaponAbilityObject.Kind.Bomb:
+                Rigidbody bombBody = ability.GetComponent<Rigidbody>();
+                if (bombBody != null) bombBody.AddForce(direction.normalized * 9f, ForceMode.Impulse);
+                SpawnImpactBurst(ability.transform.position, color, 0.18f, 0.1f);
+                break;
+        }
+    }
+
+    public void HandleAbilityObjectCollision(WeaponAbilityObject ability, Collision collision)
+    {
+        if (ability == null) return;
+        if (ability.kind == WeaponAbilityObject.Kind.Coin)
+        {
+            vesperCoins.Remove(ability);
+            Destroy(ability.gameObject);
+            return;
+        }
+        if (ability.kind != WeaponAbilityObject.Kind.Core) return;
+
+        WeaponPreset kiln = presets != null && presets.Length > 3 ? presets[3] : ActivePreset;
+        float damage = kiln != null ? GetEffectiveDamage(kiln.damage) * 2f : 40f;
+        Vector3 point = ability.transform.position;
+        ApplySplashDamage(point, 5.5f, damage, null);
+        if (player != null)
+        {
+            float distance = Vector3.Distance(player.transform.position, point);
+            if (distance < 5.5f)
+                player.TakeDamage(damage * Mathf.Lerp(0.8f, 0.15f, distance / 5.5f));
+        }
+        ApplyRadialForce(point, 5.5f, 16f);
+        SpawnRadialAbilityBurst(point, 5.5f, kiln != null ? kiln.accentColor : Color.red, 14);
+        TriggerHeavyImpact(0.06f, 0.16f);
+        Destroy(ability.gameObject);
+    }
+
+    private void RecallTridentNeedles(Vector3 destination, WeaponPreset preset, float damage)
+    {
+        for (int i = tridentNeedles.Count - 1; i >= 0; i--)
+        {
+            Transform needle = tridentNeedles[i];
+            if (needle == null) continue;
+            Vector3 origin = needle.position;
+            Vector3 direction = (destination - origin).normalized;
+            float distance = Vector3.Distance(origin, destination);
+            RaycastHit[] hits = Physics.SphereCastAll(origin, 0.28f, direction, distance, ~0, QueryTriggerInteraction.Ignore);
+            for (int h = 0; h < hits.Length; h++)
+            {
+                IDamageable target = hits[h].collider.GetComponentInParent<IDamageable>();
+                if (target != null && !(target is PlayerController)) DealDamage(target, damage * 0.75f, preset.accentColor);
+            }
+            SpawnVisualTracer(origin, direction, preset);
+            Destroy(needle.gameObject);
+        }
+        SpawnRadialAbilityBurst(destination, 2.2f, preset.accentColor, 9);
+        tridentNeedles.Clear();
+    }
+
+    private void AddEmbeddedNeedle(Vector3 point, Vector3 normal, Color color)
+    {
+        GameObject needle = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+        needle.name = "TridentEmbeddedNeedle";
+        needle.transform.position = point + normal * 0.08f;
+        needle.transform.rotation = Quaternion.LookRotation(normal) * Quaternion.Euler(90f, 0f, 0f);
+        needle.transform.localScale = new Vector3(0.035f, 0.22f, 0.035f);
+        Collider collider = needle.GetComponent<Collider>();
+        if (collider != null) Destroy(collider);
+        needle.GetComponent<Renderer>().material = GetFxMaterial(Color.Lerp(color, Color.white, 0.25f), 2.8f);
+        tridentNeedles.Add(needle.transform);
+        SpawnImpactBurst(point, normal, -normal, color, 0.08f, 0.12f);
+    }
+
+    private void PlaceLodestarAnchor(Vector3 origin, Vector3 direction, WeaponPreset preset)
+    {
+        if (lodestarAnchor != null) Destroy(lodestarAnchor.gameObject);
+        Vector3 point = origin + direction * 14f;
+        if (TryGetAimHit(origin, direction, out RaycastHit hit)) point = hit.point;
+        lodestarAnchor = SpawnAbilityObject(WeaponAbilityObject.Kind.Anchor, point, Vector3.zero, 0.28f, preset.accentColor);
+        Rigidbody body = lodestarAnchor.GetComponent<Rigidbody>();
+        body.isKinematic = true;
+        lodestarAnchor.lifetime = 8f;
+        SpawnRadialAbilityBurst(point, 4f, preset.accentColor, 10);
+    }
+
+    private System.Collections.IEnumerator BreachGuard(WeaponPreset preset)
+    {
+        float end = Time.time + 0.42f;
+        bool reflected = false;
+        while (Time.time < end)
+        {
+            if (player != null)
+            {
+                Collider[] hits = Physics.OverlapSphere(player.transform.position + player.transform.forward * 1.2f, 2.4f);
+                for (int i = 0; i < hits.Length; i++)
+                {
+                    Projectile projectile = hits[i].GetComponentInParent<Projectile>();
+                    if (projectile != null && player.TryParryIncomingProjectile(projectile)) reflected = true;
+                }
+            }
+            yield return null;
+        }
+        Vector3 center = player != null ? player.transform.position + player.transform.forward * 2.5f : transform.position;
+        if (reflected)
+        {
+            nextTimeToFire = 0f;
+            ApplySplashDamage(center, 4.2f, GetEffectiveDamage(preset.damage) * 0.85f, null);
+        }
+        ApplyRadialForce(center, reflected ? 6f : 3.5f, reflected ? 24f : 11f);
+        LaunchAbilityObjects(center, player != null ? player.transform.forward : transform.forward, reflected ? 18f : 9f, 6f);
+        SpawnRadialAbilityBurst(center, reflected ? 4.2f : 2.4f, preset.accentColor, reflected ? 14 : 7);
+        TriggerHeavyImpact(reflected ? 0.08f : 0.025f, reflected ? 0.18f : 0.08f);
+    }
+
+    private void SpawnCinderBomb(Vector3 origin, Vector3 direction, WeaponPreset preset)
+    {
+        WeaponAbilityObject bomb = SpawnAbilityObject(WeaponAbilityObject.Kind.Bomb, origin + direction * 1.5f, direction * 18f + Vector3.up * 5f, 0.42f, preset.accentColor);
+        cinderBombs.Add(bomb);
+    }
+
+    private void DetonateCinderBombs(WeaponPreset preset, float damage)
+    {
+        for (int i = cinderBombs.Count - 1; i >= 0; i--)
+            if (cinderBombs[i] != null) DetonateAbilityObject(cinderBombs[i], 7.2f, damage * 1.6f, preset.accentColor);
+        cinderBombs.Clear();
+    }
+
+    private void DetonateAbilityObject(WeaponAbilityObject ability, float radius, float damage, Color color)
+    {
+        if (ability == null) return;
+        Vector3 point = ability.transform.position;
+        ApplySplashDamage(point, radius, damage, null);
+        ApplyRadialForce(point, radius, 16f);
+        SpawnRadialAbilityBurst(point, radius, color, 16);
+        TriggerHeavyImpact(0.055f, 0.14f);
+        Destroy(ability.gameObject);
+    }
+
+    private void PlaceTetherSpike(Vector3 origin, Vector3 direction, WeaponPreset preset, float damage)
+    {
+        Vector3 point = origin + direction * 22f;
+        if (TryGetAimHit(origin, direction, out RaycastHit hit)) point = hit.point;
+        if (!firstTetherPoint.HasValue)
+        {
+            firstTetherPoint = point;
+            SpawnAbilityObject(WeaponAbilityObject.Kind.Spike, point, Vector3.zero, 0.2f, preset.accentColor).GetComponent<Rigidbody>().isKinematic = true;
+            return;
+        }
+        Vector3 start = firstTetherPoint.Value;
+        Vector3 line = point - start;
+        StartCoroutine(ActiveTether(start, point, preset, damage));
+        SpawnRadialAbilityBurst(point, 2f, preset.accentColor, 8);
+        firstTetherPoint = null;
+    }
+
+    private void FireRedlineCharge(float charge)
+    {
+        WeaponPreset preset = ActivePreset;
+        if (preset == null || Time.time < nextAltFireTime) return;
+        nextAltFireTime = Time.time + Mathf.Lerp(0.5f, 1.5f, charge);
+        Camera cam = Camera.main;
+        Vector3 origin = cam != null ? cam.transform.position : transform.position;
+        Vector3 direction = cam != null ? cam.transform.forward : transform.forward;
+        FirePiercingLine(origin, direction, GetEffectiveDamage(preset.damage) * Mathf.Lerp(1.1f, 3.4f, charge), preset, Mathf.Lerp(0.5f, 3f, charge), Mathf.Lerp(4f, 16f, charge));
+        SpawnRadialAbilityBurst(GetBarrelWorldPosition(origin), Mathf.Lerp(1f, 3f, charge), preset.accentColor, 12);
+        if (charge > 0.55f) TriggerHeavyImpact(Mathf.Lerp(0.025f, 0.075f, charge), Mathf.Lerp(0.08f, 0.18f, charge));
+        if (player != null) player.NotifyWeaponFired(true);
+    }
+
+    private void BeginRedlineChargeFx(WeaponPreset preset)
+    {
+        if (redlineChargeFx != null) Destroy(redlineChargeFx.gameObject);
+        GameObject orb = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+        orb.name = "RedlineChargeIndicator";
+        Collider collider = orb.GetComponent<Collider>();
+        if (collider != null) Destroy(collider);
+        orb.GetComponent<Renderer>().material = GetFxMaterial(preset.accentColor, 3.2f);
+        redlineChargeFx = orb.transform;
+    }
+
+    private void UpdateRedlineChargeFx(float charge, WeaponPreset preset)
+    {
+        if (redlineChargeFx == null) return;
+        redlineChargeFx.position = GetBarrelWorldPosition(transform.position);
+        float pulse = 0.08f + charge * 0.28f + Mathf.Sin(Time.unscaledTime * Mathf.Lerp(8f, 28f, charge)) * 0.025f;
+        redlineChargeFx.localScale = Vector3.one * pulse;
+        if (charge > 0.98f && player != null) player.NotifyHeavyWeaponImpact(0.035f);
+    }
+
+    private void UpdatePersistentAbilities(WeaponPreset preset)
+    {
+        if (lodestarAnchor != null)
+        {
+            Collider[] hits = Physics.OverlapSphere(lodestarAnchor.transform.position, 7f, ~0, QueryTriggerInteraction.Ignore);
+            for (int i = 0; i < hits.Length; i++)
+            {
+                if (IsPlayerOwnedCollider(hits[i])) continue;
+                Vector3 pull = (lodestarAnchor.transform.position - hits[i].bounds.center);
+                if (hits[i].attachedRigidbody != null) hits[i].attachedRigidbody.AddForce(pull.normalized * 18f, ForceMode.Acceleration);
+                BasicEnemyAI enemy = hits[i].GetComponentInParent<BasicEnemyAI>();
+                if (enemy != null)
+                    enemy.transform.position += pull.normalized * Mathf.Min(2.8f * Time.deltaTime, pull.magnitude * 0.12f);
+            }
+        }
+        if (tempestStormTimer <= 0f || preset == null) return;
+        tempestStormTimer -= Time.deltaTime;
+        tempestPulseTimer -= Time.deltaTime;
+        if (tempestPulseTimer > 0f || player == null) return;
+        tempestPulseTimer = 0.28f;
+        CharacterController controller = player.GetComponent<CharacterController>();
+        if (controller == null || controller.velocity.magnitude < 9f) return;
+        SpawnRadialAbilityBurst(player.transform.position + Vector3.up * 0.8f, 2.2f, preset.accentColor, 6);
+        player.NotifyHeavyWeaponImpact(0.028f);
+        Collider[] nearby = Physics.OverlapSphere(player.transform.position, 3.2f, ~0, QueryTriggerInteraction.Ignore);
+        for (int i = 0; i < nearby.Length; i++)
+        {
+            WeaponAbilityObject conductive = nearby[i].GetComponentInParent<WeaponAbilityObject>();
+            if (conductive != null && conductive.conductive)
+            {
+                conductive.Hit(GetEffectiveDamage(preset.damage) * 0.7f, (conductive.transform.position - player.transform.position).normalized);
+                continue;
+            }
+            IDamageable target = nearby[i].GetComponentInParent<IDamageable>();
+            if (target != null && !(target is PlayerController)) DealDamage(target, GetEffectiveDamage(preset.damage) * 0.45f, preset.accentColor);
+        }
+    }
+
+    private void ApplyRadialForce(Vector3 center, float radius, float force)
+    {
+        Collider[] hits = Physics.OverlapSphere(center, radius, ~0, QueryTriggerInteraction.Ignore);
+        for (int i = 0; i < hits.Length; i++)
+            if (hits[i].attachedRigidbody != null) hits[i].attachedRigidbody.AddExplosionForce(force, center, radius, 0.5f, ForceMode.Impulse);
+    }
+
+    private void ChainDetonateExplosives(Vector3 center, float radius, WeaponAbilityObject source)
+    {
+        Collider[] hits = Physics.OverlapSphere(center, radius, ~0, QueryTriggerInteraction.Ignore);
+        for (int i = 0; i < hits.Length; i++)
+        {
+            WeaponAbilityObject ability = hits[i].GetComponentInParent<WeaponAbilityObject>();
+            if (ability == null || ability == source || ability.kind != WeaponAbilityObject.Kind.Bomb) continue;
+            ability.Hit(ActivePreset != null ? GetEffectiveDamage(ActivePreset.damage) : 30f, (ability.transform.position - center).normalized);
+        }
+    }
+
+    private void LaunchAbilityObjects(Vector3 center, Vector3 forward, float force, float radius)
+    {
+        Collider[] hits = Physics.OverlapSphere(center, radius, ~0, QueryTriggerInteraction.Ignore);
+        for (int i = 0; i < hits.Length; i++)
+        {
+            WeaponAbilityObject ability = hits[i].GetComponentInParent<WeaponAbilityObject>();
+            Rigidbody body = ability != null ? ability.GetComponent<Rigidbody>() : null;
+            if (body == null || body.isKinematic) continue;
+            body.AddForce((forward + Vector3.up * 0.18f).normalized * force, ForceMode.Impulse);
+        }
+    }
+
+    private System.Collections.IEnumerator ActiveTether(Vector3 start, Vector3 end, WeaponPreset preset, float damage)
+    {
+        float elapsed = 0f;
+        float tick = 0f;
+        Vector3 line = end - start;
+        while (elapsed < 6f)
+        {
+            elapsed += Time.deltaTime;
+            tick -= Time.deltaTime;
+            if (tick <= 0f)
+            {
+                tick = 0.22f;
+                RaycastHit[] hits = Physics.SphereCastAll(start, 0.48f, line.normalized, line.magnitude, ~0, QueryTriggerInteraction.Ignore);
+                for (int i = 0; i < hits.Length; i++)
+                {
+                    IDamageable target = hits[i].collider.GetComponentInParent<IDamageable>();
+                    if (target != null && !(target is PlayerController)) DealDamage(target, damage * 0.28f, preset.accentColor);
+                    WeaponAbilityObject explosive = hits[i].collider.GetComponentInParent<WeaponAbilityObject>();
+                    if (explosive != null && explosive.kind == WeaponAbilityObject.Kind.Bomb)
+                        explosive.Hit(damage * 0.6f, line.normalized);
+                }
+                SpawnVisualTracer(start, line.normalized, preset);
+            }
+            yield return null;
+        }
+        SpawnRadialAbilityBurst(end, 1.5f, preset.accentColor, 6);
+    }
+
+    private void TriggerHeavyImpact(float hitStopDuration, float shakeAmount)
+    {
+        if (player != null) player.NotifyHeavyWeaponImpact(shakeAmount);
+        if (hitStopDuration > 0f) StartCoroutine(ImpactPause(hitStopDuration));
+    }
+
+    private System.Collections.IEnumerator ImpactPause(float duration)
+    {
+        float previousScale = Time.timeScale;
+        Time.timeScale = Mathf.Min(previousScale, 0.08f);
+        yield return new WaitForSecondsRealtime(duration);
+        if (Time.timeScale <= 0.081f) Time.timeScale = previousScale;
+    }
+
+    private void FireArcPulse(Vector3 origin, Vector3 direction, WeaponPreset preset, float damage)
+    {
+        Vector3 center = origin + direction * 8f;
+        if (TryGetAimHit(origin, direction, out RaycastHit aimHit))
+            center = aimHit.point;
+        Collider[] candidates = Physics.OverlapSphere(center, 9f, ~0, QueryTriggerInteraction.Ignore);
+        int struck = 0;
+        for (int i = 0; i < candidates.Length && struck < 6; i++)
+        {
+            Collider candidate = candidates[i];
+            if (candidate == null || IsPlayerOwnedCollider(candidate)) continue;
+            IDamageable target = candidate.GetComponentInParent<IDamageable>();
+            if (target == null) continue;
+            DealDamage(target, damage * Mathf.Pow(0.82f, struck), preset.accentColor);
+            SpawnImpactBurst(candidate.bounds.center, preset.accentColor, 0.2f, 0.16f);
+            Vector3 arcDirection = (candidate.bounds.center - center).normalized;
+            SpawnVisualTracer(center, arcDirection, preset);
+            struck++;
+        }
+        SpawnImpactBurst(center, preset.accentColor, 0.46f, 0.24f);
+        SpawnRadialAbilityBurst(center, 4.5f, preset.accentColor, 8);
+        TriggerHeavyImpact(0.04f, 0.1f);
+    }
+
+    private void SpawnRadialAbilityBurst(Vector3 center, float radius, Color color, int spokes)
+    {
+        for (int i = 0; i < spokes; i++)
+        {
+            float angle = (Mathf.PI * 2f * i) / spokes;
+            Vector3 direction = new Vector3(Mathf.Cos(angle), 0.12f, Mathf.Sin(angle)).normalized;
+            GameObject spoke = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            spoke.name = "WeaponAbilitySpoke";
+            spoke.transform.position = center + direction * radius * 0.5f;
+            spoke.transform.rotation = Quaternion.LookRotation(direction);
+            spoke.transform.localScale = new Vector3(0.045f, 0.045f, radius);
+            Collider collider = spoke.GetComponent<Collider>();
+            if (collider != null) Destroy(collider);
+            Material material = GetFxMaterial(color, 2.2f);
+            spoke.GetComponent<Renderer>().material = material;
+            StartCoroutine(ScaleBurstDown(spoke.transform, 0.28f, new Vector3(0.01f, 0.01f, radius * 1.35f)));
         }
     }
 
@@ -724,20 +1195,10 @@ public class Gun : MonoBehaviour
         switch (preset.archetype)
         {
             case WeaponArchetype.Marksman:
-                ChainToNearbyTarget(hit, baseDamage * 0.55f, 5.8f, preset.accentColor);
-                break;
             case WeaponArchetype.CoreEject:
-                ApplySplashDamage(hit.point, 3.4f, baseDamage * 0.65f, hit.collider);
-                break;
             case WeaponArchetype.Magnet:
-                if (taggedTarget != null)
-                    ApplySplashDamage(hit.point, 1.8f, baseDamage * 0.35f, hit.collider);
-                break;
             case WeaponArchetype.Slab:
-                ApplySplashDamage(hit.point, 2.1f, baseDamage * 0.5f, hit.collider);
-                break;
             case WeaponArchetype.Mortar:
-                ApplySplashDamage(hit.point, 4.6f, baseDamage * 0.85f, hit.collider);
                 break;
             case WeaponArchetype.Arc:
                 ChainToNearbyTarget(hit, baseDamage * 0.65f, 7.2f, preset.accentColor);
@@ -761,6 +1222,9 @@ public class Gun : MonoBehaviour
 
             endPoint = hits[i].point;
             IDamageable damageable = hitCollider.GetComponentInParent<IDamageable>();
+            WeaponAbilityObject abilityObject = hitCollider.GetComponentInParent<WeaponAbilityObject>();
+            if (abilityObject != null)
+                abilityObject.Hit(damage, direction);
             if (damageable != null)
             {
                 DealDamage(damageable, damage, preset.accentColor);
@@ -771,12 +1235,9 @@ public class Gun : MonoBehaviour
             if (hitCollider.attachedRigidbody != null)
                 hitCollider.attachedRigidbody.AddForce(direction * force, ForceMode.Impulse);
 
-            if (damageable == null && !hitCollider.isTrigger)
+            if (damageable == null && abilityObject == null && !hitCollider.isTrigger)
                 break;
         }
-
-        if (splashRadius > 0.05f)
-            ApplySplashDamage(endPoint, splashRadius, damage * 0.35f, null);
 
         SpawnVisualTracer(GetBarrelWorldPosition(origin), direction, preset);
         if (!hitAnyDamageable)
@@ -793,6 +1254,8 @@ public class Gun : MonoBehaviour
             if (TryGetAimHit(cameraPos, direction, out hit))
             {
                 hitPoint = hit.point;
+                WeaponAbilityObject abilityObject = hit.collider.GetComponentInParent<WeaponAbilityObject>();
+                if (abilityObject != null) abilityObject.Hit(damage, direction);
                 ApplyHitScanDamage(hit, damage);
                 SpawnImpactBurst(hitPoint, hit.normal, direction, preset.accentColor, 0.12f, 0.14f);
             }
@@ -959,9 +1422,9 @@ public class Gun : MonoBehaviour
 
     private Vector3 GetFireForward(Camera mainCam, WeaponPreset preset)
     {
-        if (preset.archetype == WeaponArchetype.Magnet && taggedTarget is MonoBehaviour taggedBehaviour && taggedBehaviour != null)
+        if (preset.archetype == WeaponArchetype.Magnet && lodestarAnchor != null)
         {
-            Vector3 target = taggedBehaviour.transform.position + Vector3.up * 0.8f;
+            Vector3 target = lodestarAnchor.transform.position;
             Vector3 origin = mainCam != null ? mainCam.transform.position : transform.position;
             return (target - origin).normalized;
         }
@@ -1487,15 +1950,15 @@ public class Gun : MonoBehaviour
     {
         return archetype switch
         {
-            WeaponArchetype.Marksman => "Fast pistol for clean single shots.",
-            WeaponArchetype.Rail => "Slow pistol that punches through a line.",
-            WeaponArchetype.Splitter => "Burst pistol for close clean-up.",
-            WeaponArchetype.CoreEject => "Wide shotgun that hits groups hard.",
-            WeaponArchetype.Magnet => "Shotgun that stays on a tagged target.",
-            WeaponArchetype.Slab => "Single heavy slug with a big hit.",
-            WeaponArchetype.Mortar => "Heavy launcher with blast damage.",
-            WeaponArchetype.Driver => "Heavy driver for straight-line pressure.",
-            WeaponArchetype.Arc => "Heavy weapon that jumps damage between targets.",
+            WeaponArchetype.Marksman => "Precision sidearm; hits arc into a nearby target.",
+            WeaponArchetype.Rail => "Hand cannon; every shot penetrates an enemy line.",
+            WeaponArchetype.Splitter => "Three-prong repeater for mobile close pressure.",
+            WeaponArchetype.CoreEject => "Room-clearing scattergun with explosive impacts.",
+            WeaponArchetype.Magnet => "Automatic flechette gun that tracks a marked target.",
+            WeaponArchetype.Slab => "One brutal breaching slug with impact splash.",
+            WeaponArchetype.Mortar => "Long-range demolition cannon with large blast damage.",
+            WeaponArchetype.Driver => "Hypervelocity lance built to skewer packed targets.",
+            WeaponArchetype.Arc => "Twin-bolt conductor that chains through crowds.",
             _ => "Reliable weapon setup."
         };
     }
@@ -1504,17 +1967,100 @@ public class Gun : MonoBehaviour
     {
         return archetype switch
         {
-            WeaponArchetype.Marksman => "to fire a charged line.",
-            WeaponArchetype.Rail => "to fire a wider beam.",
-            WeaponArchetype.Splitter => "to fire a wide fan burst.",
-            WeaponArchetype.CoreEject => "to fire a bigger blast.",
-            WeaponArchetype.Magnet => "to tag a target.",
-            WeaponArchetype.Slab => "to fire a short shockwave.",
-            WeaponArchetype.Mortar => "to fire a big splash round.",
-            WeaponArchetype.Driver => "to fire a piercing driver shot.",
-            WeaponArchetype.Arc => "to fire a short arc burst.",
+            WeaponArchetype.Marksman => "for a high-damage precision lance.",
+            WeaponArchetype.Rail => "for a wide overpenetrating beam.",
+            WeaponArchetype.Splitter => "for a nine-round suppression fan.",
+            WeaponArchetype.CoreEject => "to detonate an ejected core at the reticle.",
+            WeaponArchetype.Magnet => "to mark a target for guided primary fire.",
+            WeaponArchetype.Slab => "to discharge a close-range kinetic shockwave.",
+            WeaponArchetype.Mortar => "to airburst a demolition shell at the reticle.",
+            WeaponArchetype.Driver => "for a high-force siege lance.",
+            WeaponArchetype.Arc => "to discharge a six-target storm pulse.",
             _ => "to fire the alt shot."
         };
+    }
+
+    private void BuildWeaponWithFlexibleBuilder(Transform root, WeaponPreset preset)
+    {
+        WeaponModelBuilder b = new WeaponModelBuilder(root);
+        Material dark = bodyMaterial;
+        Material glow = accentMaterial;
+
+        switch (preset.archetype)
+        {
+            case WeaponArchetype.Marksman:
+                b.Box("VesperGrip", new Vector3(-0.04f, -0.38f, 0.05f), new Vector3(0.24f, 0.72f, 0.24f), dark, new Vector3(-14f, 0f, 0f));
+                b.Box("VesperFrame", new Vector3(0f, -0.08f, 0.48f), new Vector3(0.46f, 0.28f, 0.92f), dark);
+                b.Cylinder("VesperSuppressor", new Vector3(0f, 0f, 1.18f), 0.12f, 0.82f, dark, new Vector3(90f, 0f, 0f));
+                b.Box("VesperSight", new Vector3(0f, 0.22f, 0.58f), new Vector3(0.06f, 0.18f, 0.5f), glow, new Vector3(-6f, 0f, 0f));
+                b.MirroredBox("VesperRail", new Vector3(0f, 0.04f, 0.82f), new Vector3(0.06f, 0.1f, 0.72f), 0.25f, glow);
+                break;
+
+            case WeaponArchetype.Rail:
+                b.Box("RedlineGrip", new Vector3(0f, -0.42f, 0.1f), new Vector3(0.3f, 0.76f, 0.28f), dark, new Vector3(-10f, 0f, 0f));
+                b.Box("RedlineBreech", new Vector3(0f, -0.02f, 0.5f), new Vector3(0.68f, 0.4f, 0.72f), dark);
+                b.Cylinder("RedlineCore", new Vector3(0f, 0.05f, 0.9f), 0.16f, 1.35f, glow, new Vector3(90f, 0f, 0f));
+                b.Coil("RedlineCoil", new Vector3(0f, 0.05f, 0.92f), 0.3f, 0.2f, 5, dark);
+                b.MirroredBox("RedlineFork", new Vector3(0f, 0.04f, 1.48f), new Vector3(0.1f, 0.16f, 0.62f), 0.28f, dark, new Vector3(0f, 5f, 0f));
+                break;
+
+            case WeaponArchetype.Splitter:
+                b.Box("TridentGrip", new Vector3(0f, -0.4f, 0.12f), new Vector3(0.26f, 0.7f, 0.25f), dark, new Vector3(-12f, 0f, 0f));
+                b.Sphere("TridentCell", new Vector3(0f, -0.05f, 0.52f), new Vector3(0.58f, 0.4f, 0.7f), dark);
+                b.Cylinder("TridentCenter", new Vector3(0f, 0.12f, 1.15f), 0.075f, 1.1f, glow, new Vector3(90f, 0f, 0f));
+                b.Cylinder("TridentLeft", new Vector3(-0.24f, -0.04f, 1.1f), 0.075f, 1.0f, glow, new Vector3(90f, 0f, -4f));
+                b.Cylinder("TridentRight", new Vector3(0.24f, -0.04f, 1.1f), 0.075f, 1.0f, glow, new Vector3(90f, 0f, 4f));
+                break;
+
+            case WeaponArchetype.CoreEject:
+                b.Box("KilnStock", new Vector3(0f, -0.2f, 0.05f), new Vector3(0.5f, 0.52f, 0.62f), dark, new Vector3(8f, 0f, 0f));
+                b.Cylinder("KilnChamber", new Vector3(0f, 0f, 0.72f), 0.36f, 0.72f, glow, new Vector3(90f, 0f, 0f));
+                b.MirroredBox("KilnHeatShield", new Vector3(0f, 0.08f, 1.08f), new Vector3(0.16f, 0.62f, 1.2f), 0.42f, dark, new Vector3(0f, 0f, 8f));
+                b.Cylinder("KilnMuzzle", new Vector3(0f, 0.02f, 1.55f), 0.28f, 0.72f, dark, new Vector3(90f, 0f, 0f));
+                b.Sphere("KilnCore", new Vector3(0f, 0.02f, 0.72f), Vector3.one * 0.34f, glow);
+                break;
+
+            case WeaponArchetype.Magnet:
+                b.Box("LodestarBody", new Vector3(0f, -0.08f, 0.62f), new Vector3(0.58f, 0.42f, 1.1f), dark);
+                b.Box("LodestarGrip", new Vector3(0f, -0.5f, 0.3f), new Vector3(0.28f, 0.64f, 0.26f), dark, new Vector3(-9f, 0f, 0f));
+                b.MirroredBox("LodestarArm", new Vector3(0f, 0.12f, 1.2f), new Vector3(0.14f, 0.48f, 1.28f), 0.48f, dark, new Vector3(0f, -8f, -10f));
+                b.Coil("LodestarField", new Vector3(0f, 0.08f, 1.14f), 0.4f, 0.22f, 5, glow);
+                b.Sphere("LodestarLens", new Vector3(0f, 0.1f, 1.74f), new Vector3(0.28f, 0.28f, 0.2f), glow);
+                break;
+
+            case WeaponArchetype.Slab:
+                b.Box("BreachBlock", new Vector3(0f, -0.02f, 0.72f), new Vector3(0.86f, 0.58f, 1.3f), dark);
+                b.Box("BreachGrip", new Vector3(0f, -0.56f, 0.24f), new Vector3(0.32f, 0.7f, 0.3f), dark, new Vector3(-8f, 0f, 0f));
+                b.Box("BreachRam", new Vector3(0f, 0.06f, 1.48f), new Vector3(0.34f, 0.34f, 1.22f), glow);
+                b.Box("BreachMuzzle", new Vector3(0f, 0.04f, 1.98f), new Vector3(1.0f, 0.62f, 0.34f), dark);
+                b.MirroredBox("BreachBrace", new Vector3(0f, -0.28f, 0.8f), new Vector3(0.16f, 0.18f, 1.0f), 0.48f, glow);
+                break;
+
+            case WeaponArchetype.Mortar:
+                b.Box("CinderRear", new Vector3(0f, -0.08f, 0.3f), new Vector3(0.7f, 0.52f, 0.82f), dark);
+                b.Cylinder("CinderDrum", new Vector3(0f, -0.02f, 0.9f), 0.48f, 0.62f, glow, new Vector3(0f, 0f, 90f));
+                b.Cylinder("CinderTube", new Vector3(0f, 0.06f, 1.5f), 0.3f, 1.28f, dark, new Vector3(90f, 0f, 0f));
+                b.MirroredBox("CinderCage", new Vector3(0f, 0.12f, 1.28f), new Vector3(0.12f, 0.72f, 1.42f), 0.48f, glow, new Vector3(0f, 0f, 8f));
+                b.Box("CinderGrip", new Vector3(0f, -0.58f, 0.42f), new Vector3(0.3f, 0.7f, 0.3f), dark, new Vector3(-8f, 0f, 0f));
+                break;
+
+            case WeaponArchetype.Driver:
+                b.Box("DriverRear", new Vector3(0f, -0.04f, 0.38f), new Vector3(0.82f, 0.48f, 0.86f), dark);
+                b.Cylinder("DriverRam", new Vector3(0f, 0.04f, 1.28f), 0.19f, 1.9f, glow, new Vector3(90f, 0f, 0f));
+                b.Coil("DriverCoil", new Vector3(0f, 0.04f, 1.18f), 0.34f, 0.25f, 6, dark);
+                b.MirroredBox("DriverRail", new Vector3(0f, 0.02f, 1.48f), new Vector3(0.1f, 0.16f, 1.6f), 0.38f, glow);
+                b.Box("DriverBrace", new Vector3(0f, -0.38f, 0.62f), new Vector3(1.05f, 0.18f, 0.56f), dark);
+                break;
+
+            case WeaponArchetype.Arc:
+                b.Sphere("TempestReactor", new Vector3(0f, 0.02f, 0.72f), new Vector3(0.72f, 0.62f, 0.82f), glow);
+                b.Box("TempestHousing", new Vector3(0f, -0.12f, 0.48f), new Vector3(0.82f, 0.42f, 0.92f), dark);
+                b.MirroredBox("TempestProng", new Vector3(0f, 0.18f, 1.48f), new Vector3(0.16f, 0.2f, 1.52f), 0.42f, glow, new Vector3(0f, -8f, 0f));
+                b.Cylinder("TempestCapL", new Vector3(-0.42f, 0.18f, 2.0f), 0.16f, 0.32f, dark, new Vector3(90f, 0f, 0f));
+                b.Cylinder("TempestCapR", new Vector3(0.42f, 0.18f, 2.0f), 0.16f, 0.32f, dark, new Vector3(90f, 0f, 0f));
+                b.Box("TempestGrip", new Vector3(0f, -0.56f, 0.34f), new Vector3(0.3f, 0.68f, 0.3f), dark, new Vector3(-8f, 0f, 0f));
+                break;
+        }
     }
 
     private void BuildHandgunModel(Transform root, WeaponPreset preset)
@@ -1525,15 +2071,23 @@ public class Gun : MonoBehaviour
         AddPart(root, "Barrel", new Vector3(0.26f, -0.12f, 1.03f), new Vector3(0.12f, 0.12f, 0.45f), Quaternion.identity, accentMaterial);
         AddPart(root, "Sight", new Vector3(0f, 0.22f, 0.83f), new Vector3(0.12f, 0.08f, 0.18f), Quaternion.identity, accentMaterial);
 
-        if (preset.archetype == WeaponArchetype.Rail)
+        if (preset.archetype == WeaponArchetype.Marksman)
+        {
+            AddPart(root, "VesperShroud", new Vector3(0f, 0.04f, 1.1f), new Vector3(0.3f, 0.22f, 0.68f), Quaternion.identity, bodyMaterial);
+            AddPart(root, "VesperBladeSight", new Vector3(0f, 0.3f, 0.56f), new Vector3(0.05f, 0.22f, 0.52f), Quaternion.Euler(-8f, 0f, 0f), accentMaterial);
+        }
+        else if (preset.archetype == WeaponArchetype.Rail)
         {
             AddPart(root, "RailCoil", new Vector3(0f, 0.12f, 0.72f), new Vector3(0.66f, 0.1f, 0.82f), Quaternion.identity, accentMaterial);
             AddPart(root, "RailCompensator", new Vector3(0f, 0.02f, 1.08f), new Vector3(0.62f, 0.24f, 0.24f), Quaternion.identity, bodyMaterial);
+            AddPart(root, "RailSpine", new Vector3(0f, 0.3f, 0.66f), new Vector3(0.12f, 0.32f, 1.16f), Quaternion.identity, bodyMaterial);
         }
         else if (preset.archetype == WeaponArchetype.Splitter)
         {
             AddPart(root, "SplitterForkL", new Vector3(-0.18f, -0.05f, 1.0f), new Vector3(0.12f, 0.12f, 0.42f), Quaternion.identity, accentMaterial);
             AddPart(root, "SplitterForkR", new Vector3(0.18f, -0.05f, 1.0f), new Vector3(0.12f, 0.12f, 0.42f), Quaternion.identity, accentMaterial);
+            AddPart(root, "SplitterForkC", new Vector3(0f, 0.18f, 1.02f), new Vector3(0.1f, 0.1f, 0.48f), Quaternion.identity, accentMaterial);
+            AddPart(root, "SplitterCell", new Vector3(0f, -0.24f, 0.55f), new Vector3(0.62f, 0.2f, 0.34f), Quaternion.identity, bodyMaterial);
         }
     }
 
@@ -1546,14 +2100,23 @@ public class Gun : MonoBehaviour
         AddPart(root, "Pump", new Vector3(0f, -0.22f, 1.05f), new Vector3(0.62f, 0.18f, 0.62f), Quaternion.identity, bodyMaterial);
         AddPart(root, "Grip", new Vector3(0f, -0.48f, 0.36f), new Vector3(0.26f, 0.58f, 0.24f), Quaternion.Euler(-10f, 0f, 0f), bodyMaterial);
 
-        if (preset.archetype == WeaponArchetype.Magnet)
+        if (preset.archetype == WeaponArchetype.CoreEject)
+        {
+            AddPart(root, "KilnChamber", new Vector3(0f, 0.18f, 0.56f), new Vector3(0.74f, 0.48f, 0.62f), Quaternion.identity, accentMaterial);
+            AddPart(root, "KilnVentL", new Vector3(-0.42f, 0.06f, 0.72f), new Vector3(0.12f, 0.58f, 0.48f), Quaternion.Euler(0f, 0f, -12f), bodyMaterial);
+            AddPart(root, "KilnVentR", new Vector3(0.42f, 0.06f, 0.72f), new Vector3(0.12f, 0.58f, 0.48f), Quaternion.Euler(0f, 0f, 12f), bodyMaterial);
+        }
+        else if (preset.archetype == WeaponArchetype.Magnet)
         {
             AddPart(root, "MagnetCoil", new Vector3(0f, 0.12f, 1.08f), new Vector3(0.76f, 0.16f, 0.58f), Quaternion.identity, accentMaterial);
+            AddPart(root, "MagnetArmL", new Vector3(-0.48f, 0.16f, 1.2f), new Vector3(0.14f, 0.5f, 0.9f), Quaternion.Euler(0f, -8f, -10f), bodyMaterial);
+            AddPart(root, "MagnetArmR", new Vector3(0.48f, 0.16f, 1.2f), new Vector3(0.14f, 0.5f, 0.9f), Quaternion.Euler(0f, 8f, 10f), bodyMaterial);
         }
         else if (preset.archetype == WeaponArchetype.Slab)
         {
             AddPart(root, "SlugRail", new Vector3(0f, 0.26f, 1.0f), new Vector3(0.18f, 0.1f, 1.1f), Quaternion.identity, accentMaterial);
             AddPart(root, "SlabWeight", new Vector3(0f, -0.18f, 0.78f), new Vector3(0.7f, 0.22f, 0.48f), Quaternion.identity, bodyMaterial);
+            AddPart(root, "BreachMuzzle", new Vector3(0f, 0.02f, 1.86f), new Vector3(0.86f, 0.46f, 0.34f), Quaternion.identity, bodyMaterial);
         }
     }
 
@@ -1568,15 +2131,22 @@ public class Gun : MonoBehaviour
         if (preset.archetype == WeaponArchetype.Mortar)
         {
             AddPart(root, "Drum", new Vector3(0f, -0.2f, 0.94f), new Vector3(0.74f, 0.24f, 0.52f), Quaternion.identity, accentMaterial);
+            AddPart(root, "MortarCageL", new Vector3(-0.44f, 0.12f, 1.25f), new Vector3(0.12f, 0.72f, 1.15f), Quaternion.Euler(0f, 0f, -8f), bodyMaterial);
+            AddPart(root, "MortarCageR", new Vector3(0.44f, 0.12f, 1.25f), new Vector3(0.12f, 0.72f, 1.15f), Quaternion.Euler(0f, 0f, 8f), bodyMaterial);
         }
         else if (preset.archetype == WeaponArchetype.Driver)
         {
             AddPart(root, "DriverForkL", new Vector3(-0.18f, 0.02f, 1.82f), new Vector3(0.08f, 0.08f, 0.48f), Quaternion.identity, accentMaterial);
             AddPart(root, "DriverForkR", new Vector3(0.18f, 0.02f, 1.82f), new Vector3(0.08f, 0.08f, 0.48f), Quaternion.identity, accentMaterial);
+            AddPart(root, "DriverRam", new Vector3(0f, -0.04f, 1.45f), new Vector3(0.42f, 0.42f, 1.72f), Quaternion.identity, bodyMaterial);
+            AddPart(root, "DriverBrace", new Vector3(0f, -0.34f, 0.74f), new Vector3(1.0f, 0.16f, 0.5f), Quaternion.identity, accentMaterial);
         }
         else if (preset.archetype == WeaponArchetype.Arc)
         {
             AddPart(root, "ArcCap", new Vector3(0f, 0.28f, 1.36f), new Vector3(0.56f, 0.14f, 0.56f), Quaternion.identity, accentMaterial);
+            AddPart(root, "ArcProngL", new Vector3(-0.36f, 0.16f, 1.72f), new Vector3(0.16f, 0.16f, 0.92f), Quaternion.Euler(0f, -8f, 0f), accentMaterial);
+            AddPart(root, "ArcProngR", new Vector3(0.36f, 0.16f, 1.72f), new Vector3(0.16f, 0.16f, 0.92f), Quaternion.Euler(0f, 8f, 0f), accentMaterial);
+            AddPart(root, "ArcBridge", new Vector3(0f, 0.34f, 1.86f), new Vector3(0.82f, 0.12f, 0.18f), Quaternion.identity, bodyMaterial);
         }
     }
 

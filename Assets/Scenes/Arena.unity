@@ -1654,8 +1654,8 @@ MonoBehaviour:
   arenaMode: 0
   themeIndex: 0
   useThemePaletteVariants: 1
-  decorativeDensity: 0.38
-  microDetailDensity: 0.12
+  decorativeDensity: 0.26
+  microDetailDensity: 0.06
   bridgeLevel: 1
   platformLevel: 2
   crownLevel: 3
@@ -1666,7 +1666,7 @@ MonoBehaviour:
   reconfigureDistrictCount: 5
   outerGapChance: 0.055
   hazardChance: 0.035
-  coverChance: 0.07
+  coverChance: 0.055
   itemChance: 0.08
   safeRadiusAroundSpawn: 4
   safeRadiusAroundExit: 4
@@ -1715,6 +1715,12 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 1c7b8e5a9656486f98f8e9b728ac8af0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::CybergrindTransitionController
+  useScreenSpaceTransition: 1
+  curtainCloseDuration: 0.55
+  curtainHoldDuration: 1.35
+  curtainOpenDuration: 0.55
+  curtainColor: {r: 0.008, g: 0.016, b: 0.022, a: 1}
+  useElevatorHologramTransition: 1
   oldArenaDropDuration: 2.15
   newArenaRiseDuration: 2.45
   swapHoldDuration: 0.45

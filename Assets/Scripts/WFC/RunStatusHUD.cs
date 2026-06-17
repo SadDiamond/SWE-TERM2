@@ -76,6 +76,9 @@ public class RunStatusHUD : MonoBehaviour
         bool isBoss = arenaDirector != null && arenaDirector.generator != null && arenaDirector.generator.arenaMode == CybergrindArenaGenerator.ArenaMode.Boss;
         bool bossRewardRevealActive = arenaDirector != null && arenaDirector.IsBossRewardRevealActive;
         bool coreAccessActive = arenaDirector != null && arenaDirector.IsCoreAccessActive;
+        bool showObjective = !(isBoss && livingEnemies > 0);
+        if (objectivePanel != null) objectivePanel.gameObject.SetActive(showObjective);
+        if (objectiveText != null) objectiveText.gameObject.SetActive(showObjective);
 
         if (runComplete)
         {
@@ -195,9 +198,9 @@ public class RunStatusHUD : MonoBehaviour
             coreProgressFill.fillAmount = Mathf.Clamp01((float)runState.bossesClearedThisRun / Mathf.Max(1, arenaDirector.bossFloorsToReachCore));
 
         if (headerPanel != null && arenaDirector.generator != null)
-            headerPanel.color = ResolvePanelColor(arenaDirector.generator.arenaMode, 0.84f);
+            headerPanel.color = ResolvePanelColor(arenaDirector.generator.arenaMode, 0.86f);
         if (objectivePanel != null && arenaDirector.generator != null)
-            objectivePanel.color = ResolvePanelColor(arenaDirector.generator.arenaMode, 0.62f);
+            objectivePanel.color = ResolvePanelColor(arenaDirector.generator.arenaMode, 0.78f);
     }
 
     private void RefreshVitals()
@@ -206,16 +209,18 @@ public class RunStatusHUD : MonoBehaviour
         if (player == null) return;
 
         if (hpText != null)
-            hpText.text = $"HP {Mathf.CeilToInt(player.currentHealth)}/{Mathf.CeilToInt(player.EffectiveMaxHealth)}";
+            hpText.text = $"{Mathf.CeilToInt(player.currentHealth):000}";
         if (coinText != null)
-            coinText.text = $"Coins {player.currency}";
+            coinText.text = $"{player.currency:000} C";
         if (speedText != null)
-            speedText.text = $"Speed {player.PlanarSpeed:0.0} u/s";
+            speedText.text = $"{player.PlanarSpeed:0.0} SPEED" + (player.SlideJumpChain > 0 ? $"   x{player.SlideJumpChain}" : string.Empty);
         if (dashText != null)
             dashText.text = "Dash";
         RefreshDashPips(player);
         if (hpFill != null)
             hpFill.fillAmount = Mathf.Clamp01(player.currentHealth / Mathf.Max(1f, player.EffectiveMaxHealth));
+        if (hpFill != null)
+            hpFill.color = player.Health01 < 0.3f ? new Color(1f, 0.16f, 0.12f, 1f) : new Color(0.12f, 0.88f, 0.95f, 1f);
     }
 
     private int CountUnsolvedPuzzleTerminals()
@@ -329,6 +334,22 @@ public class RunStatusHUD : MonoBehaviour
         if (hpFill == null)
             hpFill = CreateProgressBar("HPProgressBar", new Vector2(22f, -320f), new Vector2(285f, 10f), new Color(0.45f, 1f, 0.34f, 0.95f));
         ApplyProgressLayout(hpFill, new Vector2(22f, -320f), new Vector2(285f, 10f));
+
+        directiveText.gameObject.SetActive(false);
+        seedText.gameObject.SetActive(false);
+        dashText.gameObject.SetActive(false);
+        ApplyViewportLayout(floorText.rectTransform, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(32f, -28f), new Vector2(120f, 28f));
+        ApplyViewportLayout(cycleText.rectTransform, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(32f, -58f), new Vector2(280f, 20f));
+        ApplyViewportLayout(objectiveText.rectTransform, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -90f), new Vector2(420f, 28f));
+        objectiveText.alignment = TextAlignmentOptions.Center;
+        ApplyViewportLayout(coreProgressText.rectTransform, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(190f, -31f), new Vector2(125f, 20f));
+        ApplyViewportLayout(hpText.rectTransform, Vector2.zero, Vector2.zero, new Vector2(30f, 96f), new Vector2(130f, 52f));
+        hpText.fontSize = 36f;
+        ApplyViewportLayout(coinText.rectTransform, Vector2.zero, Vector2.zero, new Vector2(190f, 96f), new Vector2(130f, 28f));
+        coinText.alignment = TextAlignmentOptions.Right;
+        ApplyViewportLayout(speedText.rectTransform, Vector2.zero, Vector2.zero, new Vector2(30f, 136f), new Vector2(280f, 24f));
+        ApplyViewportLayout(hpFill.transform.parent as RectTransform, Vector2.zero, Vector2.zero, new Vector2(30f, 58f), new Vector2(290f, 14f));
+        ApplyViewportLayout(coreProgressFill.transform.parent as RectTransform, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(190f, -54f), new Vector2(125f, 6f));
     }
 
     private void EnsureDashPips()
@@ -339,8 +360,7 @@ public class RunStatusHUD : MonoBehaviour
         for (int i = 0; i < dashPips.Length; i++)
         {
             string name = $"DashPip{i + 1}";
-            dashPips[i] = dashPips[i] != null ? dashPips[i] : CreateDashPip(name, new Vector2(76f + i * 31f, -272f), new Vector2(24f, 10f));
-            ApplyDashPipLayout(dashPips[i], new Vector2(76f + i * 31f, -272f), new Vector2(24f, 10f));
+            dashPips[i] = dashPips[i] != null ? dashPips[i] : CreateDashPip(name, i);
         }
     }
 
@@ -364,8 +384,13 @@ public class RunStatusHUD : MonoBehaviour
 
             pip.fillAmount = i < charges ? 1f : (i == charges ? recharge : 0f);
             pip.color = i < charges
-                ? new Color(0.50f, 0.95f, 1f, 0.96f)
-                : new Color(0.50f, 0.95f, 1f, 0.58f);
+                ? new Color(0.34f, 0.94f, 1f, 1f)
+                : new Color(1f, 0.72f, 0.22f, 0.95f);
+            Image back = pip.transform.parent != null ? pip.transform.parent.GetComponent<Image>() : null;
+            if (back != null)
+                back.color = i < charges
+                    ? new Color(0.04f, 0.12f, 0.14f, 0.92f)
+                    : new Color(0.22f, 0.035f, 0.035f, 0.96f);
         }
     }
 
@@ -435,6 +460,33 @@ public class RunStatusHUD : MonoBehaviour
         ApplyPanelLayout(objectivePanel, new Vector2(12f, -140f), new Vector2(360f, 94f));
         vitalsPanel = vitalsPanel != null ? vitalsPanel : CreatePanel("VitalsPanel", new Vector2(12f, -238f), new Vector2(360f, 104f));
         ApplyPanelLayout(vitalsPanel, new Vector2(12f, -238f), new Vector2(360f, 104f));
+
+        ApplyViewportLayout(headerPanel.rectTransform, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(20f, -20f), new Vector2(310f, 66f));
+        ApplyViewportLayout(objectivePanel.rectTransform, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -78f), new Vector2(460f, 48f));
+        ApplyViewportLayout(vitalsPanel.rectTransform, Vector2.zero, Vector2.zero, new Vector2(20f, 20f), new Vector2(330f, 136f));
+        headerPanel.color = new Color(0.015f, 0.025f, 0.032f, 0.84f);
+        objectivePanel.color = new Color(0.015f, 0.025f, 0.032f, 0.78f);
+        vitalsPanel.color = new Color(0.015f, 0.025f, 0.032f, 0.9f);
+        DisablePanelOutline(headerPanel);
+        DisablePanelOutline(objectivePanel);
+        DisablePanelOutline(vitalsPanel);
+    }
+
+    private void DisablePanelOutline(Image panel)
+    {
+        if (panel == null) return;
+        Outline outline = panel.GetComponent<Outline>();
+        if (outline != null) outline.enabled = false;
+    }
+
+    private void ApplyViewportLayout(RectTransform rect, Vector2 anchor, Vector2 pivot, Vector2 position, Vector2 size)
+    {
+        if (rect == null) return;
+        rect.anchorMin = anchor;
+        rect.anchorMax = anchor;
+        rect.pivot = pivot;
+        rect.anchoredPosition = position;
+        rect.sizeDelta = size;
     }
 
     private Image CreatePanel(string name, Vector2 anchoredPos, Vector2 size)
@@ -509,7 +561,7 @@ public class RunStatusHUD : MonoBehaviour
         return fillImage;
     }
 
-    private Image CreateDashPip(string name, Vector2 anchoredPos, Vector2 size)
+    private Image CreateDashPip(string name, int index)
     {
         Transform existing = transform.Find(name);
         if (existing != null)
@@ -518,17 +570,16 @@ public class RunStatusHUD : MonoBehaviour
         GameObject back = new GameObject(name);
         back.transform.SetParent(transform, false);
         RectTransform backRect = back.AddComponent<RectTransform>();
-        backRect.anchorMin = new Vector2(0f, 1f);
-        backRect.anchorMax = new Vector2(0f, 1f);
-        backRect.pivot = new Vector2(0f, 1f);
-        backRect.anchoredPosition = anchoredPos;
-        backRect.sizeDelta = size;
+        float angle = 200f + index * 35f;
+        Vector2 radialPosition = new Vector2(Mathf.Cos(angle * Mathf.Deg2Rad), Mathf.Sin(angle * Mathf.Deg2Rad)) * 37f;
+        backRect.anchorMin = backRect.anchorMax = new Vector2(0.5f, 0.5f);
+        backRect.pivot = new Vector2(0.5f, 0.5f);
+        backRect.anchoredPosition = radialPosition;
+        backRect.sizeDelta = new Vector2(21f, 7f);
+        backRect.localRotation = Quaternion.Euler(0f, 0f, angle - 90f);
 
         Image backImage = back.AddComponent<Image>();
-        backImage.color = new Color(0.015f, 0.025f, 0.035f, 0.92f);
-        Outline outline = back.AddComponent<Outline>();
-        outline.effectColor = new Color(0.50f, 0.95f, 1f, 0.38f);
-        outline.effectDistance = new Vector2(1f, -1f);
+        backImage.color = new Color(0.08f, 0.12f, 0.14f, 0.72f);
 
         GameObject fill = new GameObject("Fill");
         fill.transform.SetParent(back.transform, false);
@@ -576,9 +627,9 @@ public class RunStatusHUD : MonoBehaviour
     {
         return mode switch
         {
-            CybergrindArenaGenerator.ArenaMode.Boss => new Color(0.12f, 0.03f, 0.03f, alpha),
-            CybergrindArenaGenerator.ArenaMode.Shop => new Color(0.02f, 0.10f, 0.09f, alpha),
-            _ => new Color(0.02f, 0.05f, 0.08f, alpha)
+            CybergrindArenaGenerator.ArenaMode.Boss => new Color(0.055f, 0.025f, 0.028f, alpha),
+            CybergrindArenaGenerator.ArenaMode.Shop => new Color(0.02f, 0.045f, 0.04f, alpha),
+            _ => new Color(0.015f, 0.025f, 0.032f, alpha)
         };
     }
 }

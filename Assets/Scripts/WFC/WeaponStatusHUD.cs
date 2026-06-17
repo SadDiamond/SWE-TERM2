@@ -53,12 +53,12 @@ public class WeaponStatusHUD : MonoBehaviour
         if (familyText != null)
             familyText.text = gun.GetActiveFamilyLabel();
         if (variantText != null)
-            variantText.text = gun.GetActiveVariantLabel() + " - " + gun.GetActiveDisplayName().ToUpperInvariant();
+            variantText.text = gun.GetActiveDisplayName().ToUpperInvariant();
         if (detailText != null)
-            detailText.text = gun.GetActiveDescriptorLine() + "\n" + gun.GetActiveStatsLine();
+            detailText.text = gun.GetActiveStatsLine();
         string modifierStatus = gun.GetRunModifierStatus();
         if (modifierText != null)
-            modifierText.text = modifierStatus;
+            modifierText.text = modifierStatus == "No mods installed." ? string.Empty : modifierStatus;
 
         string currentVariantDisplay = gun.GetActiveDisplayName();
         if (hasPrimedState)
@@ -92,32 +92,33 @@ public class WeaponStatusHUD : MonoBehaviour
         GameObject root = new GameObject("WeaponStatusHUD");
         root.transform.SetParent(canvas.transform, false);
         RectTransform rootRect = root.AddComponent<RectTransform>();
-        rootRect.anchorMin = new Vector2(1f, 1f);
-        rootRect.anchorMax = new Vector2(1f, 1f);
-        rootRect.pivot = new Vector2(1f, 1f);
-        rootRect.anchoredPosition = new Vector2(-12f, -10f);
-        rootRect.sizeDelta = new Vector2(268f, 96f);
+        rootRect.anchorMin = new Vector2(1f, 0f);
+        rootRect.anchorMax = new Vector2(1f, 0f);
+        rootRect.pivot = new Vector2(1f, 0f);
+        rootRect.anchoredPosition = new Vector2(-20f, 20f);
+        rootRect.sizeDelta = new Vector2(330f, 106f);
 
         panelImage = root.AddComponent<Image>();
-        panelImage.color = new Color(0.025f, 0.04f, 0.055f, 0.88f);
+        panelImage.color = new Color(0.015f, 0.025f, 0.032f, 0.9f);
 
-        familyText = CreateText(root.transform, "WeaponFamilyText", 12f, new Vector2(0.5f, 0.83f), new Vector2(240f, 18f), TextAlignmentOptions.Center, Color.white);
-        variantText = CreateText(root.transform, "WeaponVariantText", 11.5f, new Vector2(0.5f, 0.66f), new Vector2(246f, 18f), TextAlignmentOptions.Center, new Color(0.78f, 0.94f, 1f));
-        detailText = CreateText(root.transform, "WeaponDetailText", 9f, new Vector2(0.5f, 0.43f), new Vector2(246f, 34f), TextAlignmentOptions.Center, new Color(0.86f, 0.92f, 0.97f));
-        modifierText = CreateText(root.transform, "WeaponModifierText", 8.5f, new Vector2(0.5f, 0.2f), new Vector2(246f, 16f), TextAlignmentOptions.Center, new Color(0.74f, 0.98f, 0.82f));
+        familyText = CreateText(root.transform, "WeaponFamilyText", 11f, new Vector2(0.08f, 0.82f), new Vector2(278f, 18f), TextAlignmentOptions.Left, new Color(0.48f, 0.88f, 0.96f));
+        variantText = CreateText(root.transform, "WeaponVariantText", 18f, new Vector2(0.08f, 0.6f), new Vector2(278f, 26f), TextAlignmentOptions.Left, Color.white);
+        detailText = CreateText(root.transform, "WeaponDetailText", 10f, new Vector2(0.08f, 0.34f), new Vector2(278f, 18f), TextAlignmentOptions.Left, new Color(0.7f, 0.76f, 0.8f));
+        modifierText = CreateText(root.transform, "WeaponModifierText", 9f, new Vector2(0.08f, 0.14f), new Vector2(278f, 18f), TextAlignmentOptions.Left, new Color(1f, 0.7f, 0.24f));
 
         momentRoot = new GameObject("WeaponMomentPanel");
         momentRoot.transform.SetParent(root.transform, false);
         RectTransform momentRect = momentRoot.AddComponent<RectTransform>();
-        momentRect.anchorMin = new Vector2(0.08f, 0.02f);
-        momentRect.anchorMax = new Vector2(0.92f, 0.16f);
-        momentRect.offsetMin = Vector2.zero;
-        momentRect.offsetMax = Vector2.zero;
+        momentRect.anchorMin = new Vector2(0f, 1f);
+        momentRect.anchorMax = new Vector2(1f, 1f);
+        momentRect.pivot = new Vector2(0.5f, 0f);
+        momentRect.anchoredPosition = new Vector2(0f, 10f);
+        momentRect.sizeDelta = new Vector2(0f, 48f);
         Image momentImage = momentRoot.AddComponent<Image>();
         momentImage.color = new Color(0.08f, 0.12f, 0.16f, 0.94f);
 
-        momentText = CreateText(momentRoot.transform, "WeaponMomentText", 9.5f, new Vector2(0.5f, 0.68f), new Vector2(210f, 14f), TextAlignmentOptions.Center, new Color(0.9f, 0.96f, 1f));
-        momentDetailText = CreateText(momentRoot.transform, "WeaponMomentDetailText", 8f, new Vector2(0.5f, 0.28f), new Vector2(218f, 14f), TextAlignmentOptions.Center, new Color(0.8f, 0.9f, 0.96f));
+        momentText = CreateText(momentRoot.transform, "WeaponMomentText", 11f, new Vector2(0.5f, 0.7f), new Vector2(290f, 16f), TextAlignmentOptions.Center, new Color(0.9f, 0.96f, 1f));
+        momentDetailText = CreateText(momentRoot.transform, "WeaponMomentDetailText", 9f, new Vector2(0.5f, 0.3f), new Vector2(300f, 18f), TextAlignmentOptions.Center, new Color(0.8f, 0.9f, 0.96f));
         GameObject progress = new GameObject("WeaponMomentProgress");
         progress.transform.SetParent(momentRoot.transform, false);
         RectTransform progressRect = progress.AddComponent<RectTransform>();
@@ -148,7 +149,7 @@ public class WeaponStatusHUD : MonoBehaviour
         if (variantText != null)
             variantText.color = Color.Lerp(new Color(0.78f, 0.94f, 1f), accent, 0.32f);
         if (panelImage != null)
-            panelImage.color = Color.Lerp(new Color(0.025f, 0.04f, 0.055f, 0.88f), accent * new Color(1f, 1f, 1f, 0.2f), 0.28f);
+            panelImage.color = Color.Lerp(new Color(0.015f, 0.025f, 0.032f, 0.9f), accent * new Color(1f, 1f, 1f, 0.16f), 0.22f);
 
         momentRoot.SetActive(true);
         ProjectStructureUIRoot.BringToFront(momentRoot.transform);
@@ -176,7 +177,7 @@ public class WeaponStatusHUD : MonoBehaviour
                 if (variantText != null)
                     variantText.color = new Color(0.78f, 0.94f, 1f);
                 if (panelImage != null)
-                    panelImage.color = new Color(0.025f, 0.04f, 0.055f, 0.88f);
+                    panelImage.color = new Color(0.015f, 0.025f, 0.032f, 0.9f);
             }
         }
     }

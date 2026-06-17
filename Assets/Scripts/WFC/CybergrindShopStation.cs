@@ -25,6 +25,7 @@ public class CybergrindShopStation : Interactable
     public Gun.AltFireMod altFireMod = Gun.AltFireMod.QuickCharge;
     public bool singleUse = true;
     public Renderer displayRenderer;
+    public ShopStationPresentation presentation;
 
     private Gun cachedGun;
     private bool spent;
@@ -33,6 +34,7 @@ public class CybergrindShopStation : Interactable
     {
         base.Start();
         displayRenderer = displayRenderer != null ? displayRenderer : GetComponent<Renderer>();
+        presentation = presentation != null ? presentation : GetComponentInChildren<ShopStationPresentation>(true);
         ApplyServiceVisual();
         RefreshPrompt();
     }
@@ -114,7 +116,7 @@ public class CybergrindShopStation : Interactable
             case ShopService.Repair:
                 if (!player.TrySpendCurrency(cost))
                 {
-                    promptMessage = $"Need {cost} coins";
+                    RejectPurchase(player);
                     return;
                 }
                 player.Heal(healAmount);
@@ -133,7 +135,7 @@ public class CybergrindShopStation : Interactable
                 }
                 if (!player.TrySpendCurrency(cost))
                 {
-                    promptMessage = $"Need {cost} coins";
+                    RejectPurchase(player);
                     return;
                 }
                 CybergrindRunState.GetOrCreate().UnlockWeapon(presetIndex);
@@ -153,7 +155,7 @@ public class CybergrindShopStation : Interactable
                 }
                 if (!player.TrySpendCurrency(cost))
                 {
-                    promptMessage = $"Need {cost} coins";
+                    RejectPurchase(player);
                     return;
                 }
                 overclockGun.ApplyWeaponOverclock(fireRateBoostPercent, damageBoostPercent, altCooldownBoostPercent);
@@ -168,7 +170,7 @@ public class CybergrindShopStation : Interactable
             case ShopService.Surge:
                 if (!player.TrySpendCurrency(cost))
                 {
-                    promptMessage = $"Need {cost} coins";
+                    RejectPurchase(player);
                     return;
                 }
                 player.ApplyMobilityUpgrade(moveSpeedBonus, dashBonus, jumpBonus);
@@ -203,7 +205,16 @@ public class CybergrindShopStation : Interactable
     public override void OnFocus()
     {
         RefreshPrompt();
+        if (presentation != null)
+            presentation.SetFocused(true);
         base.OnFocus();
+    }
+
+    public override void OnLoseFocus()
+    {
+        if (presentation != null)
+            presentation.SetFocused(false);
+        base.OnLoseFocus();
     }
 
     private void RefreshPrompt()
@@ -252,8 +263,20 @@ public class CybergrindShopStation : Interactable
         return cachedGun;
     }
 
+    private void RejectPurchase(PlayerController player)
+    {
+        int missing = Mathf.Max(1, cost - (player != null ? player.currency : 0));
+        promptMessage = $"Need {missing} more coins";
+        if (player != null)
+            player.ShowTransientStatus(promptMessage, 1.25f);
+        if (presentation != null)
+            presentation.FlashDenied();
+    }
+
     private void ApplySpentVisual()
     {
+        if (presentation != null)
+            presentation.SetSpent();
         if (displayRenderer == null || displayRenderer.material == null) return;
         Color color = displayRenderer.material.color;
         displayRenderer.material.color = Color.Lerp(color, Color.black, 0.58f);
