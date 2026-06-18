@@ -69,10 +69,6 @@ public class Projectile : MonoBehaviour
         if (ShouldDiscardEarlyClearanceCollision(collision.collider))
             return;
 
-        PlayerController player = collision.collider.GetComponentInParent<PlayerController>();
-        if (player != null && player.TryParryIncomingProjectile(this))
-            return;
-
         // Check if what we hit can take damage
         IDamageable damageable = collision.collider.GetComponentInParent<IDamageable>();
         if (damageable != null)

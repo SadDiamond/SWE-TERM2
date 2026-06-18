@@ -29,7 +29,7 @@ public class WeaponAbilityObject : MonoBehaviour
         if (lifetime <= 0f) Destroy(gameObject);
         if (kind == Kind.Coin)
         {
-            coinAge += Time.deltaTime;
+            coinAge += Time.unscaledDeltaTime;
             if (!coinFirstGlintTriggered && coinAge >= coinFirstGlintDelay)
             {
                 coinFirstGlintTriggered = true;

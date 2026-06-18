@@ -21,6 +21,8 @@ public class ProjectStructureAudioDirector : MonoBehaviour
     private string lastBossName = string.Empty;
     private Coroutine sequenceRoutine;
     private float nextCombatCueTime;
+    private Transform cachedArenaRoot;
+    private BasicEnemyAI[] cachedEnemies = System.Array.Empty<BasicEnemyAI>();
 
     private void Start()
     {
@@ -180,11 +182,17 @@ public class ProjectStructureAudioDirector : MonoBehaviour
         Transform root = arenaDirector != null && arenaDirector.generator != null ? arenaDirector.generator.CurrentArenaRoot : null;
         if (root == null) return null;
 
-        BasicEnemyAI[] enemies = root.GetComponentsInChildren<BasicEnemyAI>(true);
-        for (int i = 0; i < enemies.Length; i++)
+        if (root != cachedArenaRoot)
         {
-            if (enemies[i] != null && enemies[i].isBoss && !enemies[i].IsCombatResolved)
-                return enemies[i];
+            cachedArenaRoot = root;
+            cachedEnemies = root.GetComponentsInChildren<BasicEnemyAI>(true);
+        }
+
+        for (int i = 0; i < cachedEnemies.Length; i++)
+        {
+            BasicEnemyAI enemy = cachedEnemies[i];
+            if (enemy != null && enemy.isBoss && !enemy.IsCombatResolved)
+                return enemy;
         }
 
         return null;

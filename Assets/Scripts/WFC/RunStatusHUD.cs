@@ -8,6 +8,7 @@ using UnityEngine.UI;
 /// </summary>
 public class RunStatusHUD : MonoBehaviour
 {
+    private static RunStatusHUD instance;
     [Header("References")]
     public CybergrindArenaDirector arenaDirector;
     public CybergrindRunState runState;
@@ -21,9 +22,13 @@ public class RunStatusHUD : MonoBehaviour
     public TMP_Text dashText;
     public TMP_Text hpText;
     public TMP_Text coinText;
+    public TMP_Text fpsText;
+    public TMP_Text fpsLowText;
     public Image coreProgressFill;
     public Image hpFill;
     public Image dashRechargeFill;
+    public Image fpsBarFill;
+    public Image fpsLowBarFill;
     public Image[] dashPips = new Image[5];
     public Image headerPanel;
     public Image objectivePanel;
@@ -31,23 +36,50 @@ public class RunStatusHUD : MonoBehaviour
 
     [Header("Refresh")]
     [Min(0.05f)] public float refreshInterval = 0.2f;
+    [Min(30)] public int fpsSampleCount = 180;
+    [Min(30f)] public float fpsBarMax = 240f;
 
     private float refreshTimer;
+    private float[] fpsSamples;
+    private float[] fpsSortBuffer;
+    private int fpsSampleCursor;
+    private int fpsSampleUsed;
+    private PlayerController cachedPlayer;
+    private Transform cachedArenaRoot;
+    private Terminal[] cachedTerminals = System.Array.Empty<Terminal>();
+    private BasicEnemyAI[] cachedEnemies = System.Array.Empty<BasicEnemyAI>();
 
     private void Start()
     {
+        if (instance != null && instance != this)
+        {
+            Destroy(gameObject);
+            return;
+        }
+
+        instance = this;
         if (arenaDirector == null)
             arenaDirector = FindAnyObjectByType<CybergrindArenaDirector>();
         if (runState == null)
             runState = FindAnyObjectByType<CybergrindRunState>();
 
+        fpsSamples = new float[Mathf.Max(30, fpsSampleCount)];
+        fpsSortBuffer = new float[fpsSamples.Length];
         EnsureHudTexts();
 
         RefreshUI();
     }
 
+    private void OnDestroy()
+    {
+        if (instance == this)
+            instance = null;
+    }
+
     private void Update()
     {
+        CaptureFrameSample();
+
         refreshTimer -= Time.deltaTime;
         if (refreshTimer > 0f) return;
 
@@ -57,6 +89,8 @@ public class RunStatusHUD : MonoBehaviour
 
     private void RefreshUI()
     {
+        RefreshArenaCaches();
+
         if (arenaDirector != null && floorText != null)
             floorText.text = $"Floor {arenaDirector.floor:00}";
 
@@ -205,7 +239,9 @@ public class RunStatusHUD : MonoBehaviour
 
     private void RefreshVitals()
     {
-        PlayerController player = FindAnyObjectByType<PlayerController>();
+        if (cachedPlayer == null)
+            cachedPlayer = FindAnyObjectByType<PlayerController>();
+        PlayerController player = cachedPlayer;
         if (player == null) return;
 
         if (hpText != null)
@@ -221,20 +257,67 @@ public class RunStatusHUD : MonoBehaviour
             hpFill.fillAmount = Mathf.Clamp01(player.currentHealth / Mathf.Max(1f, player.EffectiveMaxHealth));
         if (hpFill != null)
             hpFill.color = player.Health01 < 0.3f ? new Color(1f, 0.16f, 0.12f, 1f) : new Color(0.12f, 0.88f, 0.95f, 1f);
+        RefreshPerformance();
+    }
+
+    private void CaptureFrameSample()
+    {
+        if (fpsSamples == null || fpsSamples.Length != Mathf.Max(30, fpsSampleCount))
+        {
+            fpsSamples = new float[Mathf.Max(30, fpsSampleCount)];
+            fpsSortBuffer = new float[fpsSamples.Length];
+        }
+
+        float dt = Mathf.Max(0.0001f, Time.unscaledDeltaTime);
+        fpsSamples[fpsSampleCursor] = dt;
+        fpsSampleCursor = (fpsSampleCursor + 1) % fpsSamples.Length;
+        fpsSampleUsed = Mathf.Min(fpsSampleUsed + 1, fpsSamples.Length);
+    }
+
+    private void RefreshPerformance()
+    {
+        if (fpsSampleUsed <= 0)
+            return;
+
+        float total = 0f;
+        for (int i = 0; i < fpsSampleUsed; i++)
+        {
+            float sample = Mathf.Max(0.0001f, fpsSamples[i]);
+            total += sample;
+            fpsSortBuffer[i] = sample;
+        }
+
+        System.Array.Sort(fpsSortBuffer, 0, fpsSampleUsed);
+        float avgFrame = total / fpsSampleUsed;
+        float fps = 1f / Mathf.Max(0.0001f, avgFrame);
+
+        int lowCount = Mathf.Max(1, Mathf.CeilToInt(fpsSampleUsed * 0.01f));
+        float lowFrameTotal = 0f;
+        for (int i = fpsSampleUsed - lowCount; i < fpsSampleUsed; i++)
+            lowFrameTotal += fpsSortBuffer[i];
+        float lowFrame = lowFrameTotal / lowCount;
+        float lowFps = 1f / Mathf.Max(0.0001f, lowFrame);
+
+        if (fpsText != null)
+            fpsText.text = $"{Mathf.RoundToInt(fps)} FPS";
+        if (fpsLowText != null)
+            fpsLowText.text = $"1% {Mathf.RoundToInt(lowFps)}";
+
+        float barMax = Mathf.Max(30f, fpsBarMax);
+        if (fpsBarFill != null)
+            fpsBarFill.fillAmount = Mathf.Clamp01(fps / barMax);
+        if (fpsLowBarFill != null)
+            fpsLowBarFill.fillAmount = Mathf.Clamp01(lowFps / barMax);
     }
 
     private int CountUnsolvedPuzzleTerminals()
     {
-        Terminal[] terminals = GetCurrentArenaRoot() != null
-            ? GetCurrentArenaRoot().GetComponentsInChildren<Terminal>(true)
-            : FindObjectsByType<Terminal>();
-
-        if (terminals == null || terminals.Length == 0) return 0;
+        if (cachedTerminals == null || cachedTerminals.Length == 0) return 0;
 
         int unsolved = 0;
-        for (int i = 0; i < terminals.Length; i++)
+        for (int i = 0; i < cachedTerminals.Length; i++)
         {
-            Terminal terminal = terminals[i];
+            Terminal terminal = cachedTerminals[i];
             if (terminal == null) continue;
             if (!terminal.name.StartsWith("PuzzleTerminal")) continue;
             if (!terminal.isSolved) unsolved++;
@@ -245,16 +328,12 @@ public class RunStatusHUD : MonoBehaviour
 
     private int CountLivingEnemies()
     {
-        BasicEnemyAI[] enemies = GetCurrentArenaRoot() != null
-            ? GetCurrentArenaRoot().GetComponentsInChildren<BasicEnemyAI>(true)
-            : FindObjectsByType<BasicEnemyAI>();
-
-        if (enemies == null || enemies.Length == 0) return 0;
+        if (cachedEnemies == null || cachedEnemies.Length == 0) return 0;
 
         int alive = 0;
-        for (int i = 0; i < enemies.Length; i++)
+        for (int i = 0; i < cachedEnemies.Length; i++)
         {
-            BasicEnemyAI enemy = enemies[i];
+            BasicEnemyAI enemy = cachedEnemies[i];
             if (enemy == null) continue;
             if (enemy.IsCombatResolved) continue;
             alive++;
@@ -265,15 +344,11 @@ public class RunStatusHUD : MonoBehaviour
 
     private BasicEnemyAI FindCurrentBoss()
     {
-        BasicEnemyAI[] enemies = GetCurrentArenaRoot() != null
-            ? GetCurrentArenaRoot().GetComponentsInChildren<BasicEnemyAI>(true)
-            : FindObjectsByType<BasicEnemyAI>();
+        if (cachedEnemies == null || cachedEnemies.Length == 0) return null;
 
-        if (enemies == null || enemies.Length == 0) return null;
-
-        for (int i = 0; i < enemies.Length; i++)
+        for (int i = 0; i < cachedEnemies.Length; i++)
         {
-            BasicEnemyAI enemy = enemies[i];
+            BasicEnemyAI enemy = cachedEnemies[i];
             if (enemy == null || enemy.IsCombatResolved) continue;
             if (enemy.isBoss) return enemy;
         }
@@ -287,6 +362,28 @@ public class RunStatusHUD : MonoBehaviour
             return arenaDirector.generator.CurrentArenaRoot;
 
         return null;
+    }
+
+    private void RefreshArenaCaches()
+    {
+        if (arenaDirector == null)
+            arenaDirector = FindAnyObjectByType<CybergrindArenaDirector>();
+        if (runState == null)
+            runState = FindAnyObjectByType<CybergrindRunState>();
+        if (cachedPlayer == null)
+            cachedPlayer = FindAnyObjectByType<PlayerController>();
+
+        Transform root = GetCurrentArenaRoot();
+        if (root == cachedArenaRoot)
+            return;
+
+        cachedArenaRoot = root;
+        cachedTerminals = root != null
+            ? root.GetComponentsInChildren<Terminal>(true)
+            : System.Array.Empty<Terminal>();
+        cachedEnemies = root != null
+            ? root.GetComponentsInChildren<BasicEnemyAI>(true)
+            : System.Array.Empty<BasicEnemyAI>();
     }
 
     private void EnsureHudTexts()
@@ -331,6 +428,18 @@ public class RunStatusHUD : MonoBehaviour
         coinText = coinText != null ? coinText : CreateHudText("CoinText", new Vector2(204f, -296f), 12f);
         ApplyTextLayout(coinText, new Vector2(204f, -296f), new Vector2(145f, 20f), 12f);
         ApplyTextStyle(coinText, new Color(1f, 0.85f, 0.42f, 0.96f), FontStyles.Bold);
+        fpsText = fpsText != null ? fpsText : CreateHudText("FPSText", new Vector2(22f, -226f), 12f);
+        ApplyTextLayout(fpsText, new Vector2(22f, -226f), new Vector2(100f, 18f), 12f);
+        ApplyTextStyle(fpsText, new Color(0.86f, 0.96f, 1f, 0.96f), FontStyles.Bold);
+        fpsLowText = fpsLowText != null ? fpsLowText : CreateHudText("FPSLowText", new Vector2(128f, -226f), 11f);
+        ApplyTextLayout(fpsLowText, new Vector2(128f, -226f), new Vector2(84f, 18f), 11f);
+        ApplyTextStyle(fpsLowText, new Color(0.66f, 0.9f, 1f, 0.9f), FontStyles.Normal);
+        if (fpsBarFill == null)
+            fpsBarFill = CreateProgressBar("FPSBar", new Vector2(22f, -246f), new Vector2(190f, 6f), new Color(0.82f, 0.96f, 1f, 0.9f));
+        ApplyProgressLayout(fpsBarFill, new Vector2(22f, -246f), new Vector2(190f, 6f));
+        if (fpsLowBarFill == null)
+            fpsLowBarFill = CreateProgressBar("FPSLowBar", new Vector2(22f, -255f), new Vector2(190f, 4f), new Color(0.34f, 0.86f, 1f, 0.9f));
+        ApplyProgressLayout(fpsLowBarFill, new Vector2(22f, -255f), new Vector2(190f, 4f));
         if (hpFill == null)
             hpFill = CreateProgressBar("HPProgressBar", new Vector2(22f, -320f), new Vector2(285f, 10f), new Color(0.45f, 1f, 0.34f, 0.95f));
         ApplyProgressLayout(hpFill, new Vector2(22f, -320f), new Vector2(285f, 10f));
@@ -343,11 +452,15 @@ public class RunStatusHUD : MonoBehaviour
         ApplyViewportLayout(objectiveText.rectTransform, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -90f), new Vector2(420f, 28f));
         objectiveText.alignment = TextAlignmentOptions.Center;
         ApplyViewportLayout(coreProgressText.rectTransform, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(190f, -31f), new Vector2(125f, 20f));
+        ApplyViewportLayout(fpsText.rectTransform, Vector2.zero, Vector2.zero, new Vector2(26f, 166f), new Vector2(98f, 18f));
+        ApplyViewportLayout(fpsLowText.rectTransform, Vector2.zero, Vector2.zero, new Vector2(128f, 166f), new Vector2(88f, 18f));
         ApplyViewportLayout(hpText.rectTransform, Vector2.zero, Vector2.zero, new Vector2(30f, 96f), new Vector2(130f, 52f));
         hpText.fontSize = 36f;
         ApplyViewportLayout(coinText.rectTransform, Vector2.zero, Vector2.zero, new Vector2(190f, 96f), new Vector2(130f, 28f));
         coinText.alignment = TextAlignmentOptions.Right;
         ApplyViewportLayout(speedText.rectTransform, Vector2.zero, Vector2.zero, new Vector2(30f, 136f), new Vector2(280f, 24f));
+        ApplyViewportLayout(fpsBarFill.transform.parent as RectTransform, Vector2.zero, Vector2.zero, new Vector2(28f, 146f), new Vector2(190f, 6f));
+        ApplyViewportLayout(fpsLowBarFill.transform.parent as RectTransform, Vector2.zero, Vector2.zero, new Vector2(28f, 137f), new Vector2(190f, 4f));
         ApplyViewportLayout(hpFill.transform.parent as RectTransform, Vector2.zero, Vector2.zero, new Vector2(30f, 58f), new Vector2(290f, 14f));
         ApplyViewportLayout(coreProgressFill.transform.parent as RectTransform, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(190f, -54f), new Vector2(125f, 6f));
     }

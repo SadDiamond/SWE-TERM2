@@ -79,14 +79,7 @@ public class CybergrindTransitionController : MonoBehaviour
 
     private Image flashOverlay;
     private Image transitionCurtain;
-    private CanvasGroup klotskiLoaderGroup;
-    private Transform loadingCubeRoot;
-    private Camera loadingCubeCamera;
-    private RenderTexture loadingCubeTexture;
-    private readonly List<Renderer> loadingCubeRenderers = new List<Renderer>();
-    private readonly List<Color> loadingCubeStartColors = new List<Color>();
-    private readonly List<Transform> loadingCubePieces = new List<Transform>();
-    private readonly List<Vector3Int> loadingCubeCoordinates = new List<Vector3Int>();
+    private RubikCubeLoader klotskiLoader;
     private CanvasGroup bannerGroup;
     private TMP_Text bannerTitleText;
     private TMP_Text bannerSubtitleText;
@@ -162,6 +155,8 @@ public class CybergrindTransitionController : MonoBehaviour
             StartTransitionRoutine(EmitAssemblyField(rig.anchor.position + Vector3.up * 0.5f, assemblyColor, assemblyFxDuration * 1.15f, true));
         onSwapMoment?.Invoke();
         swapAction?.Invoke();
+        while (generator != null && generator.IsGenerating)
+            yield return null;
 
         Transform newRoot = generator != null ? generator.CurrentArenaRoot : null;
         if (newRoot == oldRoot)
@@ -233,7 +228,8 @@ public class CybergrindTransitionController : MonoBehaviour
         DestroyTransientContent(oldRoot);
         onSwapMoment?.Invoke();
         swapAction?.Invoke();
-        yield return null;
+        while (generator != null && generator.IsGenerating)
+            yield return null;
 
         Transform newRoot = generator != null ? generator.CurrentArenaRoot : null;
         if (newRoot != null)
@@ -302,127 +298,18 @@ public class CybergrindTransitionController : MonoBehaviour
     private void ShowKlotskiLoader(bool visible)
     {
         EnsureOverlay();
-        if (visible && klotskiLoaderGroup == null && transitionCurtain != null)
+        if (visible && klotskiLoader == null && transitionCurtain != null)
             EnsureScreenSpaceKlotski(transitionCurtain.transform);
-        if (klotskiLoaderGroup == null) return;
-        klotskiLoaderGroup.gameObject.SetActive(visible);
-        klotskiLoaderGroup.alpha = visible ? 1f : 0f;
-        if (loadingCubeCamera != null)
-            loadingCubeCamera.enabled = visible;
+        if (klotskiLoader == null) return;
+        klotskiLoader.SetVisible(visible);
         if (visible)
-        {
-            for (int i = 0; i < loadingCubeRenderers.Count && i < loadingCubeStartColors.Count; i++)
-                if (loadingCubeRenderers[i] != null)
-                    loadingCubeRenderers[i].material.color = loadingCubeStartColors[i];
-            PrepareLoadingCubeScramble();
-        }
+            klotskiLoader.ResetScrambled();
     }
 
     private IEnumerator AnimateScreenSpaceKlotski()
     {
-        if (klotskiLoaderGroup == null || loadingCubeRoot == null) yield break;
-        loadingCubeRoot.localRotation = Quaternion.Euler(18f, -28f, 8f);
-        yield return new WaitForSecondsRealtime(0.2f);
-
-        // A short, readable inverse scramble: every move turns one complete 3x3 slice.
-        yield return RotateLoadingCubeSlice(0, 1, -1, 0.28f);
-        yield return RotateLoadingCubeSlice(1, -1, 1, 0.28f);
-        yield return RotateLoadingCubeSlice(2, 1, -1, 0.28f);
-        yield return RotateLoadingCubeSlice(0, -1, 1, 0.28f);
-        yield return RotateLoadingCubeSlice(1, 1, -1, 0.28f);
-
-        while (klotskiLoaderGroup != null && klotskiLoaderGroup.gameObject.activeSelf)
-        {
-            loadingCubeRoot.Rotate(Vector3.up, 9f * Time.unscaledDeltaTime, Space.World);
-            yield return null;
-        }
-    }
-
-    private IEnumerator RotateLoadingCubeSlice(int axis, int layer, int direction, float duration)
-    {
-        GameObject pivotObject = new GameObject("CubeSlicePivot");
-        Transform pivot = pivotObject.transform;
-        pivot.SetParent(loadingCubeRoot, false);
-        List<int> selected = new List<int>(9);
-        for (int i = 0; i < loadingCubePieces.Count; i++)
-        {
-            Vector3Int coordinate = loadingCubeCoordinates[i];
-            int value = axis == 0 ? coordinate.x : axis == 1 ? coordinate.y : coordinate.z;
-            if (value != layer || loadingCubePieces[i] == null) continue;
-            selected.Add(i);
-            loadingCubePieces[i].SetParent(pivot, true);
-        }
-
-        Vector3 rotationAxis = axis == 0 ? Vector3.right : axis == 1 ? Vector3.up : Vector3.forward;
-        float elapsed = 0f;
-        while (elapsed < duration)
-        {
-            elapsed += Time.unscaledDeltaTime;
-            float t = Mathf.Clamp01(elapsed / duration);
-            float eased = t * t * (3f - 2f * t);
-            pivot.localRotation = Quaternion.AngleAxis(90f * direction * eased, rotationAxis);
-            yield return null;
-        }
-
-        pivot.localRotation = Quaternion.AngleAxis(90f * direction, rotationAxis);
-        for (int i = 0; i < selected.Count; i++)
-        {
-            int index = selected[i];
-            Transform piece = loadingCubePieces[index];
-            piece.SetParent(loadingCubeRoot, true);
-            piece.localPosition = SnapCubeVector(piece.localPosition, 0.72f);
-            piece.localRotation = SnapCubeRotation(piece.localRotation);
-            loadingCubeCoordinates[index] = Vector3Int.RoundToInt(piece.localPosition / 0.72f);
-        }
-        Destroy(pivotObject);
-        yield return new WaitForSecondsRealtime(0.06f);
-    }
-
-    private void PrepareLoadingCubeScramble()
-    {
-        loadingCubeRoot.localRotation = Quaternion.Euler(18f, -28f, 8f);
-        for (int i = 0; i < loadingCubePieces.Count; i++)
-        {
-            Transform piece = loadingCubePieces[i];
-            Vector3Int coordinate = loadingCubeCoordinates[i];
-            if (piece == null) continue;
-            piece.SetParent(loadingCubeRoot, false);
-            piece.localPosition = new Vector3(coordinate.x, coordinate.y, coordinate.z) * 0.72f;
-            piece.localRotation = Quaternion.identity;
-        }
-
-        ApplyLoadingCubeSliceInstant(1, 1, 1);
-        ApplyLoadingCubeSliceInstant(0, -1, -1);
-        ApplyLoadingCubeSliceInstant(2, 1, 1);
-        ApplyLoadingCubeSliceInstant(1, -1, -1);
-        ApplyLoadingCubeSliceInstant(0, 1, 1);
-    }
-
-    private void ApplyLoadingCubeSliceInstant(int axis, int layer, int direction)
-    {
-        Vector3 rotationAxis = axis == 0 ? Vector3.right : axis == 1 ? Vector3.up : Vector3.forward;
-        Quaternion rotation = Quaternion.AngleAxis(90f * direction, rotationAxis);
-        for (int i = 0; i < loadingCubePieces.Count; i++)
-        {
-            Vector3Int coordinate = loadingCubeCoordinates[i];
-            int value = axis == 0 ? coordinate.x : axis == 1 ? coordinate.y : coordinate.z;
-            if (value != layer || loadingCubePieces[i] == null) continue;
-            Transform piece = loadingCubePieces[i];
-            piece.localPosition = SnapCubeVector(rotation * piece.localPosition, 0.72f);
-            piece.localRotation = SnapCubeRotation(rotation * piece.localRotation);
-            loadingCubeCoordinates[i] = Vector3Int.RoundToInt(piece.localPosition / 0.72f);
-        }
-    }
-
-    private static Vector3 SnapCubeVector(Vector3 value, float step)
-    {
-        return new Vector3(Mathf.Round(value.x / step), Mathf.Round(value.y / step), Mathf.Round(value.z / step)) * step;
-    }
-
-    private static Quaternion SnapCubeRotation(Quaternion value)
-    {
-        Vector3 euler = value.eulerAngles;
-        return Quaternion.Euler(Mathf.Round(euler.x / 90f) * 90f, Mathf.Round(euler.y / 90f) * 90f, Mathf.Round(euler.z / 90f) * 90f);
+        if (klotskiLoader == null) yield break;
+        yield return klotskiLoader.PlayLoopingSolveAndSpin();
     }
 
     public IEnumerator DebugPreviewTransitionLook(CybergrindArenaGenerator generator, float duration)
@@ -1809,7 +1696,7 @@ public class CybergrindTransitionController : MonoBehaviour
 
     private void EnsureScreenSpaceKlotski(Transform curtain)
     {
-        if (klotskiLoaderGroup != null || curtain == null) return;
+        if (klotskiLoader != null || curtain == null) return;
 
         GameObject root = new GameObject("RubikCubeLoader");
         root.transform.SetParent(curtain, false);
@@ -1818,70 +1705,8 @@ public class CybergrindTransitionController : MonoBehaviour
         rootRect.pivot = new Vector2(1f, 0f);
         rootRect.anchoredPosition = new Vector2(-38f, 38f);
         rootRect.sizeDelta = new Vector2(176f, 176f);
-        klotskiLoaderGroup = root.AddComponent<CanvasGroup>();
-
-        loadingCubeTexture = new RenderTexture(256, 256, 16, RenderTextureFormat.ARGB32);
-        loadingCubeTexture.name = "TransitionCubeTexture";
-        RawImage preview = root.AddComponent<RawImage>();
-        preview.texture = loadingCubeTexture;
-        preview.raycastTarget = false;
-        preview.color = Color.white;
-
-        GameObject cameraObject = new GameObject("TransitionCubeCamera");
-        cameraObject.transform.SetParent(transform, false);
-        loadingCubeCamera = cameraObject.AddComponent<Camera>();
-        loadingCubeCamera.targetTexture = loadingCubeTexture;
-        loadingCubeCamera.clearFlags = CameraClearFlags.SolidColor;
-        loadingCubeCamera.backgroundColor = new Color(0f, 0f, 0f, 0f);
-        loadingCubeCamera.cullingMask = 1 << 30;
-        loadingCubeCamera.fieldOfView = 32f;
-        loadingCubeCamera.nearClipPlane = 0.1f;
-        loadingCubeCamera.farClipPlane = 50f;
-
-        loadingCubeRoot = new GameObject("TransitionRubikCube").transform;
-        loadingCubeRoot.SetParent(transform, false);
-        loadingCubeRoot.localPosition = new Vector3(10000f, 10000f, 10012f);
-        cameraObject.transform.localPosition = new Vector3(10004.8f, 10004.2f, 10005.2f);
-        cameraObject.transform.LookAt(loadingCubeRoot.position);
-        BuildLoadingCube(loadingCubeRoot);
-        loadingCubeCamera.enabled = false;
-        root.SetActive(false);
-    }
-
-    private void BuildLoadingCube(Transform parent)
-    {
-        loadingCubeRenderers.Clear();
-        loadingCubeStartColors.Clear();
-        loadingCubePieces.Clear();
-        loadingCubeCoordinates.Clear();
-        Color solvedGrey = new Color(0.58f, 0.62f, 0.66f, 1f);
-        Shader shader = Shader.Find("Universal Render Pipeline/Lit") ?? Shader.Find("Standard");
-        for (int x = -1; x <= 1; x++)
-        for (int y = -1; y <= 1; y++)
-        for (int z = -1; z <= 1; z++)
-        {
-            GameObject piece = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            piece.name = $"Cube_{x}_{y}_{z}";
-            piece.layer = 30;
-            piece.transform.SetParent(parent, false);
-            piece.transform.localPosition = new Vector3(x, y, z) * 0.72f;
-            piece.transform.localScale = Vector3.one * 0.64f;
-            Collider collider = piece.GetComponent<Collider>();
-            if (collider != null) Destroy(collider);
-            Material material = new Material(shader);
-            material.color = solvedGrey;
-            if (material.HasProperty("_EmissionColor"))
-            {
-                material.EnableKeyword("_EMISSION");
-                material.SetColor("_EmissionColor", material.color * 0.35f);
-            }
-            Renderer renderer = piece.GetComponent<Renderer>();
-            renderer.material = material;
-            loadingCubeRenderers.Add(renderer);
-            loadingCubeStartColors.Add(material.color);
-            loadingCubePieces.Add(piece.transform);
-            loadingCubeCoordinates.Add(new Vector3Int(x, y, z));
-        }
+        klotskiLoader = root.AddComponent<RubikCubeLoader>();
+        klotskiLoader.Configure("TransitionCubeTexture", "TransitionCubeCamera", "TransitionRubikCube");
     }
 
     private TMP_Text CreateBannerText(Transform parent, string name, float fontSize, Vector2 anchor, Color color)

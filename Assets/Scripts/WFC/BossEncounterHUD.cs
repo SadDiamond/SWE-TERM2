@@ -4,6 +4,7 @@ using UnityEngine.UI;
 
 public class BossEncounterHUD : MonoBehaviour
 {
+    private static BossEncounterHUD instance;
     public CybergrindArenaDirector arenaDirector;
     public TMP_Text bannerText;
     public TMP_Text bannerDetailText;
@@ -30,15 +31,30 @@ public class BossEncounterHUD : MonoBehaviour
     private GameObject bossRoot;
     private Image bannerPanelImage;
     private Image bossPanelImage;
+    private Transform cachedArenaRoot;
+    private BasicEnemyAI[] cachedEnemies = System.Array.Empty<BasicEnemyAI>();
 
     private void Start()
     {
+        if (instance != null && instance != this)
+        {
+            Destroy(gameObject);
+            return;
+        }
+
+        instance = this;
         if (arenaDirector == null)
             arenaDirector = FindAnyObjectByType<CybergrindArenaDirector>();
 
         BuildUI();
         SetBossVisible(false);
         SetBannerVisible(false);
+    }
+
+    private void OnDestroy()
+    {
+        if (instance == this)
+            instance = null;
     }
 
     private void Update()
@@ -194,11 +210,17 @@ public class BossEncounterHUD : MonoBehaviour
         Transform root = arenaDirector != null && arenaDirector.generator != null ? arenaDirector.generator.CurrentArenaRoot : null;
         if (root == null) return null;
 
-        BasicEnemyAI[] enemies = root.GetComponentsInChildren<BasicEnemyAI>(true);
-        for (int i = 0; i < enemies.Length; i++)
+        if (root != cachedArenaRoot)
         {
-            if (enemies[i] != null && enemies[i].isBoss && !enemies[i].IsCombatResolved)
-                return enemies[i];
+            cachedArenaRoot = root;
+            cachedEnemies = root.GetComponentsInChildren<BasicEnemyAI>(true);
+        }
+
+        for (int i = 0; i < cachedEnemies.Length; i++)
+        {
+            BasicEnemyAI enemy = cachedEnemies[i];
+            if (enemy != null && enemy.isBoss && !enemy.IsCombatResolved)
+                return enemy;
         }
 
         return null;

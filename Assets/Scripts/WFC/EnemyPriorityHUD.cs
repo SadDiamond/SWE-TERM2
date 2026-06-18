@@ -5,12 +5,16 @@ using UnityEngine.UI;
 
 public class EnemyPriorityHUD : MonoBehaviour
 {
+    private static EnemyPriorityHUD instance;
     [Min(0.05f)] public float refreshInterval = 0.08f;
     public float edgePadding = 46f;
 
     private readonly List<MarkerWidget> widgets = new List<MarkerWidget>();
     private float refreshTimer;
     private Camera targetCamera;
+    private CybergrindArenaDirector arenaDirector;
+    private Transform cachedArenaRoot;
+    private BasicEnemyAI[] cachedEnemies = System.Array.Empty<BasicEnemyAI>();
 
     private sealed class MarkerWidget
     {
@@ -22,9 +26,23 @@ public class EnemyPriorityHUD : MonoBehaviour
 
     private void Start()
     {
+        if (instance != null && instance != this)
+        {
+            Destroy(gameObject);
+            return;
+        }
+
+        instance = this;
         targetCamera = Camera.main;
+        arenaDirector = FindAnyObjectByType<CybergrindArenaDirector>();
         BuildWidgets(2);
         SetVisible(false);
+    }
+
+    private void OnDestroy()
+    {
+        if (instance == this)
+            instance = null;
     }
 
     private void Update()
@@ -41,18 +59,15 @@ public class EnemyPriorityHUD : MonoBehaviour
 
     private void RefreshMarkers()
     {
-        BasicEnemyAI[] enemies = FindObjectsByType<BasicEnemyAI>(FindObjectsInactive.Exclude);
+        RefreshEnemyCache();
         int widgetIndex = 0;
-        for (int i = 0; i < enemies.Length; i++)
+        for (int i = 0; i < cachedEnemies.Length; i++)
         {
-            BasicEnemyAI enemy = enemies[i];
+            BasicEnemyAI enemy = cachedEnemies[i];
             if (enemy == null || enemy.IsCombatResolved || !enemy.gameObject.activeInHierarchy)
                 continue;
 
             if (!enemy.name.Contains("Enemy") && !enemy.name.Contains("Boss"))
-                continue;
-
-            if (enemy.GetComponentInChildren<Renderer>() == null)
                 continue;
 
             if (!enemy.IsPriorityTarget)
@@ -67,6 +82,23 @@ public class EnemyPriorityHUD : MonoBehaviour
 
         for (int i = widgetIndex; i < widgets.Count; i++)
             widgets[i].root.SetActive(false);
+    }
+
+    private void RefreshEnemyCache()
+    {
+        if (arenaDirector == null)
+            arenaDirector = FindAnyObjectByType<CybergrindArenaDirector>();
+
+        Transform root = arenaDirector != null && arenaDirector.generator != null
+            ? arenaDirector.generator.CurrentArenaRoot
+            : null;
+        if (root == cachedArenaRoot)
+            return;
+
+        cachedArenaRoot = root;
+        cachedEnemies = root != null
+            ? root.GetComponentsInChildren<BasicEnemyAI>(true)
+            : System.Array.Empty<BasicEnemyAI>();
     }
 
     private void UpdateWidget(MarkerWidget widget, BasicEnemyAI enemy)

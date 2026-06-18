@@ -5,6 +5,7 @@ using UnityEngine.UI;
 
 public class ProjectStructureHintOverlay : MonoBehaviour
 {
+    private static ProjectStructureHintOverlay instance;
     public PlayerController player;
     public CybergrindArenaDirector arenaDirector;
 
@@ -20,6 +21,8 @@ public class ProjectStructureHintOverlay : MonoBehaviour
     private string currentHintKey = string.Empty;
     private string currentTitle = string.Empty;
     private string currentBody = string.Empty;
+    private Transform cachedArenaRoot;
+    private Terminal[] cachedTerminals = System.Array.Empty<Terminal>();
 
     private bool sawMovementHint;
     private bool sawWeaponHint;
@@ -30,6 +33,13 @@ public class ProjectStructureHintOverlay : MonoBehaviour
 
     private void Start()
     {
+        if (instance != null && instance != this)
+        {
+            Destroy(gameObject);
+            return;
+        }
+
+        instance = this;
         if (player == null)
             player = FindAnyObjectByType<PlayerController>();
         if (arenaDirector == null)
@@ -37,6 +47,12 @@ public class ProjectStructureHintOverlay : MonoBehaviour
 
         BuildUI();
         RefreshHint();
+    }
+
+    private void OnDestroy()
+    {
+        if (instance == this)
+            instance = null;
     }
 
     private void Update()
@@ -49,7 +65,8 @@ public class ProjectStructureHintOverlay : MonoBehaviour
         }
 
         if (hintGroup == null) return;
-        float targetAlpha = string.IsNullOrEmpty(currentHintKey) ? 0f : 1f;
+        bool suppress = player != null && (player.isUIActive || player.isDead);
+        float targetAlpha = string.IsNullOrEmpty(currentHintKey) || suppress ? 0f : 1f;
         hintGroup.alpha = Mathf.Lerp(hintGroup.alpha, targetAlpha, Time.unscaledDeltaTime * hintFadeSpeed);
     }
 
@@ -72,39 +89,39 @@ public class ProjectStructureHintOverlay : MonoBehaviour
         {
             nextKey = "movement";
             title = "MOVEMENT";
-            body = "Dash with SHIFT, slide with CTRL/C, and keep chaining jumps. Staying in motion makes fights much easier.";
+            body = "Shift to dash. Ctrl or C to slide. Keep chaining jumps to hold speed.";
         }
         else if (!sawWeaponHint && arenaDirector != null && arenaDirector.floor <= 2)
         {
             nextKey = "weapons";
             title = "WEAPONS";
-            body = "1/2/3 changes weapons. Q/E changes the current variant. Right click uses the alt shot. F is melee/parry.";
+            body = "1/2/3 changes slots. Q and E swap variants. Right click uses alt fire.";
         }
         else if (!sawTerminalHint && CountUnsolvedTerminals() > 0)
         {
             nextKey = "terminal";
-            title = $"{sectorLabel} - TERMINALS";
-            body = "Finish the terminals, then clear the enemies to open the exit.";
+            title = $"{sectorLabel} / TERMINALS";
+            body = "Finish terminals, then clear the room to unlock the exit.";
         }
         else if (!sawRewardHint && arenaDirector != null && arenaDirector.HasPendingReward())
         {
             nextKey = "reward";
             title = "NEW GUN";
-            body = "Pick up the gun before you leave. You do not keep it between runs.";
+            body = "Take the drop before leaving. Run weapons do not carry between runs.";
         }
         else if (!sawShopHint && arenaDirector != null && arenaDirector.generator != null &&
                  arenaDirector.generator.arenaMode == CybergrindArenaGenerator.ArenaMode.Shop)
         {
             nextKey = "shop";
-            title = $"{sectorLabel} - SHOP";
-            body = "Use one station. Weapon adds a gun or variant. Mod boosts damage. Move improves movement. Heal restores HP.";
+            title = $"{sectorLabel} / SHOP";
+            body = "Use one station. Weapon adds guns. Mod boosts damage. Move buffs mobility. Heal restores HP.";
         }
         else if (!sawBossHint && arenaDirector != null && arenaDirector.generator != null &&
                  arenaDirector.generator.arenaMode == CybergrindArenaGenerator.ArenaMode.Boss)
         {
             nextKey = "boss";
-            title = $"{sectorLabel} - BOSS";
-            body = "Watch the attack pattern, stay moving, and hit during the gaps.";
+            title = $"{sectorLabel} / BOSS";
+            body = "Read the pattern, stay moving, and punish the opening.";
         }
 
         if (nextKey == currentHintKey) return;
@@ -131,14 +148,18 @@ public class ProjectStructureHintOverlay : MonoBehaviour
     private int CountUnsolvedTerminals()
     {
         Transform root = arenaDirector != null && arenaDirector.generator != null ? arenaDirector.generator.CurrentArenaRoot : null;
-        Terminal[] terminals = root != null
-            ? root.GetComponentsInChildren<Terminal>(true)
-            : FindObjectsByType<Terminal>();
+        if (root != cachedArenaRoot)
+        {
+            cachedArenaRoot = root;
+            cachedTerminals = root != null
+                ? root.GetComponentsInChildren<Terminal>(true)
+                : System.Array.Empty<Terminal>();
+        }
 
         int unsolved = 0;
-        for (int i = 0; i < terminals.Length; i++)
+        for (int i = 0; i < cachedTerminals.Length; i++)
         {
-            Terminal terminal = terminals[i];
+            Terminal terminal = cachedTerminals[i];
             if (terminal == null || terminal.isSolved) continue;
             if (!terminal.name.StartsWith("PuzzleTerminal")) continue;
             unsolved++;
@@ -158,27 +179,37 @@ public class ProjectStructureHintOverlay : MonoBehaviour
         rootRect.anchorMin = new Vector2(0f, 0f);
         rootRect.anchorMax = new Vector2(0f, 0f);
         rootRect.pivot = new Vector2(0f, 0f);
-        rootRect.anchoredPosition = new Vector2(14f, 14f);
-        rootRect.sizeDelta = new Vector2(260f, 78f);
+        rootRect.anchoredPosition = new Vector2(18f, 18f);
+        rootRect.sizeDelta = new Vector2(320f, 92f);
 
         Image panel = root.AddComponent<Image>();
-        panel.color = new Color(0.02f, 0.045f, 0.06f, 0.9f);
+        panel.color = new Color(0.018f, 0.03f, 0.038f, 0.92f);
         panelImage = panel;
         hintGroup = root.AddComponent<CanvasGroup>();
         hintGroup.alpha = 0f;
 
-        hintTitleText = CreateText(root.transform, "HintTitle", 11.5f, new Vector2(0.5f, 0.72f), new Vector2(232f, 18f), TextAlignmentOptions.Center, Color.white);
-        hintBodyText = CreateText(root.transform, "HintBody", 8.5f, new Vector2(0.5f, 0.38f), new Vector2(232f, 42f), TextAlignmentOptions.Center, new Color(0.82f, 0.9f, 0.96f));
+        GameObject accent = new GameObject("Accent");
+        accent.transform.SetParent(root.transform, false);
+        RectTransform accentRect = accent.AddComponent<RectTransform>();
+        accentRect.anchorMin = new Vector2(0f, 0f);
+        accentRect.anchorMax = new Vector2(0f, 1f);
+        accentRect.pivot = new Vector2(0f, 0.5f);
+        accentRect.sizeDelta = new Vector2(4f, 0f);
+        Image accentImage = accent.AddComponent<Image>();
+        accentImage.color = new Color(0.36f, 0.88f, 1f, 0.95f);
+
+        hintTitleText = CreateText(root.transform, "HintTitle", 12.5f, new Vector2(0f, 1f), new Vector2(278f, 20f), new Vector2(22f, -14f), TextAlignmentOptions.TopLeft, Color.white);
+        hintBodyText = CreateText(root.transform, "HintBody", 10.5f, new Vector2(0f, 1f), new Vector2(278f, 44f), new Vector2(22f, -38f), TextAlignmentOptions.TopLeft, new Color(0.82f, 0.9f, 0.96f));
     }
 
-    private TMP_Text CreateText(Transform parent, string name, float fontSize, Vector2 anchor, Vector2 boxSize, TextAlignmentOptions alignment, Color color)
+    private TMP_Text CreateText(Transform parent, string name, float fontSize, Vector2 anchor, Vector2 boxSize, Vector2 position, TextAlignmentOptions alignment, Color color)
     {
         GameObject go = new GameObject(name);
         go.transform.SetParent(parent, false);
         RectTransform rect = go.AddComponent<RectTransform>();
-        rect.anchorMin = anchor;
-        rect.anchorMax = anchor;
-        rect.pivot = new Vector2(0.5f, 0.5f);
+        rect.anchorMin = rect.anchorMax = anchor;
+        rect.pivot = anchor;
+        rect.anchoredPosition = position;
         rect.sizeDelta = boxSize;
 
         TMP_Text text = go.AddComponent<TextMeshProUGUI>();
@@ -187,6 +218,7 @@ public class ProjectStructureHintOverlay : MonoBehaviour
         text.alignment = alignment;
         text.color = color;
         text.textWrappingMode = TextWrappingModes.Normal;
+        text.overflowMode = TextOverflowModes.Ellipsis;
         return text;
     }
 

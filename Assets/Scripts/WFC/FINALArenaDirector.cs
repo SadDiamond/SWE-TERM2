@@ -220,7 +220,10 @@ public class CybergrindArenaDirector : MonoBehaviour
         PrepareFloorSeed();
         bool previousClearSetting = generator.clearBeforeGenerate;
         generator.clearBeforeGenerate = transitionController == null;
-        generator.GenerateArena();
+        if (transitionController != null)
+            generator.BeginGenerateArenaAsync();
+        else
+            generator.GenerateArena();
         generator.clearBeforeGenerate = previousClearSetting;
     }
 
@@ -252,7 +255,10 @@ public class CybergrindArenaDirector : MonoBehaviour
 
         if (generator == null) return;
         generator.ClearArena();
-        generator.GenerateArena();
+        if (PersistentLoadingScreen.IsActive)
+            generator.BeginGenerateArenaAsync();
+        else
+            generator.GenerateArena();
     }
 
     private void ApplyFloorMode()

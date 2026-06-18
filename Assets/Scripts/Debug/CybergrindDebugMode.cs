@@ -7,6 +7,7 @@ using UnityEngine.UI;
 
 public class CybergrindDebugMode : MonoBehaviour
 {
+    private static CybergrindDebugMode instance;
     [Header("Mode")]
     public bool debugEnabled;
     public bool showOverlay = true;
@@ -38,6 +39,13 @@ public class CybergrindDebugMode : MonoBehaviour
 
     private void Awake()
     {
+        if (instance != null && instance != this)
+        {
+            Destroy(gameObject);
+            return;
+        }
+
+        instance = this;
         RefreshReferences(true);
         BuildOverlay();
         RefreshOverlay();
@@ -79,6 +87,8 @@ public class CybergrindDebugMode : MonoBehaviour
 
     private void OnDestroy()
     {
+        if (instance == this)
+            instance = null;
         ApplyFreezeTime(false);
     }
 
@@ -236,6 +246,22 @@ public class CybergrindDebugMode : MonoBehaviour
     {
         Canvas canvas = ProjectStructureUIRoot.GetOrCreateCanvas();
         if (canvas == null) return;
+
+        for (int i = canvas.transform.childCount - 1; i >= 0; i--)
+        {
+            Transform child = canvas.transform.GetChild(i);
+            if (child == null || child.name != "ArenaDebugPanel") continue;
+            if (panelRoot == null)
+            {
+                panelRoot = child.gameObject;
+                continue;
+            }
+
+            if (Application.isPlaying)
+                Destroy(child.gameObject);
+            else
+                DestroyImmediate(child.gameObject);
+        }
 
         Transform existing = canvas.transform.Find("ArenaDebugPanel");
         if (existing != null)

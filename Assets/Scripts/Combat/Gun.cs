@@ -4,6 +4,7 @@ using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.UI;
 
+[DefaultExecutionOrder(100)]
 public class Gun : MonoBehaviour
 {
     public enum WeaponFamily
@@ -147,6 +148,7 @@ public class Gun : MonoBehaviour
     private float tempestStormTimer;
     private float tempestPulseTimer;
     private Transform redlineChargeFx;
+    private bool queuedPrimaryFire;
 
     private static readonly int BaseColorId = Shader.PropertyToID("_BaseColor");
     private static readonly int ColorId = Shader.PropertyToID("_Color");
@@ -220,13 +222,21 @@ public class Gun : MonoBehaviour
         if (wantsFire && Time.time >= nextTimeToFire)
         {
             nextTimeToFire = Time.time + GetEffectiveFireRate(preset);
-            ShootPrimary();
+            queuedPrimaryFire = true;
         }
 
         if (wantsAltFire && Time.time >= nextAltFireTime)
         {
             FireAlternate();
         }
+    }
+
+    private void LateUpdate()
+    {
+        if (!queuedPrimaryFire) return;
+        queuedPrimaryFire = false;
+        if (player != null && player.isUIActive) return;
+        ShootPrimary();
     }
 
     [ContextMenu("Rebuild Low Poly Weapon Model")]
@@ -516,7 +526,6 @@ public class Gun : MonoBehaviour
     private void ApplyPreset(int index)
     {
         if (presets == null || presets.Length == 0) return;
-
         activePresetIndex = Mathf.Clamp(index, 0, presets.Length - 1);
         if (restrictToUnlockedWeapons && !IsPresetUnlocked(activePresetIndex))
             activePresetIndex = CybergrindRunState.GetOrCreate().GetFirstUnlockedPreset();
@@ -607,7 +616,10 @@ public class Gun : MonoBehaviour
         SpawnMuzzleBurst(GetBarrelWorldPosition(transform.position), preset);
         if (audioSource != null && shootSound != null) audioSource.PlayOneShot(shootSound);
 
-        Camera mainCam = Camera.main;
+        Camera mainCam = player != null && player.cameraTransform != null
+            ? player.cameraTransform.GetComponent<Camera>()
+            : null;
+        if (mainCam == null) mainCam = Camera.main;
         Vector3 cameraPos = mainCam != null ? mainCam.transform.position : transform.position;
         Vector3 cameraForward = GetFireForward(mainCam, preset);
 
@@ -619,12 +631,14 @@ public class Gun : MonoBehaviour
 
         if (preset.archetype == WeaponArchetype.Rail)
         {
+            cameraForward = ResolveAssistedShotDirection(cameraPos, cameraForward);
             FirePiercingLine(cameraPos, cameraForward, baseDamage, preset, 0.1f, 3.4f);
             return;
         }
 
         if (preset.archetype == WeaponArchetype.Slab)
         {
+            cameraForward = ResolveAssistedShotDirection(cameraPos, cameraForward);
             FirePiercingLine(cameraPos, cameraForward, baseDamage, preset, 2.6f, 1.1f);
             return;
         }
@@ -656,7 +670,7 @@ public class Gun : MonoBehaviour
             Vector3 tracerDirection = (hitPoint - barrelPos).sqrMagnitude > 0.01f
                 ? (hitPoint - barrelPos).normalized
                 : direction;
-            SpawnVisualTracer(barrelPos, tracerDirection, preset);
+            SpawnHitScanTrail(barrelPos, hitPoint, preset, hitCoin ? 0.055f : 0.018f);
             if (didHit && !hitCoin)
                 SpawnImpactBurst(hitPoint, hit.normal, tracerDirection, preset.accentColor, preset.archetype == WeaponArchetype.CoreEject ? 0.22f : 0.12f, 0.16f);
         }
@@ -697,7 +711,7 @@ public class Gun : MonoBehaviour
                     vesperCoins.Add(SpawnAbilityObject(
                         WeaponAbilityObject.Kind.Coin,
                         cameraPos + forward * 0.9f,
-                        inheritedVelocity + forward * 7f + Vector3.up * 5f,
+                        inheritedVelocity + forward * 7f + Vector3.up * 6f,
                         0.132f,
                         preset.accentColor));
                 }
@@ -875,7 +889,7 @@ public class Gun : MonoBehaviour
         switch (ability.kind)
         {
             case WeaponAbilityObject.Kind.Coin:
-                ResolveCoinChain(ability, damage, direction, preset, color);
+                StartCoroutine(ResolveCoinChain(ability, damage, direction, preset, color));
                 break;
             case WeaponAbilityObject.Kind.Core:
                 float coreMultiplier = preset != null && preset.archetype == WeaponArchetype.Rail ? 4f : 2.4f;
@@ -899,8 +913,9 @@ public class Gun : MonoBehaviour
         }
     }
 
-    private void ResolveCoinChain(WeaponAbilityObject struckCoin, float damage, Vector3 shotDirection, WeaponPreset preset, Color color)
+    private System.Collections.IEnumerator ResolveCoinChain(WeaponAbilityObject struckCoin, float damage, Vector3 shotDirection, WeaponPreset preset, Color color)
     {
+        if (struckCoin == null) yield break;
         Vector3 chainPoint = struckCoin.transform.position;
         List<WeaponAbilityObject> remainingCoins = new List<WeaponAbilityObject>();
         for (int i = 0; i < vesperCoins.Count; i++)
@@ -911,6 +926,8 @@ public class Gun : MonoBehaviour
         }
 
         int chainedCoins = 1;
+        if (player != null) player.NotifyHeavyWeaponImpact(0.065f);
+        yield return new WaitForSecondsRealtime(0.035f);
         while (remainingCoins.Count > 0)
         {
             int nearestIndex = 0;
@@ -928,11 +945,13 @@ public class Gun : MonoBehaviour
             if (!nextCoin.TryResolve())
                 continue;
             Vector3 nextPoint = nextCoin.transform.position;
-            SpawnVisualTracer(chainPoint, (nextPoint - chainPoint).normalized, preset);
+            SpawnHitScanTrail(chainPoint, nextPoint, preset, 0.065f);
+            SpawnImpactBurst(nextPoint, color, 0.16f, 0.11f);
             chainPoint = nextPoint;
             chainedCoins++;
             vesperCoins.Remove(nextCoin);
             Destroy(nextCoin.gameObject);
+            yield return new WaitForSecondsRealtime(0.045f);
         }
 
         Collider[] targets = Physics.OverlapSphere(chainPoint, 24f, ~0, QueryTriggerInteraction.Ignore);
@@ -960,7 +979,7 @@ public class Gun : MonoBehaviour
         float chainMultiplier = baseMultiplier + (chainedCoins - 1) * 0.55f;
         if (best != null)
             DealDamage(best, damage * chainMultiplier, color);
-        SpawnVisualTracer(chainPoint, (bestPoint - chainPoint).normalized, preset);
+        SpawnHitScanTrail(chainPoint, bestPoint, preset, 0.075f);
         TriggerHeavyImpact(chainMultiplier > 3f ? 0.085f : 0.045f, chainMultiplier > 3f ? 0.16f : 0.1f);
         vesperCoins.Remove(struckCoin);
         Destroy(struckCoin.gameObject);
@@ -988,19 +1007,16 @@ public class Gun : MonoBehaviour
 
     private void SpawnCoinGlint2D(WeaponAbilityObject coin, Color color, bool subtle)
     {
-        GameObject root = new GameObject(subtle ? "CoinGlintSubtleCanvas" : "CoinGlintFlashCanvas", typeof(RectTransform), typeof(Canvas), typeof(CanvasGroup));
-        Canvas canvas = root.GetComponent<Canvas>();
-        canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-        canvas.overrideSorting = true;
-        canvas.sortingOrder = 500;
-        CanvasGroup group = root.GetComponent<CanvasGroup>();
-
-        GameObject graphic = new GameObject("CoinGlintX", typeof(RectTransform));
+        Canvas canvas = ProjectStructureUIRoot.GetOrCreateCanvas();
+        if (canvas == null) return;
+        GameObject graphic = new GameObject(subtle ? "CoinGlintSubtle" : "CoinGlintFlash", typeof(RectTransform), typeof(CanvasGroup));
         RectTransform rootRect = graphic.GetComponent<RectTransform>();
-        rootRect.SetParent(root.transform, false);
+        rootRect.SetParent(canvas.transform, false);
+        rootRect.SetAsLastSibling();
         rootRect.anchorMin = rootRect.anchorMax = new Vector2(0.5f, 0.5f);
         rootRect.sizeDelta = new Vector2(100f, 100f);
         rootRect.localScale = Vector3.one * (subtle ? 0.72f : 1f);
+        CanvasGroup group = graphic.GetComponent<CanvasGroup>();
 
         CreateCoinGlintRay(rootRect, "SlashA", new Vector2(subtle ? 58f : 92f, subtle ? 4f : 7f), Vector2.zero, color, 45f);
         CreateCoinGlintRay(rootRect, "SlashB", new Vector2(subtle ? 58f : 92f, subtle ? 4f : 7f), Vector2.zero, color, -45f);
@@ -1066,12 +1082,16 @@ public class Gun : MonoBehaviour
             Destroy(group.gameObject);
     }
 
-    private static bool UpdateCoinGlintScreenPosition(RectTransform glint, WeaponAbilityObject coin)
+    private bool UpdateCoinGlintScreenPosition(RectTransform glint, WeaponAbilityObject coin)
     {
-        if (glint == null || coin == null || Camera.main == null)
+        Camera camera = player != null && player.cameraTransform != null
+            ? player.cameraTransform.GetComponent<Camera>()
+            : null;
+        if (camera == null) camera = Camera.main;
+        if (glint == null || coin == null || camera == null)
             return false;
 
-        Vector3 screenPoint = Camera.main.WorldToScreenPoint(coin.transform.position);
+        Vector3 screenPoint = camera.WorldToScreenPoint(coin.transform.position);
         if (screenPoint.z <= 0f)
             return false;
 
@@ -1168,8 +1188,8 @@ public class Gun : MonoBehaviour
                 Collider[] hits = Physics.OverlapSphere(player.transform.position + player.transform.forward * 1.2f, 2.4f);
                 for (int i = 0; i < hits.Length; i++)
                 {
-                    Projectile projectile = hits[i].GetComponentInParent<Projectile>();
-                    if (projectile != null && player.TryParryIncomingProjectile(projectile)) reflected = true;
+                    if (hits[i].GetComponentInParent<Projectile>() != null)
+                        reflected = true;
                 }
             }
             yield return null;
@@ -1420,24 +1440,82 @@ public class Gun : MonoBehaviour
 
     private bool TryGetAimHit(Vector3 origin, Vector3 direction, out RaycastHit hit)
     {
-        RaycastHit[] hits = hitScanRadius > 0.001f
-            ? Physics.SphereCastAll(origin, hitScanRadius, direction, maxHitScanDistance, ~0, QueryTriggerInteraction.Ignore)
-            : Physics.RaycastAll(origin, direction, maxHitScanDistance, ~0, QueryTriggerInteraction.Ignore);
-        Array.Sort(hits, (a, b) => a.distance.CompareTo(b.distance));
-
-        for (int h = 0; h < hits.Length; h++)
+        direction.Normalize();
+        RaycastHit exactHit = default;
+        bool hasExactHit = false;
+        float obstructionDistance = maxHitScanDistance;
+        RaycastHit[] exactHits = Physics.RaycastAll(origin, direction, maxHitScanDistance, ~0, QueryTriggerInteraction.Ignore);
+        Array.Sort(exactHits, (a, b) => a.distance.CompareTo(b.distance));
+        for (int i = 0; i < exactHits.Length; i++)
         {
-            Collider hitCollider = hits[h].collider;
+            Collider hitCollider = exactHits[i].collider;
             if (hitCollider == null) continue;
             if (IsPlayerOwnedCollider(hitCollider)) continue;
             if (hitCollider.transform.IsChildOf(transform)) continue;
+            exactHit = exactHits[i];
+            hasExactHit = true;
+            obstructionDistance = exactHits[i].distance;
+            break;
+        }
 
-            hit = hits[h];
+        if (hasExactHit && IsValidAssistedTarget(exactHit.collider))
+        {
+            hit = exactHit;
+            return true;
+        }
+
+        float assistRadius = Mathf.Max(0.08f, hitScanRadius);
+        RaycastHit[] assistedHits = Physics.SphereCastAll(origin, assistRadius, direction, obstructionDistance + assistRadius, ~0, QueryTriggerInteraction.Ignore);
+        float bestScore = float.MaxValue;
+        RaycastHit bestHit = default;
+        bool foundTarget = false;
+        for (int i = 0; i < assistedHits.Length; i++)
+        {
+            Collider candidate = assistedHits[i].collider;
+            if (candidate == null || IsPlayerOwnedCollider(candidate) || candidate.transform.IsChildOf(transform)) continue;
+            if (!IsValidAssistedTarget(candidate)) continue;
+
+            Vector3 targetPoint = candidate.bounds.ClosestPoint(origin + direction * assistedHits[i].distance);
+            float forwardDistance = Vector3.Dot(targetPoint - origin, direction);
+            if (forwardDistance <= 0f || forwardDistance > obstructionDistance + assistRadius) continue;
+            float perpendicular = Vector3.Distance(origin + direction * forwardDistance, targetPoint);
+            float score = perpendicular * 5f + forwardDistance * 0.001f;
+            if (score >= bestScore) continue;
+            bestScore = score;
+            bestHit = assistedHits[i];
+            foundTarget = true;
+        }
+
+        if (foundTarget)
+        {
+            hit = bestHit;
+            return true;
+        }
+
+        if (hasExactHit)
+        {
+            hit = exactHit;
             return true;
         }
 
         hit = default;
         return false;
+    }
+
+    private bool IsValidAssistedTarget(Collider collider)
+    {
+        return collider != null &&
+               (collider.GetComponentInParent<IDamageable>() != null ||
+                collider.GetComponentInParent<WeaponAbilityObject>() != null);
+    }
+
+    private Vector3 ResolveAssistedShotDirection(Vector3 origin, Vector3 direction)
+    {
+        if (!TryGetAimHit(origin, direction, out RaycastHit hit)) return direction.normalized;
+        if (!IsValidAssistedTarget(hit.collider)) return direction.normalized;
+        Vector3 target = hit.collider.bounds.ClosestPoint(origin);
+        if ((target - origin).sqrMagnitude < 0.01f) target = hit.point;
+        return (target - origin).normalized;
     }
 
     private void ApplyHitScanDamage(RaycastHit hit, float damage)
@@ -1504,7 +1582,7 @@ public class Gun : MonoBehaviour
                 break;
         }
 
-        SpawnVisualTracer(GetBarrelWorldPosition(origin), direction, preset);
+        SpawnHitScanTrail(GetBarrelWorldPosition(origin), endPoint, preset);
         if (!hitAnyDamageable && !hitCoinAbility)
             SpawnImpactBurst(endPoint, -direction, direction, preset.accentColor, 0.18f, 0.16f);
     }
@@ -1531,7 +1609,7 @@ public class Gun : MonoBehaviour
                     SpawnImpactBurst(hitPoint, hit.normal, direction, preset.accentColor, 0.12f, 0.14f);
             }
 
-            SpawnVisualTracer(GetBarrelWorldPosition(cameraPos), direction, preset);
+            SpawnHitScanTrail(GetBarrelWorldPosition(cameraPos), hitPoint, preset);
         }
     }
 
@@ -1717,6 +1795,7 @@ public class Gun : MonoBehaviour
         SpawnImpactRing(position, surfaceNormal, color, Mathf.Max(0.18f, scale * 1.55f), lifetime * 1.4f);
         SpawnImpactCore(position, surfaceNormal, shotDirection, color, scale, lifetime);
         SpawnImpactStreak(position, surfaceNormal, shotDirection, color, Mathf.Max(0.3f, scale * 2.4f), lifetime * 0.72f);
+        SpawnImpactCrown(position, surfaceNormal, shotDirection, color, scale, lifetime);
 
         for (int i = 0; i < shardCount; i++)
         {
@@ -1735,6 +1814,56 @@ public class Gun : MonoBehaviour
             Vector3 end = position + scatter.normalized * Mathf.Max(0.22f, scale * UnityEngine.Random.Range(1.0f, 2.1f));
             StartCoroutine(AnimateImpactShard(shard.transform, lifetime, end));
         }
+    }
+
+    private void SpawnImpactCrown(Vector3 position, Vector3 normal, Vector3 incomingDirection, Color color, float scale, float lifetime)
+    {
+        Camera cam = Camera.main;
+        Vector3 surfaceNormal = normal.sqrMagnitude > 0.001f ? normal.normalized : Vector3.up;
+        Vector3 shotDirection = incomingDirection.sqrMagnitude > 0.001f ? incomingDirection.normalized : -surfaceNormal;
+        Vector3 tangent = Vector3.ProjectOnPlane(-shotDirection, surfaceNormal);
+        if (tangent.sqrMagnitude < 0.001f)
+            tangent = cam != null ? Vector3.ProjectOnPlane(cam.transform.right, surfaceNormal) : Vector3.Cross(surfaceNormal, Vector3.right);
+        tangent.Normalize();
+        Vector3 bitangent = Vector3.Cross(surfaceNormal, tangent).normalized;
+
+        int spokeCount = scale > 0.2f ? 4 : 3;
+        float spokeLength = Mathf.Max(0.2f, scale * 1.9f);
+        float spokeWidth = Mathf.Max(0.028f, scale * 0.16f);
+        Material hot = GetFxMaterial(Color.Lerp(color, Color.white, 0.55f), 3.4f);
+
+        for (int i = 0; i < spokeCount; i++)
+        {
+            float normalizedIndex = spokeCount == 1 ? 0f : i / (float)(spokeCount - 1);
+            float spread = Mathf.Lerp(-36f, 36f, normalizedIndex);
+            Vector3 spokeDir = (Quaternion.AngleAxis(spread, surfaceNormal) * tangent).normalized;
+            GameObject spoke = CreateFxPrimitive(
+                "ImpactSpoke",
+                PrimitiveType.Cube,
+                position + surfaceNormal * 0.05f + spokeDir * (spokeLength * 0.28f),
+                Quaternion.LookRotation(spokeDir, surfaceNormal),
+                new Vector3(spokeWidth, spokeWidth, spokeLength),
+                hot);
+            StartCoroutine(AnimateFxScale(spoke.transform, spoke.transform.localScale, new Vector3(spokeWidth * 0.25f, spokeWidth * 0.25f, 0f), Mathf.Max(0.04f, lifetime * 0.7f)));
+        }
+
+        GameObject plate = CreateFxPrimitive(
+            "ImpactPlate",
+            PrimitiveType.Cube,
+            position + surfaceNormal * 0.03f,
+            Quaternion.LookRotation(tangent, surfaceNormal),
+            new Vector3(Mathf.Max(0.14f, scale * 0.95f), Mathf.Max(0.018f, scale * 0.08f), Mathf.Max(0.08f, scale * 0.42f)),
+            GetFxMaterial(new Color(color.r, color.g, color.b, 0.52f), 2.1f));
+        StartCoroutine(AnimateFxScale(plate.transform, plate.transform.localScale, new Vector3(plate.transform.localScale.x * 1.45f, plate.transform.localScale.y, plate.transform.localScale.z * 0.35f), Mathf.Max(0.045f, lifetime * 0.8f)));
+
+        GameObject spark = CreateFxPrimitive(
+            "ImpactSpark",
+            PrimitiveType.Cube,
+            position + surfaceNormal * 0.05f + bitangent * Mathf.Max(0.03f, scale * 0.12f),
+            Quaternion.LookRotation(surfaceNormal, tangent),
+            new Vector3(Mathf.Max(0.022f, scale * 0.09f), Mathf.Max(0.022f, scale * 0.09f), Mathf.Max(0.18f, scale * 0.78f)),
+            hot);
+        StartCoroutine(AnimateFxScale(spark.transform, spark.transform.localScale, Vector3.zero, Mathf.Max(0.035f, lifetime * 0.48f)));
     }
 
     private void SpawnImpactCore(Vector3 position, Vector3 normal, Vector3 incomingDirection, Color color, float scale, float lifetime)
@@ -1839,6 +1968,27 @@ public class Gun : MonoBehaviour
             GetFxMaterial(Color.Lerp(preset.accentColor, Color.white, 0.35f), altFire ? 3.5f : 2.7f));
         StartCoroutine(AnimateFxScale(bloom.transform, bloom.transform.localScale, Vector3.zero, 0.05f));
 
+        GameObject throat = CreateFxPrimitive(
+            "MuzzleThroat",
+            PrimitiveType.Cube,
+            origin + forward * (length * 0.08f),
+            Quaternion.LookRotation(forward, up),
+            new Vector3(width * 0.62f, width * 0.62f, length * 0.38f),
+            GetFxMaterial(Color.white, altFire ? 4.2f : 3.4f));
+        StartCoroutine(AnimateFxScale(throat.transform, throat.transform.localScale, Vector3.zero, 0.04f));
+
+        for (int i = -1; i <= 1; i += 2)
+        {
+            GameObject petal = CreateFxPrimitive(
+                "MuzzlePetal",
+                PrimitiveType.Cube,
+                origin + forward * (length * 0.14f) + right * (width * 1.18f * i),
+                Quaternion.LookRotation(forward, up) * Quaternion.Euler(0f, 0f, 42f * i),
+                new Vector3(width * 1.18f, width * 0.18f, length * 0.34f),
+                GetFxMaterial(Color.Lerp(preset.accentColor, Color.white, 0.24f), altFire ? 3.4f : 2.8f));
+            StartCoroutine(AnimateFxScale(petal.transform, petal.transform.localScale, Vector3.zero, 0.045f));
+        }
+
         if (preset.family == WeaponFamily.Shotgun || altFire)
         {
             for (int i = -1; i <= 1; i++)
@@ -1877,6 +2027,46 @@ public class Gun : MonoBehaviour
         float visualTracerSpeed = Mathf.Max(220f, preset.bulletSpeed * 2.5f);
         StartCoroutine(MoveProceduralTracer(tracer.transform, direction, visualTracerSpeed, Mathf.Max(0.12f, GetTracerTime(preset) + 0.08f)));
         return tracer;
+    }
+
+    private GameObject SpawnHitScanTrail(Vector3 start, Vector3 end, WeaponPreset preset, float lifetime = 0.018f)
+    {
+        Vector3 delta = end - start;
+        float distance = delta.magnitude;
+        if (distance < 0.02f) return null;
+        Vector3 direction = delta / distance;
+        float width = GetTracerWidth(preset);
+        GameObject glow = CreateFxPrimitive(
+            "HitScanGlow",
+            PrimitiveType.Cube,
+            start + delta * 0.5f,
+            Quaternion.LookRotation(direction),
+            new Vector3(width * 1.95f, width * 1.95f, distance),
+            GetFxMaterial(new Color(preset.accentColor.r, preset.accentColor.g, preset.accentColor.b, 0.42f), 2.2f));
+        StartCoroutine(FadeHitScanTrail(glow.transform, width * 1.95f, distance, Mathf.Max(0.014f, lifetime * 1.2f)));
+
+        GameObject streak = CreateFxPrimitive(
+            "HitScanStreak",
+            PrimitiveType.Cube,
+            start + delta * 0.5f,
+            Quaternion.LookRotation(direction),
+            new Vector3(width * 0.82f, width * 0.82f, distance),
+            GetFxMaterial(Color.Lerp(preset.accentColor, Color.white, 0.32f), 3.6f));
+        StartCoroutine(FadeHitScanTrail(streak.transform, width * 0.82f, distance, Mathf.Max(0.012f, lifetime)));
+        return glow;
+    }
+
+    private System.Collections.IEnumerator FadeHitScanTrail(Transform streak, float width, float distance, float lifetime)
+    {
+        float elapsed = 0f;
+        while (elapsed < lifetime && streak != null)
+        {
+            elapsed += Time.unscaledDeltaTime;
+            float t = Mathf.Clamp01(elapsed / lifetime);
+            streak.localScale = new Vector3(width * (1f - t), width * (1f - t), distance);
+            yield return null;
+        }
+        if (streak != null) ReleaseFxPrimitive(streak.gameObject);
     }
 
     private System.Collections.IEnumerator MoveProceduralTracer(Transform tracer, Vector3 direction, float speed, float lifetime)

@@ -4,6 +4,7 @@ using UnityEngine.UI;
 
 public class WeaponStatusHUD : MonoBehaviour
 {
+    private static WeaponStatusHUD instance;
     public Gun gun;
     [Min(0.05f)] public float refreshInterval = 0.15f;
     [Min(0.2f)] public float momentDuration = 2.4f;
@@ -26,11 +27,24 @@ public class WeaponStatusHUD : MonoBehaviour
 
     private void Start()
     {
+        if (instance != null && instance != this)
+        {
+            Destroy(gameObject);
+            return;
+        }
+
+        instance = this;
         if (gun == null)
             gun = FindAnyObjectByType<Gun>();
 
         BuildUI();
         RefreshState();
+    }
+
+    private void OnDestroy()
+    {
+        if (instance == this)
+            instance = null;
     }
 
     private void Update()

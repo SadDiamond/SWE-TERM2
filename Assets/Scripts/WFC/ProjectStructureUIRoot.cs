@@ -25,7 +25,7 @@ public static class ProjectStructureUIRoot
         GameObject canvasGo = new GameObject(CanvasName);
         canvas = canvasGo.AddComponent<Canvas>();
         canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-        canvas.pixelPerfect = true;
+        canvas.pixelPerfect = false;
         canvas.sortingOrder = 0;
 
         canvasGo.AddComponent<CanvasScaler>();
@@ -70,7 +70,7 @@ public static class ProjectStructureUIRoot
     {
         if (canvas == null) return;
 
-        canvas.pixelPerfect = true;
+        canvas.pixelPerfect = false;
 
         CanvasScaler scaler = canvas.GetComponent<CanvasScaler>();
         if (scaler == null)

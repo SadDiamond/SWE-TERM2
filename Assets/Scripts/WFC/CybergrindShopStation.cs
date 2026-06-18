@@ -26,6 +26,7 @@ public class CybergrindShopStation : Interactable
     public bool singleUse = true;
     public Renderer displayRenderer;
     public ShopStationPresentation presentation;
+    public bool IsSpent => spent;
 
     private Gun cachedGun;
     private bool spent;

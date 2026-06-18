@@ -4,6 +4,7 @@ using UnityEngine.UI;
 
 public class ShopPreviewHUD : MonoBehaviour
 {
+    private static ShopPreviewHUD instance;
     [Min(0.05f)] public float refreshInterval = 0.08f;
 
     private PlayerController player;
@@ -19,9 +20,22 @@ public class ShopPreviewHUD : MonoBehaviour
 
     private void Start()
     {
+        if (instance != null && instance != this)
+        {
+            Destroy(gameObject);
+            return;
+        }
+
+        instance = this;
         player = FindAnyObjectByType<PlayerController>();
         BuildUI();
         SetVisible(false);
+    }
+
+    private void OnDestroy()
+    {
+        if (instance == this)
+            instance = null;
     }
 
     private void Update()

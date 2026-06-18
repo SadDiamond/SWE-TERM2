@@ -5,6 +5,7 @@ using UnityEngine.UI;
 
 public class ProjectStructureSettingsMenu : MonoBehaviour
 {
+    private static ProjectStructureSettingsMenu instance;
     private const float MinSensitivityPercent = 0f;
     private const float MaxSensitivityPercent = 200f;
     private const float SensitivityStepPercent = 5f;
@@ -39,6 +40,13 @@ public class ProjectStructureSettingsMenu : MonoBehaviour
 
     private void Start()
     {
+        if (instance != null && instance != this)
+        {
+            Destroy(gameObject);
+            return;
+        }
+
+        instance = this;
         if (player == null)
             player = FindAnyObjectByType<PlayerController>();
         if (presentation == null)
@@ -48,6 +56,12 @@ public class ProjectStructureSettingsMenu : MonoBehaviour
         BuildOverlay();
         RefreshText();
         SetVisible(false);
+    }
+
+    private void OnDestroy()
+    {
+        if (instance == this)
+            instance = null;
     }
 
     private void Update()

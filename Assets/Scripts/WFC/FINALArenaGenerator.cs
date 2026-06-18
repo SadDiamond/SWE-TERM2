@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
@@ -41,8 +42,8 @@ public class CybergrindArenaGenerator : MonoBehaviour
     [NonSerialized] public int debugLastReconfigureDistricts;
 
     [Header("Performance")]
-    [Range(0f, 1f)] public float decorativeDensity = 0.26f;
-    [Range(0f, 1f)] public float microDetailDensity = 0.06f;
+    [Range(0f, 1f)] public float decorativeDensity = 0.18f;
+    [Range(0f, 1f)] public float microDetailDensity = 0.035f;
 
     public enum ArenaMode
     {
@@ -136,12 +137,16 @@ public class CybergrindArenaGenerator : MonoBehaviour
     private int[,] currentDistrictMap;
 
     public Transform CurrentArenaRoot { get; private set; }
+    public bool IsGenerating { get; private set; }
     private CellKind[,] lastCells;
     private Vector2Int lastSpawnCell;
     private Vector2Int lastExitCell;
+    private float effectiveDecorativeDensity;
+    private float effectiveMicroDetailDensity;
     private Volume environmentVolume;
     private Material skyboxMaterial;
     [NonSerialized] public bool skipPlayerPlacementOnce;
+    private Coroutine generationRoutine;
 
     private struct ThemePalette
     {
@@ -193,12 +198,27 @@ public class CybergrindArenaGenerator : MonoBehaviour
     private void Start()
     {
         if (generateOnStart)
-            GenerateArena();
+        {
+            if (!PersistentLoadingScreen.IsActive)
+                GenerateArena();
+        }
     }
 
     [ContextMenu("Generate Arena")]
     public void GenerateArena()
     {
+        if (generationRoutine != null)
+        {
+            StopCoroutine(generationRoutine);
+            generationRoutine = null;
+        }
+
+        IsGenerating = true;
+        var generationTimer = System.Diagnostics.Stopwatch.StartNew();
+        long layoutMs;
+        long cellsMs;
+        long detailMs;
+        long gameplayMs;
         if (clearBeforeGenerate)
             ClearArena();
 
@@ -209,6 +229,7 @@ public class CybergrindArenaGenerator : MonoBehaviour
         traversalConnectors.Clear();
         districtRoots.Clear();
         currentDistrictMap = null;
+        RefreshEffectiveDensity();
         EnsureMaterials();
 
         Transform root = new GameObject(generatedRootName).transform;
@@ -229,6 +250,7 @@ public class CybergrindArenaGenerator : MonoBehaviour
         lastSpawnCell = FindFirst(cells, CellKind.Spawn);
         lastExitCell = FindFirst(cells, CellKind.Exit);
         BuildDistrictRoots(root, cells);
+        layoutMs = generationTimer.ElapsedMilliseconds;
 
         for (int x = 0; x < width; x++)
         {
@@ -237,6 +259,7 @@ public class CybergrindArenaGenerator : MonoBehaviour
                 SpawnCell(root, cells[x, z], x, z);
             }
         }
+        cellsMs = generationTimer.ElapsedMilliseconds - layoutMs;
 
         SpawnBoundaryFrame(root);
         SpawnUndersidePillars(root, cells);
@@ -244,8 +267,10 @@ public class CybergrindArenaGenerator : MonoBehaviour
         SpawnFloatingTrim(root, cells);
         SpawnHeightChangeFascia(root, cells);
         SpawnArchitecturalContent(root, cells, rng);
+        detailMs = generationTimer.ElapsedMilliseconds - layoutMs - cellsMs;
         RegisterArenaRecoveryPoints(cells);
         SpawnGameplayContent(root, cells, rng);
+        gameplayMs = generationTimer.ElapsedMilliseconds - layoutMs - cellsMs - detailMs;
         SpawnArenaLighting(root);
         SpawnStructuralShell(root, rng);
         SpawnAtmosphereFX(root, rng);
@@ -255,7 +280,123 @@ public class CybergrindArenaGenerator : MonoBehaviour
         else
             skipPlayerPlacementOnce = false;
 
-        Debug.Log($"[Arena] Generated {width}x{length} arena with seed {actualSeed}.");
+        generationTimer.Stop();
+        int objectCount = root != null ? root.GetComponentsInChildren<Transform>(true).Length : 0;
+        Debug.Log($"[Arena] Generated {width}x{length} seed {actualSeed} in {generationTimer.ElapsedMilliseconds}ms " +
+                  $"(layout {layoutMs}ms, cells {cellsMs}ms, detail {detailMs}ms, gameplay {gameplayMs}ms, objects {objectCount}).");
+        IsGenerating = false;
+    }
+
+    public void BeginGenerateArenaAsync()
+    {
+        if (!gameObject.activeInHierarchy)
+        {
+            GenerateArena();
+            return;
+        }
+
+        if (generationRoutine != null)
+            StopCoroutine(generationRoutine);
+        generationRoutine = StartCoroutine(GenerateArenaRoutine());
+    }
+
+    private IEnumerator GenerateArenaRoutine()
+    {
+        IsGenerating = true;
+        var generationTimer = System.Diagnostics.Stopwatch.StartNew();
+        long layoutMs;
+        long cellsMs;
+        long detailMs;
+        long gameplayMs;
+        if (clearBeforeGenerate)
+            ClearArena();
+
+        bridgeLevel = Mathf.Clamp(bridgeLevel, 1, platformLevel - 1);
+        platformLevel = Mathf.Clamp(platformLevel, bridgeLevel + 1, crownLevel - 1);
+        crownLevel = Mathf.Max(platformLevel + 1, crownLevel);
+        recoveryPoints.Clear();
+        traversalConnectors.Clear();
+        districtRoots.Clear();
+        currentDistrictMap = null;
+        RefreshEffectiveDensity();
+        EnsureMaterials();
+
+        Transform root = new GameObject(generatedRootName).transform;
+        root.SetParent(transform, false);
+        spawned.Add(root.gameObject);
+        CurrentArenaRoot = root;
+
+        int actualSeed = (randomizeSeedEachGeneration || seed == 0)
+            ? unchecked(System.Environment.TickCount ^ (int)(Time.realtimeSinceStartup * 100000f) ^ UnityEngine.Random.Range(int.MinValue, int.MaxValue))
+            : seed;
+        lastGeneratedSeed = actualSeed;
+        var rng = new System.Random(actualSeed);
+        CellKind[,] cells = BuildLayout(rng);
+        FinalizeLayoutConnectivity(cells);
+        lastCells = cells;
+        RepairRuntimePathConnectivity(cells);
+        lastCells = cells;
+        lastSpawnCell = FindFirst(cells, CellKind.Spawn);
+        lastExitCell = FindFirst(cells, CellKind.Exit);
+        BuildDistrictRoots(root, cells);
+        layoutMs = generationTimer.ElapsedMilliseconds;
+        yield return null;
+
+        int spawnedCellsThisFrame = 0;
+        const int maxCellsPerFrame = 18;
+        for (int x = 0; x < width; x++)
+        {
+            for (int z = 0; z < length; z++)
+            {
+                SpawnCell(root, cells[x, z], x, z);
+                spawnedCellsThisFrame++;
+                if (spawnedCellsThisFrame >= maxCellsPerFrame)
+                {
+                    spawnedCellsThisFrame = 0;
+                    yield return null;
+                }
+            }
+        }
+        cellsMs = generationTimer.ElapsedMilliseconds - layoutMs;
+        yield return null;
+
+        SpawnBoundaryFrame(root);
+        yield return null;
+        SpawnUndersidePillars(root, cells);
+        yield return null;
+        SpawnRecoveryDecks(root);
+        yield return null;
+        SpawnFloatingTrim(root, cells);
+        yield return null;
+        SpawnHeightChangeFascia(root, cells);
+        yield return null;
+        SpawnArchitecturalContent(root, cells, rng);
+        detailMs = generationTimer.ElapsedMilliseconds - layoutMs - cellsMs;
+        yield return null;
+
+        RegisterArenaRecoveryPoints(cells);
+        yield return null;
+        SpawnGameplayContent(root, cells, rng);
+        gameplayMs = generationTimer.ElapsedMilliseconds - layoutMs - cellsMs - detailMs;
+        yield return null;
+        SpawnArenaLighting(root);
+        yield return null;
+        SpawnStructuralShell(root, rng);
+        yield return null;
+        SpawnAtmosphereFX(root, rng);
+        yield return null;
+        ApplyEnvironmentFX();
+        if (!skipPlayerPlacementOnce)
+            PlacePlayer(cells);
+        else
+            skipPlayerPlacementOnce = false;
+
+        generationTimer.Stop();
+        int objectCount = root != null ? root.GetComponentsInChildren<Transform>(true).Length : 0;
+        Debug.Log($"[Arena] Generated {width}x{length} seed {actualSeed} in {generationTimer.ElapsedMilliseconds}ms " +
+                  $"(layout {layoutMs}ms, cells {cellsMs}ms, detail {detailMs}ms, gameplay {gameplayMs}ms, objects {objectCount}).");
+        IsGenerating = false;
+        generationRoutine = null;
     }
 
     private void FinalizeLayoutConnectivity(CellKind[,] cells)
@@ -314,17 +455,17 @@ public class CybergrindArenaGenerator : MonoBehaviour
 
     private void CullRuntimeUnreachableWalkablePockets(CellKind[,] cells, Vector2Int spawn, Vector2Int exit)
     {
-        for (int i = 0; i < 96; i++)
+        lastCells = cells;
+        HashSet<Vector2Int> reachable = CollectRuntimeReachable(spawn);
+        for (int x = 1; x < width - 1; x++)
         {
-            lastCells = cells;
-            Vector2Int unreachable = FindFirstRuntimeUnreachableWalkable(cells, spawn);
-            if (!InBounds(unreachable.x, unreachable.y))
-                break;
-            if (unreachable == spawn || unreachable == exit)
-                break;
-
-            cells[unreachable.x, unreachable.y] = CellKind.Void;
-            debugLastRuntimeConnectivityCulls++;
+            for (int z = 1; z < length - 1; z++)
+            {
+                Vector2Int cell = new Vector2Int(x, z);
+                if (cell == spawn || cell == exit || !IsLayoutWalkable(cells[x, z]) || reachable.Contains(cell)) continue;
+                cells[x, z] = CellKind.Void;
+                debugLastRuntimeConnectivityCulls++;
+            }
         }
 
         cells[spawn.x, spawn.y] = CellKind.Spawn;
@@ -362,13 +503,14 @@ public class CybergrindArenaGenerator : MonoBehaviour
 
     private Vector2Int FindFirstRuntimeUnreachableWalkable(CellKind[,] cells, Vector2Int spawn)
     {
+        lastCells = cells;
+        HashSet<Vector2Int> reachable = CollectRuntimeReachable(spawn);
         for (int x = 1; x < width - 1; x++)
         {
             for (int z = 1; z < length - 1; z++)
             {
                 if (!IsLayoutWalkable(cells[x, z])) continue;
-                List<Vector2Int> path = FindPath(spawn, new Vector2Int(x, z));
-                if (path == null || path.Count == 0)
+                if (!reachable.Contains(new Vector2Int(x, z)))
                     return new Vector2Int(x, z);
             }
         }
@@ -378,6 +520,8 @@ public class CybergrindArenaGenerator : MonoBehaviour
 
     private Vector2Int FindNearestRuntimeReachableCell(CellKind[,] cells, Vector2Int spawn, Vector2Int from)
     {
+        lastCells = cells;
+        HashSet<Vector2Int> reachable = CollectRuntimeReachable(spawn);
         Vector2Int best = new Vector2Int(-1, -1);
         int bestDistance = int.MaxValue;
         for (int x = 1; x < width - 1; x++)
@@ -385,8 +529,7 @@ public class CybergrindArenaGenerator : MonoBehaviour
             for (int z = 1; z < length - 1; z++)
             {
                 if (!IsLayoutWalkable(cells[x, z])) continue;
-                List<Vector2Int> path = FindPath(spawn, new Vector2Int(x, z));
-                if (path == null || path.Count == 0) continue;
+                if (!reachable.Contains(new Vector2Int(x, z))) continue;
 
                 int distance = Mathf.Abs(from.x - x) + Mathf.Abs(from.y - z);
                 if (distance >= bestDistance) continue;
@@ -396,6 +539,28 @@ public class CybergrindArenaGenerator : MonoBehaviour
         }
 
         return best;
+    }
+
+    private HashSet<Vector2Int> CollectRuntimeReachable(Vector2Int start)
+    {
+        HashSet<Vector2Int> reachable = new HashSet<Vector2Int>();
+        if (!InBounds(start.x, start.y) || !IsWalkableForContentCell(start.x, start.y)) return reachable;
+
+        Queue<Vector2Int> queue = new Queue<Vector2Int>();
+        queue.Enqueue(start);
+        reachable.Add(start);
+        while (queue.Count > 0)
+        {
+            Vector2Int current = queue.Dequeue();
+            foreach (Vector2Int neighbor in GetNeighbors(current))
+            {
+                if (!InBounds(neighbor.x, neighbor.y) || reachable.Contains(neighbor)) continue;
+                if (!IsWalkableForContentCell(neighbor.x, neighbor.y) || !CanTraverseCells(current, neighbor)) continue;
+                reachable.Add(neighbor);
+                queue.Enqueue(neighbor);
+            }
+        }
+        return reachable;
     }
 
     [ContextMenu("Clear Arena")]
@@ -1413,7 +1578,7 @@ public class CybergrindArenaGenerator : MonoBehaviour
         Material mat = kind == CellKind.Spawn || kind == CellKind.Exit ? GetCellMaterial(kind) : darkMaterial;
 
         int hash = Mathf.Abs(x * 17 + z * 31 + lastGeneratedSeed);
-        if (PassesDensity(hash, microDetailDensity, 4, 14) || kind == CellKind.Spawn || kind == CellKind.Exit)
+        if (PassesDensity(hash, effectiveMicroDetailDensity, 4, 14) || kind == CellKind.Spawn || kind == CellKind.Exit)
             CreateCube(root, $"SurfacePanel_{x}_{z}", CellCenter(x, z, ay), new Vector3(panel, 0.03f, panel), mat, false);
     }
 
@@ -1471,7 +1636,7 @@ public class CybergrindArenaGenerator : MonoBehaviour
             {
                 if (cells[x, z] == CellKind.Void) continue;
                 int hash = Mathf.Abs(x * 17389 ^ z * 28411 ^ lastGeneratedSeed);
-                if (!PassesDensity(hash, decorativeDensity, 1, 3)) continue;
+                if (!PassesDensity(hash, effectiveDecorativeDensity, 1, 3)) continue;
                 float y = GetCellHeight(cells[x, z]) - 0.35f;
                 if (!InBounds(x + 1, z) || cells[x + 1, z] == CellKind.Void)
                     CreateCube(root, $"EdgeE_{x}_{z}", CellCenter(x, z, y) + new Vector3(tileSize * 0.5f, 0f, 0f), new Vector3(0.16f, 0.42f, tileSize), darkMaterial, false);
@@ -1526,7 +1691,7 @@ public class CybergrindArenaGenerator : MonoBehaviour
         CreateCube(root, $"HeightFascia_{from.x}_{from.y}_{direction}", CellCenter(from.x, from.y, centerY) + edgeOffset, scale, darkMaterial, false);
 
         int hash = Mathf.Abs(from.x * 61343 ^ from.y * 12289 ^ direction * 81173 ^ lastGeneratedSeed);
-        if (!PassesDensity(hash, microDetailDensity, 3, 11)) return;
+        if (!PassesDensity(hash, effectiveMicroDetailDensity, 3, 11)) return;
 
         Vector3 glowScale = northSouth
             ? new Vector3(tileSize * 0.62f, 0.045f, 0.055f)
@@ -1555,6 +1720,7 @@ public class CybergrindArenaGenerator : MonoBehaviour
         light.type = LightType.Directional;
         light.color = Color.Lerp(new Color(0.72f, 0.82f, 1f), profile.skyTint, 0.45f);
         light.intensity = 1.65f + profile.ambientBoost * 5f;
+        light.shadows = LightShadows.None;
         key.transform.rotation = Quaternion.Euler(55f, -35f, 0f);
 
         SpawnArenaFillLight(root, "ArenaCenterFill", new Vector3(width * tileSize * 0.5f, 13f, length * tileSize * 0.5f), profile.skyTint, 0.78f, tileSize * 13f);
@@ -1604,8 +1770,11 @@ public class CybergrindArenaGenerator : MonoBehaviour
             float offsetX = i * tileSize * 4.4f;
             CreateCube(root, $"ShellNorthRib_{i}", center + new Vector3(offsetX, 7.5f, shellRadiusZ - tileSize * 0.4f), new Vector3(tileSize * 0.36f, 17f + Mathf.Abs(i) * 1.8f, tileSize * 0.44f), darkMaterial, false);
             CreateCube(root, $"ShellSouthRib_{i}", center + new Vector3(offsetX, 7.5f, -shellRadiusZ + tileSize * 0.4f), new Vector3(tileSize * 0.36f, 17f + Mathf.Abs(i) * 1.8f, tileSize * 0.44f), darkMaterial, false);
-            CreateCube(root, $"ShellNorthGlow_{i}", center + new Vector3(offsetX, 8.8f, shellRadiusZ - tileSize * 0.88f), new Vector3(tileSize * 0.08f, 11f, tileSize * 0.08f), accentMaterial, false);
-            CreateCube(root, $"ShellSouthGlow_{i}", center + new Vector3(offsetX, 8.8f, -shellRadiusZ + tileSize * 0.88f), new Vector3(tileSize * 0.08f, 11f, tileSize * 0.08f), accentMaterial, false);
+            if (Mathf.Abs(i) <= 1)
+            {
+                CreateCube(root, $"ShellNorthGlow_{i}", center + new Vector3(offsetX, 8.8f, shellRadiusZ - tileSize * 0.88f), new Vector3(tileSize * 0.055f, 7.4f, tileSize * 0.055f), accentMaterial, false);
+                CreateCube(root, $"ShellSouthGlow_{i}", center + new Vector3(offsetX, 8.8f, -shellRadiusZ + tileSize * 0.88f), new Vector3(tileSize * 0.055f, 7.4f, tileSize * 0.055f), accentMaterial, false);
+            }
         }
 
         for (int i = -2; i <= 2; i++)
@@ -1613,8 +1782,11 @@ public class CybergrindArenaGenerator : MonoBehaviour
             float offsetZ = i * tileSize * 4.4f;
             CreateCube(root, $"ShellEastRib_{i}", center + new Vector3(shellRadiusX - tileSize * 0.4f, 7.5f, offsetZ), new Vector3(tileSize * 0.44f, 17f + Mathf.Abs(i) * 1.8f, tileSize * 0.36f), darkMaterial, false);
             CreateCube(root, $"ShellWestRib_{i}", center + new Vector3(-shellRadiusX + tileSize * 0.4f, 7.5f, offsetZ), new Vector3(tileSize * 0.44f, 17f + Mathf.Abs(i) * 1.8f, tileSize * 0.36f), darkMaterial, false);
-            CreateCube(root, $"ShellEastGlow_{i}", center + new Vector3(shellRadiusX - tileSize * 0.88f, 8.8f, offsetZ), new Vector3(tileSize * 0.08f, 11f, tileSize * 0.08f), accentMaterial, false);
-            CreateCube(root, $"ShellWestGlow_{i}", center + new Vector3(-shellRadiusX + tileSize * 0.88f, 8.8f, offsetZ), new Vector3(tileSize * 0.08f, 11f, tileSize * 0.08f), accentMaterial, false);
+            if (Mathf.Abs(i) <= 1)
+            {
+                CreateCube(root, $"ShellEastGlow_{i}", center + new Vector3(shellRadiusX - tileSize * 0.88f, 8.8f, offsetZ), new Vector3(tileSize * 0.055f, 7.4f, tileSize * 0.055f), accentMaterial, false);
+                CreateCube(root, $"ShellWestGlow_{i}", center + new Vector3(-shellRadiusX + tileSize * 0.88f, 8.8f, offsetZ), new Vector3(tileSize * 0.055f, 7.4f, tileSize * 0.055f), accentMaterial, false);
+            }
         }
 
         for (int i = 0; i < 8; i++)
@@ -1624,7 +1796,9 @@ public class CybergrindArenaGenerator : MonoBehaviour
             float ringZ = Mathf.Sin(angle) * (shellRadiusZ - tileSize * 1.8f);
             float towerHeight = 8f + (float)rng.NextDouble() * 5f;
             CreateCube(root, $"ShellTower_{i}", center + new Vector3(ringX, lowerDeckY + towerHeight * 0.5f + 0.2f, ringZ), new Vector3(tileSize * 0.82f, towerHeight, tileSize * 0.82f), darkMaterial, false);
-            CreateCube(root, $"ShellTowerCap_{i}", center + new Vector3(ringX, lowerDeckY + towerHeight + 0.45f, ringZ), new Vector3(tileSize * 1.2f, 0.24f, tileSize * 1.2f), accentMaterial, false);
+            CreateCube(root, $"ShellTowerCap_{i}", center + new Vector3(ringX, lowerDeckY + towerHeight + 0.45f, ringZ), new Vector3(tileSize * 1.2f, 0.24f, tileSize * 1.2f), darkMaterial, false);
+            if ((i & 1) == 0)
+                CreateCube(root, $"ShellTowerCapInset_{i}", center + new Vector3(ringX, lowerDeckY + towerHeight + 0.58f, ringZ), new Vector3(tileSize * 0.72f, 0.06f, tileSize * 0.72f), accentMaterial, false);
         }
     }
 
@@ -2071,7 +2245,7 @@ public class CybergrindArenaGenerator : MonoBehaviour
         }
 
         Shuffle(platforms, rng);
-        int pylonCount = Mathf.RoundToInt((Mathf.Clamp((width * length) / 145, 6, 16) + profile.extraPylons) * Mathf.Lerp(0.45f, 1f, decorativeDensity));
+        int pylonCount = Mathf.RoundToInt((Mathf.Clamp((width * length) / 145, 6, 16) + profile.extraPylons) * Mathf.Lerp(0.45f, 1f, effectiveDecorativeDensity));
         pylonCount = Mathf.Clamp(pylonCount, 3, 16 + profile.extraPylons);
         for (int i = 0; i < platforms.Count && pylonCount > 0; i += 5)
         {
@@ -2479,7 +2653,7 @@ public class CybergrindArenaGenerator : MonoBehaviour
             ? new Vector3(tileSize * 0.42f, 0.035f, 0.14f)
             : new Vector3(0.14f, 0.035f, tileSize * 0.42f);
         int hash = Mathf.Abs(from.x * 57193 ^ from.y * 83401 ^ direction * 26561 ^ lastGeneratedSeed);
-        if (PassesDensity(hash, microDetailDensity, 3, 9))
+        if (PassesDensity(hash, effectiveMicroDetailDensity, 3, 9))
             CreateCube(root, $"TraversalGapGlow_{from.x}_{from.y}_{direction}", glowCenter, glowScale, accentMaterial, false);
     }
 
@@ -2509,7 +2683,7 @@ public class CybergrindArenaGenerator : MonoBehaviour
         float y = GetCellHeight(cells[from.x, from.y]);
         float toY = GetCellHeight(cells[to.x, to.y]);
         if (y <= toY + levelHeight * 0.45f) return;
-        int cadence = Mathf.RoundToInt(Mathf.Lerp(7f, 3f, decorativeDensity));
+        int cadence = Mathf.RoundToInt(Mathf.Lerp(7f, 3f, effectiveDecorativeDensity));
         if (!ShouldUseStrongRouteMarker(from, direction, cadence)) return;
 
         bool northSouth = direction == 0 || direction == 1;
@@ -2566,7 +2740,7 @@ public class CybergrindArenaGenerator : MonoBehaviour
         float highY = GetCellHeight(cells[from.x, from.y]);
         float lowY = GetCellHeight(cells[to.x, to.y]);
         if (highY <= lowY + levelHeight * 0.45f) return;
-        int cadence = Mathf.RoundToInt(Mathf.Lerp(7f, 3f, decorativeDensity));
+        int cadence = Mathf.RoundToInt(Mathf.Lerp(7f, 3f, effectiveDecorativeDensity));
         if (!ShouldUseStrongRouteMarker(from, direction, cadence)) return;
 
         bool northSouth = direction == 0 || direction == 1;
@@ -2614,7 +2788,7 @@ public class CybergrindArenaGenerator : MonoBehaviour
                 if (cells[x, z] == CellKind.Spawn || cells[x, z] == CellKind.Exit) continue;
                 if (IsRouteConnectorCell(cells, new Vector2Int(x, z))) continue;
                 int hash = Mathf.Abs(x * 37 + z * 19 + lastGeneratedSeed);
-                if (!PassesDensity(hash, microDetailDensity, 5, 18)) continue;
+                if (!PassesDensity(hash, effectiveMicroDetailDensity * 0.72f, 8, 24)) continue;
 
                 float y = GetCellHeight(cells[x, z]) + floorThickness * 0.5f + 0.055f;
                 bool longX = ((x + z + lastGeneratedSeed) & 1) == 0;
@@ -2628,9 +2802,9 @@ public class CybergrindArenaGenerator : MonoBehaviour
                 CreateCube(root, $"ServiceRib_{x}_{z}", CellCenter(x, z, y) + ribOffset, ribScale, darkMaterial, false);
 
                 int chipHash = Mathf.Abs(x * 11 + z * 7 + lastGeneratedSeed);
-                if (PassesDensity(chipHash, microDetailDensity, 11, 31))
+                if (PassesDensity(chipHash, effectiveMicroDetailDensity * 0.48f, 18, 42))
                 {
-                    Vector3 chipScale = new Vector3(tileSize * 0.18f, 0.04f, tileSize * 0.18f);
+                    Vector3 chipScale = new Vector3(tileSize * 0.14f, 0.03f, tileSize * 0.14f);
                     Vector3 chipOffset = new Vector3(tileSize * 0.22f, 0f, tileSize * -0.22f);
                     CreateCube(root, $"ServiceGlowChip_{x}_{z}", CellCenter(x, z, y + 0.025f) + chipOffset, chipScale, accentMaterial, false);
                 }
@@ -2664,8 +2838,8 @@ public class CybergrindArenaGenerator : MonoBehaviour
                                  Mathf.Abs(x - width / 2) <= mainBridgeHalfWidth ||
                                  Mathf.Abs(z - length / 2) <= mainBridgeHalfWidth;
                 int hash = Mathf.Abs(x * 21961 ^ z * 48611 ^ lastGeneratedSeed);
-                if (important && !PassesDensity(hash, decorativeDensity, 2, 5)) continue;
-                if (!important && !PassesDensity(hash, microDetailDensity, 9, 24)) continue;
+                if (important && !PassesDensity(hash, effectiveDecorativeDensity * 0.72f, 4, 9)) continue;
+                if (!important && !PassesDensity(hash, effectiveMicroDetailDensity * 0.34f, 16, 32)) continue;
 
                 bool eastWest = IsSameLayoutHeight(cells, x, z, x + 1, z) || IsSameLayoutHeight(cells, x, z, x - 1, z);
                 bool northSouth = IsSameLayoutHeight(cells, x, z, x, z + 1) || IsSameLayoutHeight(cells, x, z, x, z - 1);
@@ -2680,16 +2854,17 @@ public class CybergrindArenaGenerator : MonoBehaviour
                 }
 
                 float y = GetCellHeight(kind) + floorThickness * 0.5f + 0.075f;
+                Material stripeMaterial = connector || important ? accentMaterial : darkMaterial;
                 if (eastWest)
                 {
-                    Vector3 scale = new Vector3(tileSize * (important ? 0.62f : 0.42f), 0.035f, 0.055f);
-                    CreateCube(root, $"RouteStripeX_{x}_{z}", CellCenter(x, z, y), scale, accentMaterial, false);
+                    Vector3 scale = new Vector3(tileSize * (important ? 0.48f : 0.32f), 0.03f, connector ? 0.06f : 0.045f);
+                    CreateCube(root, $"RouteStripeX_{x}_{z}", CellCenter(x, z, y), scale, stripeMaterial, false);
                 }
 
                 if (northSouth)
                 {
-                    Vector3 scale = new Vector3(0.055f, 0.035f, tileSize * (important ? 0.62f : 0.42f));
-                    CreateCube(root, $"RouteStripeZ_{x}_{z}", CellCenter(x, z, y + 0.01f), scale, accentMaterial, false);
+                    Vector3 scale = new Vector3(connector ? 0.06f : 0.045f, 0.03f, tileSize * (important ? 0.48f : 0.32f));
+                    CreateCube(root, $"RouteStripeZ_{x}_{z}", CellCenter(x, z, y + 0.01f), scale, stripeMaterial, false);
                 }
             }
         }
@@ -2700,7 +2875,7 @@ public class CybergrindArenaGenerator : MonoBehaviour
         if (arenaMode == ArenaMode.Shop) return;
 
         bool[,] used = new bool[width, length];
-        int targetCount = Mathf.RoundToInt(Mathf.Clamp((width * length) / 95, 5, 13) * Mathf.Lerp(0.45f, 1f, decorativeDensity));
+        int targetCount = Mathf.RoundToInt(Mathf.Clamp((width * length) / 95, 5, 13) * Mathf.Lerp(0.45f, 1f, effectiveDecorativeDensity));
         targetCount = Mathf.Clamp(targetCount, 3, 13);
         int made = 0;
 
@@ -2805,7 +2980,8 @@ public class CybergrindArenaGenerator : MonoBehaviour
         Vector3 seamOffset = longX
             ? new Vector3(0f, floorThickness * 0.5f + 0.125f, spanZ * 0.22f * (((index & 1) == 0) ? 1f : -1f))
             : new Vector3(spanX * 0.22f * (((index & 1) == 0) ? 1f : -1f), floorThickness * 0.5f + 0.125f, 0f);
-        CreateCube(root, $"DistrictSeamGlow_{x}_{z}_{index}", center + seamOffset, seamScale, accentMaterial, false);
+        if (((x + z + index) & 1) == 0)
+            CreateCube(root, $"DistrictSeamGlow_{x}_{z}_{index}", center + seamOffset, seamScale, accentMaterial, false);
 
         int conduitCount = Mathf.Clamp(Mathf.RoundToInt((sx + sz) * 0.45f), 2, 4);
         for (int i = 0; i < conduitCount; i++)
@@ -2826,8 +3002,8 @@ public class CybergrindArenaGenerator : MonoBehaviour
             }
 
             CreateCube(root, $"DistrictActuator_{x}_{z}_{index}_{i}", conduitPos, conduitScale, darkMaterial, false);
-            if (((i + index) & 1) == 0)
-                CreateCube(root, $"DistrictActuatorGlow_{x}_{z}_{index}_{i}", conduitPos + Vector3.up * (conduitScale.y * 0.22f), new Vector3(conduitScale.x * 0.42f, conduitScale.y * 0.44f, conduitScale.z * 0.42f), accentMaterial, false);
+            if (((i + index) & 3) == 0)
+                CreateCube(root, $"DistrictActuatorGlow_{x}_{z}_{index}_{i}", conduitPos + Vector3.up * (conduitScale.y * 0.18f), new Vector3(conduitScale.x * 0.3f, conduitScale.y * 0.28f, conduitScale.z * 0.3f), accentMaterial, false);
         }
 
         if (sx >= 3 && sz >= 3)
@@ -2857,9 +3033,9 @@ public class CybergrindArenaGenerator : MonoBehaviour
         Vector2Int center = new Vector2Int(width / 2, length / 2);
         float y = GetCellHeight(cells[center.x, center.y]) + floorThickness * 0.5f + 0.105f;
 
-        CreateCube(root, "ShopAisleLine", CellCenter(center.x, center.y - 2, y), new Vector3(0.12f, 0.035f, tileSize * 9.2f), accentMaterial, false);
-        CreateCube(root, "ShopCounterLine", CellCenter(center.x, center.y + 1, y + 0.01f), new Vector3(tileSize * 8.2f, 0.035f, 0.12f), accentMaterial, false);
-        CreateCube(root, "ShopExitLine", CellCenter(center.x, center.y + 5, y + 0.02f), new Vector3(tileSize * 4.4f, 0.035f, 0.10f), exitMaterial, false);
+        CreateCube(root, "ShopAisleLine", CellCenter(center.x, center.y - 2, y), new Vector3(0.08f, 0.03f, tileSize * 8.2f), darkMaterial, false);
+        CreateCube(root, "ShopCounterLine", CellCenter(center.x, center.y + 1, y + 0.01f), new Vector3(tileSize * 7.2f, 0.03f, 0.08f), darkMaterial, false);
+        CreateCube(root, "ShopExitLine", CellCenter(center.x, center.y + 5, y + 0.02f), new Vector3(tileSize * 3.6f, 0.03f, 0.08f), exitMaterial, false);
 
         Vector2Int[] stationCells =
         {
@@ -2877,7 +3053,9 @@ public class CybergrindArenaGenerator : MonoBehaviour
             Vector2Int cell = stationCells[i];
             if (!InBounds(cell.x, cell.y) || !IsLayoutWalkable(cells[cell.x, cell.y])) continue;
             float padY = GetCellHeight(cells[cell.x, cell.y]) + floorThickness * 0.5f + 0.095f;
-            CreateCube(root, $"ShopStationPad_{i}", CellCenter(cell.x, cell.y, padY), new Vector3(tileSize * 0.82f, 0.032f, tileSize * 0.62f), i == 3 ? spawnMaterial : accentMaterial, false);
+            Vector3 centerPos = CellCenter(cell.x, cell.y, padY);
+            CreateCube(root, $"ShopStationPad_{i}", centerPos, new Vector3(tileSize * 0.8f, 0.042f, tileSize * 0.6f), darkMaterial, false);
+            CreateCube(root, $"ShopStationPadInset_{i}", centerPos + Vector3.up * 0.028f, new Vector3(tileSize * 0.58f, 0.02f, tileSize * 0.38f), i == 3 ? spawnMaterial : accentMaterial, false);
         }
     }
 
@@ -3186,45 +3364,54 @@ public class CybergrindArenaGenerator : MonoBehaviour
             legacyShell.enabled = false;
         Material glow = accentMaterial != null ? accentMaterial : itemMaterial;
         Material body = darkMaterial != null ? darkMaterial : floorMaterial;
+        CreateChildCube(parent, $"{label}_Base", new Vector3(0f, -0.68f, 0f), new Vector3(2.2f, 0.34f, 1.5f), body, false);
+        Renderer plinthRenderer = CreateChildCube(parent, $"{label}_Plinth", new Vector3(0f, -0.44f, 0.04f), new Vector3(1.78f, 0.12f, 1.08f), glow, false).GetComponent<Renderer>();
+        CreateChildCube(parent, $"{label}_Cabinet", new Vector3(0f, 0.16f, -0.42f), new Vector3(1.68f, 1.52f, 0.72f), body, false);
+        CreateChildCube(parent, $"{label}_BayFrameTop", new Vector3(0f, 2.02f, -0.12f), new Vector3(1.62f, 0.14f, 0.18f), body, false);
+        CreateChildCube(parent, $"{label}_BayBack", new Vector3(0f, 1.28f, -0.58f), new Vector3(1.52f, 1.08f, 0.14f), body, false);
+        Renderer bayLightRenderer = CreateChildCube(parent, $"{label}_BayLight", new Vector3(0f, 1.86f, -0.44f), new Vector3(1.08f, 0.04f, 0.04f), glow, false).GetComponent<Renderer>();
+        CreateChildCube(parent, $"{label}_UprightL", new Vector3(-0.94f, 0.82f, -0.08f), new Vector3(0.18f, 2.64f, 0.94f), body, false);
+        CreateChildCube(parent, $"{label}_UprightR", new Vector3(0.94f, 0.82f, -0.08f), new Vector3(0.18f, 2.64f, 0.94f), body, false);
+        CreateChildCube(parent, $"{label}_DockArmL", new Vector3(-0.64f, 1.2f, 0.18f), new Vector3(0.16f, 0.7f, 0.16f), body, false);
+        CreateChildCube(parent, $"{label}_DockArmR", new Vector3(0.64f, 1.2f, 0.18f), new Vector3(0.16f, 0.7f, 0.16f), body, false);
+        CreateChildCube(parent, $"{label}_Counter", new Vector3(0f, 0.66f, 0.34f), new Vector3(1.64f, 0.18f, 0.74f), body, false);
+        Renderer controlRenderer = CreateChildCube(parent, $"{label}_ControlStrip", new Vector3(0f, 0.8f, 0.44f), new Vector3(1.04f, 0.032f, 0.16f), glow, false).GetComponent<Renderer>();
+        CreateChildCube(parent, $"{label}_Canopy", new Vector3(0f, 2.26f, 0.06f), new Vector3(1.88f, 0.12f, 1.18f), body, false);
+        Renderer canopyInsetRenderer = CreateChildCube(parent, $"{label}_CanopyInset", new Vector3(0f, 2.18f, 0.06f), new Vector3(1.34f, 0.028f, 0.74f), glow, false).GetComponent<Renderer>();
+        CreateChildCube(parent, $"{label}_FootL", new Vector3(-0.74f, -0.42f, 0.36f), new Vector3(0.32f, 0.46f, 0.34f), body, false);
+        CreateChildCube(parent, $"{label}_FootR", new Vector3(0.74f, -0.42f, 0.36f), new Vector3(0.32f, 0.46f, 0.34f), body, false);
 
-        CreateChildCube(parent, $"{label}_Plinth", new Vector3(0f, -0.56f, 0f), new Vector3(2.05f, 0.18f, 1.36f), body, false);
-        CreateChildCube(parent, $"{label}_PlinthInset", new Vector3(0f, -0.45f, 0.08f), new Vector3(1.72f, 0.05f, 1.04f), glow, false);
-        CreateChildCube(parent, $"{label}_Cabinet", new Vector3(0f, 0.22f, -0.34f), new Vector3(1.62f, 1.35f, 0.62f), body, false);
-        CreateChildCube(parent, $"{label}_BayBack", new Vector3(0f, 1.34f, -0.48f), new Vector3(1.55f, 0.92f, 0.12f), body, false);
-        CreateChildCube(parent, $"{label}_BayLight", new Vector3(0f, 1.72f, -0.39f), new Vector3(1.2f, 0.05f, 0.05f), glow, false);
-        CreateChildCube(parent, $"{label}_RailL", new Vector3(-0.88f, 0.72f, -0.08f), new Vector3(0.14f, 2.35f, 0.82f), body, false);
-        CreateChildCube(parent, $"{label}_RailR", new Vector3(0.88f, 0.72f, -0.08f), new Vector3(0.14f, 2.35f, 0.82f), body, false);
-        CreateChildCube(parent, $"{label}_Counter", new Vector3(0f, 0.72f, 0.38f), new Vector3(1.6f, 0.16f, 0.68f), body, false);
-        CreateChildCube(parent, $"{label}_ControlStrip", new Vector3(0f, 0.82f, 0.48f), new Vector3(1.22f, 0.035f, 0.18f), glow, false);
-        if (parent.GetComponent<ShopStationPresentation>() == null)
-            parent.gameObject.AddComponent<ShopStationPresentation>();
+        ShopStationPresentation presentation = parent.GetComponent<ShopStationPresentation>();
+        if (presentation == null)
+            presentation = parent.gameObject.AddComponent<ShopStationPresentation>();
+        presentation.accentRenderers = new[] { plinthRenderer, bayLightRenderer, controlRenderer, canopyInsetRenderer };
         CreateShopDisplayLight(parent, glow != null ? glow.color : Color.cyan);
 
         switch (service)
         {
             case CybergrindShopStation.ShopService.Repair:
-                CreateChildCube(parent, "RepairCrossH", new Vector3(0f, 1.45f, 0.62f), new Vector3(0.82f, 0.12f, 0.12f), glow, false);
-                CreateChildCube(parent, "RepairCrossV", new Vector3(0f, 1.45f, 0.62f), new Vector3(0.12f, 0.72f, 0.12f), glow, false);
-                CreateChildCube(parent, "RepairVial", new Vector3(0.5f, 1.18f, 0.58f), new Vector3(0.18f, 0.62f, 0.18f), glow, false);
-                CreateChildCube(parent, "RepairVialCap", new Vector3(0.5f, 1.54f, 0.58f), new Vector3(0.28f, 0.08f, 0.28f), body, false);
+                CreateChildCube(parent, "RepairCrossH", new Vector3(0f, 1.42f, 0.56f), new Vector3(0.74f, 0.1f, 0.1f), glow, false);
+                CreateChildCube(parent, "RepairCrossV", new Vector3(0f, 1.42f, 0.56f), new Vector3(0.1f, 0.62f, 0.1f), glow, false);
+                CreateChildCube(parent, "RepairVial", new Vector3(0.48f, 1.12f, 0.52f), new Vector3(0.18f, 0.54f, 0.18f), glow, false);
+                CreateChildCube(parent, "RepairVialCap", new Vector3(0.48f, 1.44f, 0.52f), new Vector3(0.26f, 0.08f, 0.26f), body, false);
                 break;
             case CybergrindShopStation.ShopService.Overclock:
-                CreateChildCube(parent, "OverclockFinL", new Vector3(-0.42f, 1.55f, 0.54f), new Vector3(0.12f, 0.86f, 0.16f), glow, false);
-                CreateChildCube(parent, "OverclockFinR", new Vector3(0.42f, 1.55f, 0.54f), new Vector3(0.12f, 0.86f, 0.16f), glow, false);
-                CreateChildCube(parent, "OverclockCore", new Vector3(0f, 1.42f, 0.62f), new Vector3(0.48f, 0.48f, 0.12f), glow, false);
-                CreateChildCube(parent, "OverclockNeedle", new Vector3(0f, 1.72f, 0.66f), new Vector3(0.08f, 0.72f, 0.08f), body, false);
+                CreateChildCube(parent, "OverclockFinL", new Vector3(-0.4f, 1.5f, 0.5f), new Vector3(0.12f, 0.74f, 0.14f), glow, false);
+                CreateChildCube(parent, "OverclockFinR", new Vector3(0.4f, 1.5f, 0.5f), new Vector3(0.12f, 0.74f, 0.14f), glow, false);
+                CreateChildCube(parent, "OverclockCore", new Vector3(0f, 1.36f, 0.54f), new Vector3(0.44f, 0.42f, 0.1f), glow, false);
+                CreateChildCube(parent, "OverclockNeedle", new Vector3(0f, 1.64f, 0.58f), new Vector3(0.08f, 0.6f, 0.08f), body, false);
                 break;
             case CybergrindShopStation.ShopService.Surge:
-                CreateChildCube(parent, "SurgeSpine", new Vector3(0f, 1.75f, 0.54f), new Vector3(0.18f, 1.2f, 0.18f), glow, false);
-                CreateChildCube(parent, "SurgeHalo", new Vector3(0f, 2.18f, 0.54f), new Vector3(0.92f, 0.05f, 0.92f), glow, false);
-                CreateChildCube(parent, "SurgeArrow", new Vector3(0f, 1.18f, 0.62f), new Vector3(0.36f, 0.36f, 0.1f), glow, false);
-                CreateChildCube(parent, "SurgeArrowStem", new Vector3(0f, 0.95f, 0.62f), new Vector3(0.12f, 0.48f, 0.1f), glow, false);
+                CreateChildCube(parent, "SurgeSpine", new Vector3(0f, 1.72f, 0.48f), new Vector3(0.16f, 1.08f, 0.16f), glow, false);
+                CreateChildCube(parent, "SurgeHalo", new Vector3(0f, 2.04f, 0.48f), new Vector3(0.78f, 0.04f, 0.78f), glow, false);
+                CreateChildCube(parent, "SurgeArrow", new Vector3(0f, 1.14f, 0.56f), new Vector3(0.32f, 0.32f, 0.1f), glow, false);
+                CreateChildCube(parent, "SurgeArrowStem", new Vector3(0f, 0.94f, 0.56f), new Vector3(0.1f, 0.42f, 0.1f), glow, false);
                 break;
             default:
-                CreateChildCube(parent, "RefitBarrel", new Vector3(0f, 1.55f, 0.58f), new Vector3(0.22f, 0.82f, 0.22f), glow, false);
-                CreateChildCube(parent, "RefitCradle", new Vector3(0f, 1.24f, 0.58f), new Vector3(0.92f, 0.12f, 0.28f), body, false);
-                CreateChildCube(parent, "RefitGrip", new Vector3(-0.28f, 1.0f, 0.55f), new Vector3(0.16f, 0.48f, 0.16f), body, false);
-                CreateChildCube(parent, "RefitSight", new Vector3(0.25f, 1.8f, 0.57f), new Vector3(0.32f, 0.08f, 0.14f), glow, false);
+                CreateChildCube(parent, "RefitBarrel", new Vector3(0f, 1.48f, 0.52f), new Vector3(0.2f, 0.68f, 0.2f), glow, false);
+                CreateChildCube(parent, "RefitCradle", new Vector3(0f, 1.2f, 0.52f), new Vector3(0.84f, 0.12f, 0.24f), body, false);
+                CreateChildCube(parent, "RefitGrip", new Vector3(-0.26f, 0.98f, 0.48f), new Vector3(0.14f, 0.42f, 0.14f), body, false);
+                CreateChildCube(parent, "RefitSight", new Vector3(0.22f, 1.72f, 0.5f), new Vector3(0.28f, 0.08f, 0.12f), glow, false);
                 break;
         }
     }
@@ -3232,35 +3419,23 @@ public class CybergrindArenaGenerator : MonoBehaviour
     private void BuildShopWeaponHologram(Transform parent, int presetIndex, string label)
     {
         parent = GetShopVisualRoot(parent);
-        Color color = presetIndex < 3
-            ? new Color(0.72f, 0.95f, 1f, 0.86f)
-            : presetIndex < 6
-                ? new Color(1f, 0.72f, 0.42f, 0.86f)
-                : new Color(0.9f, 0.62f, 1f, 0.86f);
-        Material holo = BuildHologramMaterial(color);
-
-        float length = presetIndex < 3 ? 0.95f : presetIndex < 6 ? 1.25f : 1.5f;
-        float width = presetIndex < 3 ? 0.22f : presetIndex < 6 ? 0.36f : 0.42f;
-        GameObject holoRoot = new GameObject($"{label}_HologramModel");
+        Color color = GetShopWeaponAccent(presetIndex);
+        Material accent = BuildHologramMaterial(color);
+        Material body = darkMaterial != null ? darkMaterial : floorMaterial;
+        GameObject holoRoot = new GameObject($"{label}_WeaponDisplay");
         holoRoot.transform.SetParent(parent, false);
-        holoRoot.transform.localPosition = new Vector3(0f, 1.42f, 0.02f);
+        holoRoot.transform.localPosition = new Vector3(0f, 1.28f, 0.04f);
         holoRoot.transform.localRotation = Quaternion.Euler(0f, 90f, 0f);
+        holoRoot.transform.localScale = Vector3.one * 0.74f;
+        CreateChildCube(holoRoot.transform, $"{label}_PedestalTop", new Vector3(0f, -0.42f, 0f), new Vector3(1.18f, 0.04f, 1.18f), accent, false);
+        BuildShopDisplayWeapon(holoRoot.transform, presetIndex, body, accent);
         ArenaPulseFx pulse = holoRoot.AddComponent<ArenaPulseFx>();
-        pulse.scalePulse = 0.012f;
-        pulse.pulseSpeed = 2.2f;
+        pulse.scalePulse = 0.01f;
+        pulse.pulseSpeed = 2.1f;
         pulse.rotationDegreesPerSecond = Vector3.zero;
         pulse.emissionColor = color;
-        pulse.emissionStrength = 1.5f;
-        pulse.emissionPulse = 0.2f;
-
-        CreateChildCube(holoRoot.transform, $"{label}_HoloBody", new Vector3(0f, 0f, 0f), new Vector3(width * 1.18f, 0.22f, length * 1.18f), holo, false);
-        CreateChildCube(holoRoot.transform, $"{label}_HoloBarrel", new Vector3(0f, 0.02f, length * 0.66f), new Vector3(width * 0.52f, 0.13f, 0.52f), holo, false);
-        CreateChildCube(holoRoot.transform, $"{label}_HoloGrip", new Vector3(-width * 0.94f, -0.34f, -0.22f), new Vector3(0.18f, 0.54f, 0.18f), holo, false);
-        CreateChildCube(holoRoot.transform, $"{label}_HoloCore", new Vector3(width * 1.08f, 0.02f, -0.16f), new Vector3(0.14f, 0.42f, 0.42f), holo, false);
-        CreateChildCube(holoRoot.transform, $"{label}_HoloSight", new Vector3(0f, 0.24f, -length * 0.18f), new Vector3(width * 0.65f, 0.08f, 0.24f), holo, false);
-        CreateChildCube(holoRoot.transform, $"{label}_HoloRing", new Vector3(0f, -0.52f, 0f), new Vector3(1.25f, 0.035f, 1.25f), holo, false);
-        CreateChildCube(holoRoot.transform, $"{label}_HoloVariantA", new Vector3(width * 0.9f, 0.16f, length * 0.22f), new Vector3(0.1f, 0.32f, 0.28f), holo, false);
-        CreateChildCube(holoRoot.transform, $"{label}_HoloVariantB", new Vector3(-width * 0.65f, 0.14f, length * 0.08f), new Vector3(0.1f, 0.28f, 0.22f), holo, false);
+        pulse.emissionStrength = 1.2f;
+        pulse.emissionPulse = 0.16f;
         ShopStationPresentation presentation = parent.GetComponent<ShopStationPresentation>();
         if (presentation != null) presentation.productRoot = holoRoot.transform;
     }
@@ -3276,43 +3451,155 @@ public class CybergrindArenaGenerator : MonoBehaviour
             _ => new Color(1f, 0.82f, 0.62f, 0.88f)
         };
         Material holo = BuildHologramMaterial(color);
-        Material chassis = darkMaterial != null ? darkMaterial : holo;
+        Material chassis = darkMaterial != null ? darkMaterial : floorMaterial;
 
-        GameObject root = new GameObject($"{label}_ModHologramModel");
+        GameObject root = new GameObject($"{label}_ModDisplay");
         root.transform.SetParent(parent, false);
-        root.transform.localPosition = new Vector3(0f, 1.42f, 0.08f);
+        root.transform.localPosition = new Vector3(0f, 1.28f, 0.08f);
         root.transform.localRotation = Quaternion.Euler(0f, 90f, 0f);
+        root.transform.localScale = Vector3.one * 0.74f;
 
         ArenaPulseFx pulse = root.AddComponent<ArenaPulseFx>();
-        pulse.scalePulse = 0.012f;
-        pulse.pulseSpeed = 2.8f;
+        pulse.scalePulse = 0.01f;
+        pulse.pulseSpeed = 2.4f;
         pulse.rotationDegreesPerSecond = Vector3.zero;
         pulse.emissionColor = color;
-        pulse.emissionStrength = 1.8f;
-        pulse.emissionPulse = 0.55f;
+        pulse.emissionStrength = 1.4f;
+        pulse.emissionPulse = 0.28f;
 
-        CreateChildCube(root.transform, $"{label}_WeaponBody", Vector3.zero, new Vector3(0.46f, 0.24f, 1.35f), chassis, false);
-        CreateChildCube(root.transform, $"{label}_WeaponBarrel", new Vector3(0f, 0.02f, 0.9f), new Vector3(0.2f, 0.16f, 0.72f), chassis, false);
-        CreateChildCube(root.transform, $"{label}_WeaponGrip", new Vector3(-0.22f, -0.34f, -0.2f), new Vector3(0.2f, 0.58f, 0.24f), chassis, false);
-        CreateChildCube(root.transform, $"{label}_UpgradeCore", new Vector3(0.32f, 0.12f, 0.08f), new Vector3(0.28f, 0.34f, 0.52f), holo, false);
-        CreateChildCube(root.transform, $"{label}_UpgradeMount", new Vector3(0f, -0.32f, 0f), new Vector3(0.86f, 0.08f, 0.86f), holo, false);
-        CreateChildCube(root.transform, $"{label}_UpgradeBarrelA", new Vector3(0f, 0.02f, 0.62f), new Vector3(0.16f, 0.16f, 0.62f), holo, false);
-        CreateChildCube(root.transform, $"{label}_UpgradeBarrelB", new Vector3(0.34f, 0.06f, 0.18f), new Vector3(0.12f, 0.42f, 0.18f), holo, false);
-        CreateChildCube(root.transform, $"{label}_UpgradeBarrelC", new Vector3(-0.34f, 0.06f, 0.18f), new Vector3(0.12f, 0.42f, 0.18f), holo, false);
-        CreateChildCube(root.transform, $"{label}_UpgradeRing", new Vector3(0f, -0.52f, 0f), new Vector3(1.15f, 0.035f, 1.15f), holo, false);
+        Gun gun = FindAnyObjectByType<Gun>();
+        int basePreset = gun != null
+            ? gun.GetActiveFamily() == Gun.WeaponFamily.Heavy ? 6 :
+              gun.GetActiveFamily() == Gun.WeaponFamily.Shotgun ? 3 : 0
+            : 0;
+        CreateChildCube(root.transform, $"{label}_PedestalTop", new Vector3(0f, -0.42f, 0f), new Vector3(1.18f, 0.04f, 1.18f), holo, false);
+        BuildShopDisplayWeapon(root.transform, basePreset, chassis, holo);
+        AddShopDisplayInstalledMods(root.transform, basePreset, passive, alt, holo);
+        ShopStationPresentation presentation = parent.GetComponent<ShopStationPresentation>();
+        if (presentation != null) presentation.productRoot = root.transform;
+    }
+
+    private Color GetShopWeaponAccent(int presetIndex)
+    {
+        return presetIndex < 3
+            ? new Color(0.72f, 0.95f, 1f, 0.86f)
+            : presetIndex < 6
+                ? new Color(1f, 0.72f, 0.42f, 0.86f)
+                : new Color(0.9f, 0.62f, 1f, 0.86f);
+    }
+
+    private void BuildShopDisplayWeapon(Transform root, int presetIndex, Material body, Material accent)
+    {
+        switch (presetIndex)
+        {
+            case 0:
+                AddDisplayPart(root, "VesperGrip", new Vector3(-0.04f, -0.38f, 0.05f), new Vector3(0.24f, 0.72f, 0.24f), new Vector3(-14f, 0f, 0f), body);
+                AddDisplayPart(root, "VesperFrame", new Vector3(0f, -0.08f, 0.48f), new Vector3(0.46f, 0.28f, 0.92f), Vector3.zero, body);
+                AddDisplayPart(root, "VesperSuppressor", new Vector3(0f, 0f, 1.18f), new Vector3(0.22f, 0.22f, 0.82f), Vector3.zero, body);
+                AddDisplayPart(root, "VesperSight", new Vector3(0f, 0.22f, 0.58f), new Vector3(0.06f, 0.18f, 0.5f), new Vector3(-6f, 0f, 0f), accent);
+                AddDisplayPart(root, "VesperRailL", new Vector3(-0.25f, 0.04f, 0.82f), new Vector3(0.06f, 0.1f, 0.72f), Vector3.zero, accent);
+                AddDisplayPart(root, "VesperRailR", new Vector3(0.25f, 0.04f, 0.82f), new Vector3(0.06f, 0.1f, 0.72f), Vector3.zero, accent);
+                break;
+            case 1:
+                AddDisplayPart(root, "RedlineGrip", new Vector3(0f, -0.42f, 0.1f), new Vector3(0.3f, 0.76f, 0.28f), new Vector3(-10f, 0f, 0f), body);
+                AddDisplayPart(root, "RedlineBreech", new Vector3(0f, -0.02f, 0.5f), new Vector3(0.68f, 0.4f, 0.72f), Vector3.zero, body);
+                AddDisplayPart(root, "RedlineCore", new Vector3(0f, 0.05f, 0.9f), new Vector3(0.26f, 0.26f, 1.35f), Vector3.zero, accent);
+                AddDisplayPart(root, "RedlineForkL", new Vector3(-0.28f, 0.04f, 1.48f), new Vector3(0.1f, 0.16f, 0.62f), new Vector3(0f, 5f, 0f), body);
+                AddDisplayPart(root, "RedlineForkR", new Vector3(0.28f, 0.04f, 1.48f), new Vector3(0.1f, 0.16f, 0.62f), new Vector3(0f, -5f, 0f), body);
+                AddDisplayPart(root, "RedlineSpine", new Vector3(0f, 0.22f, 0.78f), new Vector3(0.12f, 0.22f, 1.12f), Vector3.zero, body);
+                break;
+            case 2:
+                AddDisplayPart(root, "TridentGrip", new Vector3(0f, -0.4f, 0.12f), new Vector3(0.26f, 0.7f, 0.25f), new Vector3(-12f, 0f, 0f), body);
+                AddDisplayPart(root, "TridentCell", new Vector3(0f, -0.05f, 0.52f), new Vector3(0.58f, 0.4f, 0.7f), Vector3.zero, body);
+                AddDisplayPart(root, "TridentCenter", new Vector3(0f, 0.12f, 1.15f), new Vector3(0.1f, 0.1f, 1.1f), Vector3.zero, accent);
+                AddDisplayPart(root, "TridentLeft", new Vector3(-0.24f, -0.04f, 1.1f), new Vector3(0.1f, 0.1f, 1.0f), new Vector3(0f, 0f, -4f), accent);
+                AddDisplayPart(root, "TridentRight", new Vector3(0.24f, -0.04f, 1.1f), new Vector3(0.1f, 0.1f, 1.0f), new Vector3(0f, 0f, 4f), accent);
+                break;
+            case 3:
+                AddDisplayPart(root, "KilnStock", new Vector3(0f, -0.2f, 0.05f), new Vector3(0.5f, 0.52f, 0.62f), new Vector3(8f, 0f, 0f), body);
+                AddDisplayPart(root, "KilnChamber", new Vector3(0f, 0.18f, 0.56f), new Vector3(0.74f, 0.48f, 0.62f), Vector3.zero, accent);
+                AddDisplayPart(root, "KilnVentL", new Vector3(-0.42f, 0.06f, 0.72f), new Vector3(0.12f, 0.58f, 0.48f), new Vector3(0f, 0f, -12f), body);
+                AddDisplayPart(root, "KilnVentR", new Vector3(0.42f, 0.06f, 0.72f), new Vector3(0.12f, 0.58f, 0.48f), new Vector3(0f, 0f, 12f), body);
+                AddDisplayPart(root, "KilnMuzzle", new Vector3(0f, 0.02f, 1.55f), new Vector3(0.42f, 0.42f, 0.72f), Vector3.zero, body);
+                break;
+            case 4:
+                AddDisplayPart(root, "LodestarBody", new Vector3(0f, -0.08f, 0.62f), new Vector3(0.58f, 0.42f, 1.1f), Vector3.zero, body);
+                AddDisplayPart(root, "LodestarGrip", new Vector3(0f, -0.5f, 0.3f), new Vector3(0.28f, 0.64f, 0.26f), new Vector3(-9f, 0f, 0f), body);
+                AddDisplayPart(root, "LodestarArmL", new Vector3(-0.48f, 0.12f, 1.2f), new Vector3(0.14f, 0.48f, 1.28f), new Vector3(0f, -8f, -10f), body);
+                AddDisplayPart(root, "LodestarArmR", new Vector3(0.48f, 0.12f, 1.2f), new Vector3(0.14f, 0.48f, 1.28f), new Vector3(0f, 8f, 10f), body);
+                AddDisplayPart(root, "LodestarLens", new Vector3(0f, 0.1f, 1.74f), new Vector3(0.28f, 0.28f, 0.2f), Vector3.zero, accent);
+                break;
+            case 5:
+                AddDisplayPart(root, "BreachBlock", new Vector3(0f, -0.02f, 0.72f), new Vector3(0.86f, 0.58f, 1.3f), Vector3.zero, body);
+                AddDisplayPart(root, "BreachGrip", new Vector3(0f, -0.56f, 0.24f), new Vector3(0.32f, 0.7f, 0.3f), new Vector3(-8f, 0f, 0f), body);
+                AddDisplayPart(root, "BreachRam", new Vector3(0f, 0.06f, 1.48f), new Vector3(0.34f, 0.34f, 1.22f), Vector3.zero, accent);
+                AddDisplayPart(root, "BreachMuzzle", new Vector3(0f, 0.04f, 1.98f), new Vector3(1.0f, 0.62f, 0.34f), Vector3.zero, body);
+                break;
+            case 6:
+                AddDisplayPart(root, "CinderRear", new Vector3(0f, -0.08f, 0.3f), new Vector3(0.7f, 0.52f, 0.82f), Vector3.zero, body);
+                AddDisplayPart(root, "CinderDrum", new Vector3(0f, -0.02f, 0.9f), new Vector3(0.68f, 0.42f, 0.62f), Vector3.zero, accent);
+                AddDisplayPart(root, "CinderTube", new Vector3(0f, 0.06f, 1.5f), new Vector3(0.3f, 0.3f, 1.28f), Vector3.zero, body);
+                AddDisplayPart(root, "CinderCageL", new Vector3(-0.48f, 0.12f, 1.28f), new Vector3(0.12f, 0.72f, 1.28f), new Vector3(0f, 0f, -8f), accent);
+                AddDisplayPart(root, "CinderCageR", new Vector3(0.48f, 0.12f, 1.28f), new Vector3(0.12f, 0.72f, 1.28f), new Vector3(0f, 0f, 8f), accent);
+                break;
+            case 7:
+                AddDisplayPart(root, "DriverRear", new Vector3(0f, -0.04f, 0.38f), new Vector3(0.82f, 0.48f, 0.86f), Vector3.zero, body);
+                AddDisplayPart(root, "DriverRam", new Vector3(0f, -0.04f, 1.45f), new Vector3(0.42f, 0.42f, 1.72f), Vector3.zero, body);
+                AddDisplayPart(root, "DriverForkL", new Vector3(-0.18f, 0.02f, 1.82f), new Vector3(0.08f, 0.08f, 0.48f), Vector3.zero, accent);
+                AddDisplayPart(root, "DriverForkR", new Vector3(0.18f, 0.02f, 1.82f), new Vector3(0.08f, 0.08f, 0.48f), Vector3.zero, accent);
+                AddDisplayPart(root, "DriverBrace", new Vector3(0f, -0.34f, 0.74f), new Vector3(1.0f, 0.16f, 0.5f), Vector3.zero, accent);
+                break;
+            default:
+                AddDisplayPart(root, "TempestReactor", new Vector3(0f, 0.02f, 0.72f), new Vector3(0.72f, 0.62f, 0.82f), Vector3.zero, accent);
+                AddDisplayPart(root, "TempestHousing", new Vector3(0f, -0.12f, 0.48f), new Vector3(0.82f, 0.42f, 0.92f), Vector3.zero, body);
+                AddDisplayPart(root, "TempestProngL", new Vector3(-0.42f, 0.18f, 1.48f), new Vector3(0.16f, 0.2f, 1.52f), new Vector3(0f, -8f, 0f), accent);
+                AddDisplayPart(root, "TempestProngR", new Vector3(0.42f, 0.18f, 1.48f), new Vector3(0.16f, 0.2f, 1.52f), new Vector3(0f, 8f, 0f), accent);
+                AddDisplayPart(root, "TempestGrip", new Vector3(0f, -0.56f, 0.34f), new Vector3(0.3f, 0.68f, 0.3f), new Vector3(-8f, 0f, 0f), body);
+                break;
+        }
+    }
+
+    private void AddShopDisplayInstalledMods(Transform root, int presetIndex, Gun.PassiveMod passive, Gun.AltFireMod alt, Material accent)
+    {
+        Vector3 mount = presetIndex >= 6
+            ? new Vector3(0f, 0.28f, 0.68f)
+            : presetIndex >= 3
+                ? new Vector3(0f, 0.18f, 0.58f)
+                : new Vector3(0f, 0.22f, 0.45f);
+
+        switch (passive)
+        {
+            case Gun.PassiveMod.SharpenedRounds:
+                AddDisplayPart(root, "InstalledMod_DamageCore", mount + new Vector3(0.34f, 0f, 0.1f), new Vector3(0.1f, 0.3f, 0.34f), Vector3.zero, accent);
+                AddDisplayPart(root, "InstalledMod_DamageNeedle", mount + new Vector3(0.34f, 0.18f, 0.32f), new Vector3(0.08f, 0.46f, 0.08f), new Vector3(18f, 0f, 0f), accent);
+                break;
+            case Gun.PassiveMod.Stabilizer:
+                AddDisplayPart(root, "InstalledMod_StabilizerL", mount + new Vector3(-0.36f, -0.02f, 0.28f), new Vector3(0.09f, 0.14f, 0.72f), Vector3.zero, accent);
+                AddDisplayPart(root, "InstalledMod_StabilizerR", mount + new Vector3(0.36f, -0.02f, 0.28f), new Vector3(0.09f, 0.14f, 0.72f), Vector3.zero, accent);
+                break;
+            case Gun.PassiveMod.RapidFeed:
+                AddDisplayPart(root, "InstalledMod_FeedRail", mount + new Vector3(0f, -0.18f, 0.08f), new Vector3(0.58f, 0.08f, 0.34f), Vector3.zero, accent);
+                AddDisplayPart(root, "InstalledMod_FeedCellA", mount + new Vector3(-0.2f, -0.28f, 0.1f), new Vector3(0.12f, 0.16f, 0.2f), Vector3.zero, accent);
+                AddDisplayPart(root, "InstalledMod_FeedCellB", mount + new Vector3(0.2f, -0.28f, 0.1f), new Vector3(0.12f, 0.16f, 0.2f), Vector3.zero, accent);
+                break;
+        }
 
         if (alt == Gun.AltFireMod.Overload)
         {
-            CreateChildCube(root.transform, $"{label}_OverloadSpikeA", new Vector3(0f, 0.34f, 0.34f), new Vector3(0.12f, 0.5f, 0.12f), holo, false);
-            CreateChildCube(root.transform, $"{label}_OverloadSpikeB", new Vector3(0.34f, 0.24f, 0f), new Vector3(0.12f, 0.36f, 0.12f), holo, false);
+            AddDisplayPart(root, "InstalledMod_OverloadSpine", mount + new Vector3(0f, 0.34f, 0.22f), new Vector3(0.16f, 0.42f, 0.18f), Vector3.zero, accent);
+            AddDisplayPart(root, "InstalledMod_OverloadCap", mount + new Vector3(0f, 0.58f, 0.22f), new Vector3(0.44f, 0.08f, 0.36f), Vector3.zero, accent);
         }
-        else
+        else if (alt == Gun.AltFireMod.QuickCharge)
         {
-            CreateChildCube(root.transform, $"{label}_ChargeBarA", new Vector3(-0.22f, 0.28f, 0f), new Vector3(0.09f, 0.38f, 0.42f), holo, false);
-            CreateChildCube(root.transform, $"{label}_ChargeBarB", new Vector3(0.22f, 0.28f, 0f), new Vector3(0.09f, 0.38f, 0.42f), holo, false);
+            AddDisplayPart(root, "InstalledMod_QuickChargeL", mount + new Vector3(-0.18f, 0.34f, 0.22f), new Vector3(0.08f, 0.38f, 0.16f), Vector3.zero, accent);
+            AddDisplayPart(root, "InstalledMod_QuickChargeR", mount + new Vector3(0.18f, 0.34f, 0.22f), new Vector3(0.08f, 0.38f, 0.16f), Vector3.zero, accent);
         }
-        ShopStationPresentation presentation = parent.GetComponent<ShopStationPresentation>();
-        if (presentation != null) presentation.productRoot = root.transform;
+    }
+
+    private void AddDisplayPart(Transform root, string name, Vector3 localPosition, Vector3 localScale, Vector3 localEuler, Material material)
+    {
+        GameObject part = CreateChildCube(root, name, localPosition, localScale, material, false);
+        part.transform.localRotation = Quaternion.Euler(localEuler);
     }
 
     private void CreateShopDescriptionLabel(Transform parent, string title, string detail, Color color)
@@ -3343,24 +3630,25 @@ public class CybergrindArenaGenerator : MonoBehaviour
     {
         Material body = darkMaterial != null ? darkMaterial : floorMaterial;
         Material accent = BuildHologramMaterial(color);
-        CreateChildCube(parent, $"{title}_NameplateBack", new Vector3(0f, 2.28f, -0.08f), new Vector3(1.72f, 0.5f, 0.09f), body, false);
-        CreateChildCube(parent, $"{title}_NameplateHeader", new Vector3(0f, 2.51f, -0.02f), new Vector3(1.72f, 0.045f, 0.045f), accent, false);
+        CreateChildCube(parent, $"{title}_NameplateBack", new Vector3(0f, 2.28f, -0.08f), new Vector3(1.56f, 0.42f, 0.06f), body, false);
+        CreateChildCube(parent, $"{title}_NameplateHeader", new Vector3(0f, 2.46f, -0.04f), new Vector3(1.56f, 0.04f, 0.02f), accent, false);
 
         GameObject labelObject = new GameObject($"{title}_ShopNameplate");
         labelObject.transform.SetParent(parent, false);
-        labelObject.transform.localPosition = new Vector3(0f, 2.28f, 0f);
+        labelObject.transform.localPosition = new Vector3(0f, 2.27f, 0f);
         labelObject.transform.localRotation = Quaternion.Euler(0f, 180f, 0f);
 
         TextMeshPro text = labelObject.AddComponent<TextMeshPro>();
         ProjectStructureUIRoot.ApplyDefaultFont(text);
         text.text = $"<b>{title}</b>\n<size=65%>{detail}</size>";
-        text.fontSize = 2.2f;
+        text.fontSize = 1.95f;
         text.alignment = TextAlignmentOptions.Center;
         text.color = Color.white;
         text.enableWordWrapping = false;
-        text.rectTransform.sizeDelta = new Vector2(1.55f, 0.42f);
+        text.rectTransform.sizeDelta = new Vector2(1.36f, 0.34f);
         text.sortingOrder = 4;
-
+        text.outlineWidth = 0.14f;
+        text.outlineColor = new Color(0f, 0f, 0f, 0.85f);
     }
 
     private Material BuildHologramMaterial(Color color)
@@ -3401,7 +3689,7 @@ public class CybergrindArenaGenerator : MonoBehaviour
         go.transform.localScale = scale;
 
         Renderer renderer = go.GetComponent<Renderer>();
-        if (renderer != null) renderer.sharedMaterial = material;
+        ConfigureGeneratedRenderer(renderer, material, collider);
 
         if (!collider)
         {
@@ -3440,6 +3728,43 @@ public class CybergrindArenaGenerator : MonoBehaviour
 
         ArenaWorldBillboard billboard = go.AddComponent<ArenaWorldBillboard>();
         billboard.keepUpright = true;
+    }
+
+    private void RefreshEffectiveDensity()
+    {
+        float arenaArea = Mathf.Max(1f, width * length);
+        float arenaScale = Mathf.InverseLerp(121f, 625f, arenaArea);
+        float densityScale = Mathf.Lerp(0.82f, 0.36f, arenaScale);
+        if (arenaMode == ArenaMode.Shop)
+            densityScale *= 0.58f;
+        else if (arenaMode == ArenaMode.Boss)
+            densityScale *= 0.76f;
+
+        effectiveDecorativeDensity = Mathf.Clamp01(decorativeDensity * densityScale);
+        effectiveMicroDetailDensity = Mathf.Clamp01(microDetailDensity * Mathf.Lerp(0.72f, 0.28f, arenaScale));
+    }
+
+    private void ConfigureGeneratedRenderer(Renderer renderer, Material material, bool collider)
+    {
+        if (renderer == null)
+            return;
+
+        renderer.sharedMaterial = material;
+
+        bool disableShadows = !collider ||
+                              material == accentMaterial ||
+                              material == itemMaterial ||
+                              material == puzzleMaterial ||
+                              material == spawnMaterial ||
+                              material == exitMaterial;
+
+        if (!disableShadows)
+            return;
+
+        renderer.shadowCastingMode = ShadowCastingMode.Off;
+        renderer.receiveShadows = false;
+        renderer.lightProbeUsage = LightProbeUsage.Off;
+        renderer.reflectionProbeUsage = ReflectionProbeUsage.Off;
     }
 
     private void Shuffle(List<Vector2Int> list, System.Random rng)
@@ -3848,7 +4173,7 @@ public class CybergrindArenaGenerator : MonoBehaviour
         go.transform.localScale = scale;
 
         Renderer renderer = go.GetComponent<Renderer>();
-        if (renderer != null) renderer.sharedMaterial = material;
+        ConfigureGeneratedRenderer(renderer, material, collider);
 
         if (!collider)
         {

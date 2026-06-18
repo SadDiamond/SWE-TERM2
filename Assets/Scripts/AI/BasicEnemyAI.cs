@@ -96,6 +96,10 @@ public class BasicEnemyAI : MonoBehaviour, IDamageable
     private float flashTimer;
     private float hurtPulseTimer;
     private float attackPulseTimer;
+    private float hitReactTimer;
+    private float hitReactDuration;
+    private Vector3 hitReactOffset;
+    private Vector3 hitReactAngles;
     private Vector3 baseModelLocalPosition;
     private Quaternion baseModelLocalRotation;
     private Transform modelRoot;
@@ -258,6 +262,7 @@ public class BasicEnemyAI : MonoBehaviour, IDamageable
 
         if (hurtPulseTimer > 0f) hurtPulseTimer -= Time.deltaTime;
         if (attackPulseTimer > 0f) attackPulseTimer -= Time.deltaTime;
+        if (hitReactTimer > 0f) hitReactTimer -= Time.deltaTime;
         if (shooterBurstTimer > 0f) shooterBurstTimer -= Time.deltaTime;
         if (gruntPounceCooldown > 0f) gruntPounceCooldown -= Time.deltaTime;
         if (tankShockwaveCooldown > 0f) tankShockwaveCooldown -= Time.deltaTime;
@@ -1453,6 +1458,11 @@ public class BasicEnemyAI : MonoBehaviour, IDamageable
         if (attackPulseTimer > 0f)
             pulseScale += new Vector3(0.04f, -0.03f, 0.04f);
 
+        float hitReact01 = hitReactDuration > 0.001f ? Mathf.Clamp01(hitReactTimer / hitReactDuration) : 0f;
+        float hitReactEnvelope = 1f - Mathf.Abs(hitReact01 * 2f - 1f);
+        localOffset += hitReactOffset * hitReactEnvelope;
+        sway *= Quaternion.Euler(hitReactAngles * hitReactEnvelope);
+
         modelRoot.localPosition = Vector3.Lerp(modelRoot.localPosition, localOffset, Time.deltaTime * 8f);
         modelRoot.localRotation = Quaternion.Slerp(modelRoot.localRotation, baseModelLocalRotation * sway, Time.deltaTime * (walk * 6f + 4f));
         modelRoot.localScale = Vector3.Lerp(modelRoot.localScale, pulseScale, Time.deltaTime * 14f);
@@ -1520,7 +1530,9 @@ public class BasicEnemyAI : MonoBehaviour, IDamageable
             hurtPulseTimer = isBoss ? 0.24f : 0.18f;
         }
 
+        ApplyHitReaction(amount);
         SpawnHitGlint(amount);
+        SpawnHitShock(amount);
 
         if (currentHealth <= 0f)
         {
@@ -1664,6 +1676,89 @@ public class BasicEnemyAI : MonoBehaviour, IDamageable
         ApplyTransientFxRenderer(horizontalRenderer, fxColor, 2.2f);
         Destroy(horizontal, 0.2f);
         StartCoroutine(ScaleAndFadeHitFx(horizontal.transform, horizontal.transform.localScale, 0.09f, fxColor, 2.2f));
+    }
+
+    private void ApplyHitReaction(float amount)
+    {
+        Vector3 awayFromSource = player != null
+            ? (transform.position - player.position).normalized
+            : (-transform.forward + Vector3.up * 0.08f).normalized;
+        Vector3 localAway = transform.InverseTransformDirection(awayFromSource);
+        float intensity = Mathf.Clamp01(amount / (isBoss ? 55f : 28f));
+
+        hitReactDuration = isBoss ? 0.16f : 0.13f;
+        hitReactTimer = hitReactDuration;
+        hitReactOffset = new Vector3(
+            localAway.x * (isBoss ? 0.07f : 0.11f),
+            0.015f + intensity * (isBoss ? 0.02f : 0.035f),
+            localAway.z * (isBoss ? 0.05f : 0.09f)) * (0.55f + intensity * 0.75f);
+        hitReactAngles = new Vector3(
+            -localAway.z * (isBoss ? 5f : 8f),
+            localAway.x * (isBoss ? 4f : 6f),
+            -localAway.x * (isBoss ? 6f : 10f)) * (0.45f + intensity * 0.85f);
+    }
+
+    private void SpawnHitShock(float amount)
+    {
+        if (!Application.isPlaying) return;
+
+        Color color = isBoss ? new Color(1f, 0.58f, 0.24f) :
+            enemyType == EnemyType.Grunt ? gruntColor :
+            enemyType == EnemyType.Tank ? new Color(1f, 0.66f, 0.22f) :
+            enemyType == EnemyType.Flying ? new Color(0.7f, 0.34f, 1f) :
+            shooterColor;
+
+        float radius = Mathf.Clamp(0.2f + amount * 0.012f, 0.24f, isBoss ? 1f : 0.62f);
+        float life = isBoss ? 0.16f : 0.12f;
+        Vector3 center = transform.position + Vector3.up * (isBoss ? 1.55f : 1.05f);
+        Vector3 toPlayer = player != null ? (player.position - center).normalized : transform.forward;
+        Vector3 faceDir = Vector3.ProjectOnPlane(-toPlayer, Vector3.up);
+        if (faceDir.sqrMagnitude < 0.001f)
+            faceDir = transform.forward;
+        faceDir.Normalize();
+
+        GameObject ring = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+        ring.name = "EnemyHitShockRing";
+        ring.transform.position = center;
+        ring.transform.rotation = Quaternion.identity;
+        ring.transform.localScale = new Vector3(radius * 0.22f, 0.02f, radius * 0.22f);
+        Collider ringCollider = ring.GetComponent<Collider>();
+        if (ringCollider != null) Destroy(ringCollider);
+        Renderer ringRenderer = ring.GetComponent<Renderer>();
+        Color ringColor = new Color(color.r, color.g, color.b, 0.45f);
+        ApplyTransientFxRenderer(ringRenderer, ringColor, 1.9f);
+        Destroy(ring, life + 0.08f);
+        StartCoroutine(ScaleAndFadeHitFx(ring.transform, new Vector3(radius, 0.02f, radius), life, ringColor, 1.9f));
+
+        GameObject lance = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        lance.name = "EnemyHitShockLance";
+        lance.transform.position = center + faceDir * (radius * 0.18f);
+        lance.transform.rotation = Quaternion.LookRotation(faceDir, Vector3.up);
+        lance.transform.localScale = new Vector3(radius * 0.22f, radius * 0.14f, radius * 1.35f);
+        Collider lanceCollider = lance.GetComponent<Collider>();
+        if (lanceCollider != null) Destroy(lanceCollider);
+        Renderer lanceRenderer = lance.GetComponent<Renderer>();
+        Color lanceColor = new Color(color.r, color.g, color.b, 0.72f);
+        ApplyTransientFxRenderer(lanceRenderer, lanceColor, 2.6f);
+        Destroy(lance, life + 0.04f);
+        StartCoroutine(ScaleAndFadeHitFx(lance.transform, new Vector3(radius * 0.08f, radius * 0.08f, 0f), life * 0.9f, lanceColor, 2.6f));
+
+        for (int i = 0; i < 3; i++)
+        {
+            float angle = -28f + (28f * i);
+            Vector3 sparkDir = Quaternion.AngleAxis(angle, Vector3.up) * faceDir;
+            GameObject spark = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            spark.name = "EnemyHitShockSpark";
+            spark.transform.position = center + sparkDir * (radius * 0.12f);
+            spark.transform.rotation = Quaternion.LookRotation(sparkDir, Vector3.up);
+            spark.transform.localScale = new Vector3(radius * 0.08f, radius * 0.08f, radius * 0.66f);
+            Collider sparkCollider = spark.GetComponent<Collider>();
+            if (sparkCollider != null) Destroy(sparkCollider);
+            Renderer sparkRenderer = spark.GetComponent<Renderer>();
+            ApplyTransientFxRenderer(sparkRenderer, lanceColor, 2.2f);
+            Destroy(spark, life);
+            StartCoroutine(ScaleAndFadeHitFx(spark.transform, new Vector3(radius * 0.04f, radius * 0.04f, 0f), life * 0.78f, lanceColor, 2.2f));
+        }
     }
 
     private void SpawnDeathRing(Color burstColor, float radius, float life)

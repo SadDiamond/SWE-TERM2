@@ -31,6 +31,7 @@ public class CybergrindWeaponReward : Interactable
     private static TMP_Text rewardTitleText;
     private static TMP_Text rewardBodyText;
     private static TMP_Text rewardTimerText;
+    private static TMP_Text rewardControlsText;
     private static Image rewardProgressFill;
     private static Image rewardPanelImage;
     private static CybergrindWeaponReward activeRewardGuide;
@@ -349,14 +350,11 @@ public class CybergrindWeaponReward : Interactable
             Destroy(shard.gameObject);
     }
 
-    private void OnGUI()
+    private void LateUpdate()
     {
         EnsureRewardGuideUI();
         RefreshRewardGuideUI();
-    }
 
-    private void LateUpdate()
-    {
         if (activeRewardGuide == this && guideTimer <= 0f)
         {
             activeRewardGuide = null;
@@ -367,10 +365,25 @@ public class CybergrindWeaponReward : Interactable
 
     private static void EnsureRewardGuideUI()
     {
-        if (rewardPanel != null) return;
-
         rewardCanvas = ProjectStructureUIRoot.GetOrCreateCanvas();
         if (rewardCanvas == null) return;
+
+        if (rewardPanel != null)
+        {
+            if (rewardPanel.transform.parent != rewardCanvas.transform)
+                rewardPanel.transform.SetParent(rewardCanvas.transform, false);
+            return;
+        }
+
+        for (int i = rewardCanvas.transform.childCount - 1; i >= 0; i--)
+        {
+            Transform child = rewardCanvas.transform.GetChild(i);
+            if (child == null || child.name != "ArenaWeaponRewardGuidePanel") continue;
+            if (Application.isPlaying)
+                Destroy(child.gameObject);
+            else
+                DestroyImmediate(child.gameObject);
+        }
 
         rewardPanel = new GameObject("ArenaWeaponRewardGuidePanel");
         rewardPanel.transform.SetParent(rewardCanvas.transform, false);
@@ -378,21 +391,35 @@ public class CybergrindWeaponReward : Interactable
         panelRect.anchorMin = new Vector2(0.5f, 0f);
         panelRect.anchorMax = new Vector2(0.5f, 0f);
         panelRect.pivot = new Vector2(0.5f, 0f);
-        panelRect.anchoredPosition = new Vector2(0f, 18f);
-        panelRect.sizeDelta = new Vector2(430f, 110f);
+        panelRect.anchoredPosition = new Vector2(0f, 20f);
+        panelRect.sizeDelta = new Vector2(540f, 104f);
 
         rewardPanelImage = rewardPanel.AddComponent<Image>();
-        rewardPanelImage.color = new Color(0.02f, 0.04f, 0.055f, 0.94f);
+        rewardPanelImage.color = new Color(0.018f, 0.028f, 0.038f, 0.95f);
 
-        rewardTitleText = CreateGuideText(rewardPanel.transform, "RewardTitle", 18f, new Vector2(0.5f, 0.8f), new Vector2(390f, 24f), TextAlignmentOptions.Center, Color.white);
-        rewardBodyText = CreateGuideText(rewardPanel.transform, "RewardBody", 11.5f, new Vector2(0.5f, 0.48f), new Vector2(390f, 54f), TextAlignmentOptions.Center, new Color(0.84f, 0.9f, 0.96f));
-        rewardTimerText = CreateGuideText(rewardPanel.transform, "RewardTimer", 10f, new Vector2(0.5f, 0.2f), new Vector2(390f, 16f), TextAlignmentOptions.Center, new Color(0.72f, 0.86f, 0.92f));
+        GameObject accent = new GameObject("RewardAccent");
+        accent.transform.SetParent(rewardPanel.transform, false);
+        RectTransform accentRect = accent.AddComponent<RectTransform>();
+        accentRect.anchorMin = new Vector2(0f, 0f);
+        accentRect.anchorMax = new Vector2(0f, 1f);
+        accentRect.pivot = new Vector2(0f, 0.5f);
+        accentRect.sizeDelta = new Vector2(4f, 0f);
+        Image accentImage = accent.AddComponent<Image>();
+        accentImage.color = new Color(0.74f, 0.95f, 1f, 0.98f);
+
+        rewardTitleText = CreateGuideText(rewardPanel.transform, "RewardTitle", 15f, new Vector2(0f, 1f), new Vector2(486f, 20f), new Vector2(18f, -12f), TextAlignmentOptions.TopLeft, Color.white);
+        rewardBodyText = CreateGuideText(rewardPanel.transform, "RewardBody", 10.5f, new Vector2(0f, 1f), new Vector2(486f, 34f), new Vector2(18f, -34f), TextAlignmentOptions.TopLeft, new Color(0.84f, 0.9f, 0.96f));
+        rewardControlsText = CreateGuideText(rewardPanel.transform, "RewardControls", 9.5f, new Vector2(0f, 0f), new Vector2(420f, 16f), new Vector2(18f, 12f), TextAlignmentOptions.BottomLeft, new Color(0.7f, 0.82f, 0.9f));
+        rewardTimerText = CreateGuideText(rewardPanel.transform, "RewardTimer", 9.5f, new Vector2(1f, 0f), new Vector2(88f, 16f), new Vector2(-16f, 12f), TextAlignmentOptions.BottomRight, new Color(0.72f, 0.86f, 0.92f));
 
         GameObject progressBack = new GameObject("RewardProgressBack");
         progressBack.transform.SetParent(rewardPanel.transform, false);
         RectTransform backRect = progressBack.AddComponent<RectTransform>();
-        backRect.anchorMin = new Vector2(0.14f, 0.07f);
-        backRect.anchorMax = new Vector2(0.86f, 0.12f);
+        backRect.anchorMin = new Vector2(0f, 0f);
+        backRect.anchorMax = new Vector2(1f, 0f);
+        backRect.pivot = new Vector2(0.5f, 0f);
+        backRect.anchoredPosition = new Vector2(0f, 0f);
+        backRect.sizeDelta = new Vector2(-20f, 4f);
         backRect.offsetMin = Vector2.zero;
         backRect.offsetMax = Vector2.zero;
         Image backImage = progressBack.AddComponent<Image>();
@@ -414,14 +441,14 @@ public class CybergrindWeaponReward : Interactable
         rewardPanel.SetActive(false);
     }
 
-    private static TMP_Text CreateGuideText(Transform parent, string name, float size, Vector2 anchor, Vector2 boxSize, TextAlignmentOptions alignment, Color color)
+    private static TMP_Text CreateGuideText(Transform parent, string name, float size, Vector2 anchor, Vector2 boxSize, Vector2 position, TextAlignmentOptions alignment, Color color)
     {
         GameObject go = new GameObject(name);
         go.transform.SetParent(parent, false);
         RectTransform rect = go.AddComponent<RectTransform>();
-        rect.anchorMin = anchor;
-        rect.anchorMax = anchor;
-        rect.pivot = new Vector2(0.5f, 0.5f);
+        rect.anchorMin = rect.anchorMax = anchor;
+        rect.pivot = anchor;
+        rect.anchoredPosition = position;
         rect.sizeDelta = boxSize;
 
         TMP_Text text = go.AddComponent<TextMeshProUGUI>();
@@ -430,6 +457,7 @@ public class CybergrindWeaponReward : Interactable
         text.alignment = alignment;
         text.color = color;
         text.textWrappingMode = TextWrappingModes.Normal;
+        text.overflowMode = TextOverflowModes.Ellipsis;
         return text;
     }
 
@@ -457,12 +485,12 @@ public class CybergrindWeaponReward : Interactable
         if (rewardBodyText != null)
         {
             rewardBodyText.text =
-                activeRewardGuide.guideText + "\n\n" +
-                (activeRewardGuide.isBossReward
-                    ? "Boss down. Take the lift deeper.\n1/2/3 switch weapons   Q/E swap variants   Left click fire   Right click special   F melee/parry"
-                    : "1/2/3 switch weapons   Q/E swap variants   Left click fire   Right click special   F melee/parry");
+                activeRewardGuide.guideText +
+                (activeRewardGuide.isBossReward ? " Take the lift deeper when ready." : " Add it to the run before leaving.");
             rewardBodyText.color = new Color(0.84f, 0.9f, 0.96f);
         }
+        if (rewardControlsText != null)
+            rewardControlsText.text = "1/2/3 slot   Q/E variant   RMB alt fire";
         if (rewardProgressFill != null)
         {
             rewardProgressFill.fillAmount = Mathf.Clamp01(activeRewardGuide.guideTimer / Mathf.Max(0.01f, activeRewardGuide.guideDuration));
@@ -470,7 +498,7 @@ public class CybergrindWeaponReward : Interactable
         }
         if (rewardTimerText != null)
         {
-            rewardTimerText.text = $"Hides in {Mathf.CeilToInt(activeRewardGuide.guideTimer)}s";
+            rewardTimerText.text = $"{Mathf.CeilToInt(activeRewardGuide.guideTimer)}s";
             rewardTimerText.color = Color.Lerp(new Color(0.72f, 0.86f, 0.92f), accent, 0.22f);
         }
     }

@@ -2,7 +2,6 @@ using TMPro;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.InputSystem.UI;
-using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 
 public class StartMenuController : MonoBehaviour
@@ -13,10 +12,12 @@ public class StartMenuController : MonoBehaviour
 
     public static bool LaunchingArena { get; private set; }
     public static bool LaunchingSandbox { get; private set; }
+    public static bool LaunchingHeroArena { get; private set; }
 
     private GameObject menuRoot;
     private GameObject settingsPanel;
     private Button startButton;
+    private bool isLaunching;
 
     private void Start()
     {
@@ -38,8 +39,13 @@ public class StartMenuController : MonoBehaviour
             return;
         }
 
+        if (isLaunching)
+            return;
+
         if (UnityEngine.InputSystem.Keyboard.current.sKey.wasPressedThisFrame)
             Launch(true);
+        else if (UnityEngine.InputSystem.Keyboard.current.hKey.wasPressedThisFrame)
+            LaunchHeroArena();
         else if (UnityEngine.InputSystem.Keyboard.current.enterKey.wasPressedThisFrame ||
             UnityEngine.InputSystem.Keyboard.current.spaceKey.wasPressedThisFrame)
             Launch(false);
@@ -59,11 +65,36 @@ public class StartMenuController : MonoBehaviour
         return value;
     }
 
+    public static bool ConsumeHeroArenaLaunch()
+    {
+        bool value = LaunchingHeroArena;
+        LaunchingHeroArena = false;
+        return value;
+    }
+
+    public static void SetLaunchFlags(bool arena, bool sandbox, bool heroArena = false)
+    {
+        LaunchingArena = arena;
+        LaunchingSandbox = sandbox;
+        LaunchingHeroArena = heroArena;
+    }
+
     private void Launch(bool sandbox)
     {
-        LaunchingSandbox = sandbox;
-        LaunchingArena = true;
-        SceneManager.LoadScene("Arena");
+        if (isLaunching)
+            return;
+
+        isLaunching = true;
+        PersistentLoadingScreen.LoadArenaFromMenu(sandbox, false);
+    }
+
+    private void LaunchHeroArena()
+    {
+        if (isLaunching)
+            return;
+
+        isLaunching = true;
+        PersistentLoadingScreen.LoadArenaFromMenu(false, true);
     }
 
     private void BuildCamera()
@@ -101,11 +132,12 @@ public class StartMenuController : MonoBehaviour
         CreateText(menuRoot.transform, "Reach the core. Everything else is in the way.", 18f, new Vector2(0.13f, 0.51f), new Vector2(620f, 42f), TextAlignmentOptions.Left, new Color(0.78f, 0.84f, 0.87f));
 
         startButton = CreateButton(menuRoot.transform, "START RUN", new Vector2(0.13f, 0.38f), new Vector2(310f, 52f), () => Launch(false), true);
-        CreateButton(menuRoot.transform, "SANDBOX", new Vector2(0.13f, 0.30f), new Vector2(310f, 48f), () => Launch(true), false);
-        CreateButton(menuRoot.transform, "SETTINGS", new Vector2(0.13f, 0.22f), new Vector2(310f, 48f), () => ShowSettings(true), false);
-        CreateButton(menuRoot.transform, "QUIT", new Vector2(0.13f, 0.14f), new Vector2(310f, 48f), Quit, false);
+        CreateButton(menuRoot.transform, "HERO ARENA", new Vector2(0.13f, 0.30f), new Vector2(310f, 48f), LaunchHeroArena, false);
+        CreateButton(menuRoot.transform, "SANDBOX", new Vector2(0.13f, 0.22f), new Vector2(310f, 48f), () => Launch(true), false);
+        CreateButton(menuRoot.transform, "SETTINGS", new Vector2(0.13f, 0.14f), new Vector2(310f, 48f), () => ShowSettings(true), false);
+        CreateButton(menuRoot.transform, "QUIT", new Vector2(0.13f, 0.06f), new Vector2(310f, 48f), Quit, false);
 
-        CreateText(menuRoot.transform, "ENTER  START     S  SANDBOX", 11f, new Vector2(0.13f, 0.06f), new Vector2(520f, 26f), TextAlignmentOptions.Left, new Color(0.48f, 0.56f, 0.6f));
+        CreateText(menuRoot.transform, "ENTER  START     H  HERO ARENA     S  SANDBOX", 11f, new Vector2(0.13f, 0.01f), new Vector2(640f, 26f), TextAlignmentOptions.Left, new Color(0.48f, 0.56f, 0.6f));
         BuildSettingsPanel(canvas.transform);
     }
 
@@ -114,7 +146,7 @@ public class StartMenuController : MonoBehaviour
         GameObject canvasObject = new GameObject("StartMenuCanvas");
         Canvas canvas = canvasObject.AddComponent<Canvas>();
         canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-        canvas.pixelPerfect = true;
+        canvas.pixelPerfect = false;
         canvas.sortingOrder = 20;
         CanvasScaler scaler = canvasObject.AddComponent<CanvasScaler>();
         scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
@@ -148,19 +180,36 @@ public class StartMenuController : MonoBehaviour
         rect.pivot = new Vector2(0f, 0.5f);
         rect.sizeDelta = size;
         Image image = go.AddComponent<Image>();
-        image.color = primary ? new Color(0.08f, 0.46f, 0.56f, 0.95f) : new Color(0.025f, 0.055f, 0.066f, 0.95f);
+        Color baseColor = primary ? new Color(0.08f, 0.46f, 0.56f, 0.95f) : new Color(0.025f, 0.055f, 0.066f, 0.95f);
+        image.color = baseColor;
         Button button = go.AddComponent<Button>();
         button.targetGraphic = image;
         ColorBlock colors = button.colors;
+        colors.fadeDuration = 0f;
         colors.normalColor = Color.white;
-        colors.highlightedColor = new Color(0.65f, 0.96f, 1f);
-        colors.selectedColor = new Color(0.65f, 0.96f, 1f);
-        colors.pressedColor = new Color(0.35f, 0.75f, 0.82f);
+        colors.highlightedColor = Color.white;
+        colors.selectedColor = Color.white;
+        colors.pressedColor = Color.white;
         button.colors = colors;
         button.onClick.AddListener(action);
 
         TMP_Text text = CreateText(go.transform, label, 16f, new Vector2(0.06f, 0.5f), new Vector2(size.x - 28f, size.y), TextAlignmentOptions.Left, Color.white);
         text.raycastTarget = false;
+        text.fontStyle = FontStyles.UpperCase;
+
+        GameObject accent = new GameObject("Accent");
+        accent.transform.SetParent(go.transform, false);
+        RectTransform accentRect = accent.AddComponent<RectTransform>();
+        accentRect.anchorMin = new Vector2(0f, 0f);
+        accentRect.anchorMax = new Vector2(0f, 1f);
+        accentRect.pivot = new Vector2(0f, 0.5f);
+        accentRect.sizeDelta = new Vector2(0f, 0f);
+        Image accentImage = accent.AddComponent<Image>();
+        accentImage.color = new Color(0.62f, 0.94f, 1f, 0.95f);
+        accentImage.raycastTarget = false;
+
+        StartMenuButtonFx fx = go.AddComponent<StartMenuButtonFx>();
+        fx.Configure(rect, image, text, accentRect, baseColor, primary);
         return button;
     }
 
@@ -214,6 +263,9 @@ public class StartMenuController : MonoBehaviour
 
     private void ShowSettings(bool visible)
     {
+        if (isLaunching)
+            return;
+
         settingsPanel.SetActive(visible);
         menuRoot.SetActive(!visible);
         if (!visible)
@@ -259,5 +311,71 @@ public class StartMenuController : MonoBehaviour
 #else
         Application.Quit();
 #endif
+    }
+}
+
+public class StartMenuButtonFx : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler, ISelectHandler, IDeselectHandler, IPointerDownHandler, IPointerUpHandler
+{
+    private RectTransform rect;
+    private Image background;
+    private TMP_Text label;
+    private RectTransform accent;
+    private Color baseColor;
+    private Color hoverColor;
+    private Color pressedColor;
+    private Vector2 baseSize;
+    private Vector2 hoverSize;
+    private bool hovered;
+    private bool selected;
+    private bool pressed;
+
+    public void Configure(RectTransform targetRect, Image targetBackground, TMP_Text targetLabel, RectTransform targetAccent, Color targetBaseColor, bool primary)
+    {
+        rect = targetRect;
+        background = targetBackground;
+        label = targetLabel;
+        accent = targetAccent;
+        baseColor = targetBaseColor;
+        hoverColor = primary ? new Color(0.16f, 0.62f, 0.72f, 0.98f) : new Color(0.055f, 0.12f, 0.145f, 0.98f);
+        pressedColor = primary ? new Color(0.1f, 0.38f, 0.45f, 0.98f) : new Color(0.03f, 0.085f, 0.105f, 0.98f);
+        baseSize = rect.sizeDelta;
+        hoverSize = baseSize + new Vector2(18f, 0f);
+        ApplyImmediate(false);
+    }
+
+    private void Update()
+    {
+        if (rect == null || background == null || label == null || accent == null)
+            return;
+
+        bool active = hovered || selected;
+        Color targetColor = pressed ? pressedColor : active ? hoverColor : baseColor;
+        Vector2 targetSize = active ? hoverSize : baseSize;
+        float targetAccentWidth = active ? 10f : 0f;
+        Color targetLabelColor = active ? new Color(0.86f, 0.98f, 1f) : Color.white;
+
+        background.color = Color.Lerp(background.color, targetColor, Time.unscaledDeltaTime * 16f);
+        rect.sizeDelta = Vector2.Lerp(rect.sizeDelta, targetSize, Time.unscaledDeltaTime * 16f);
+        accent.sizeDelta = Vector2.Lerp(accent.sizeDelta, new Vector2(targetAccentWidth, accent.sizeDelta.y), Time.unscaledDeltaTime * 18f);
+        label.color = Color.Lerp(label.color, targetLabelColor, Time.unscaledDeltaTime * 20f);
+    }
+
+    public void OnPointerEnter(PointerEventData eventData) => hovered = true;
+    public void OnPointerExit(PointerEventData eventData) => hovered = false;
+    public void OnSelect(BaseEventData eventData) => selected = true;
+    public void OnDeselect(BaseEventData eventData) => selected = false;
+    public void OnPointerDown(PointerEventData eventData) => pressed = true;
+    public void OnPointerUp(PointerEventData eventData) => pressed = false;
+
+    private void ApplyImmediate(bool active)
+    {
+        if (background != null)
+            background.color = active ? hoverColor : baseColor;
+        if (rect != null)
+            rect.sizeDelta = active ? hoverSize : baseSize;
+        if (accent != null)
+            accent.sizeDelta = new Vector2(active ? 10f : 0f, 0f);
+        if (label != null)
+            label.color = active ? new Color(0.86f, 0.98f, 1f) : Color.white;
     }
 }

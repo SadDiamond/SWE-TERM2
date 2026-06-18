@@ -80,6 +80,30 @@ public class PlayerController : MonoBehaviour, IDamageable
     public float maxSpeedLimit = 26f;
     public float groundedStopSpeed = 0.2f;
 
+    [Header("Movement (Grapple)")]
+    public float grappleRange = 40f;
+    public float grapplePullSpeed = 30f;
+    public float grapplePullAcceleration = 86f;
+    [Range(0f, 1f)] public float grappleTangentialPreservation = 0.94f;
+    public float grappleMinReleaseDistance = 2.8f;
+    public float grappleReelSpeed = 22f;
+    public float grappleRopeSlack = 0.22f;
+    public float grappleSpringStrength = 34f;
+    public float grappleRadialDamping = 18f;
+    public float grappleReleaseJumpBoost = 1.1f;
+    public float grappleCooldown = 0.2f;
+    public Color grappleLineColor = new Color(0.8f, 0.96f, 1f, 0.9f);
+    public Color grappleReticleColor = new Color(0.9f, 0.96f, 1f, 0.92f);
+    [Range(0.005f, 0.08f)] public float grappleAssistViewportRadius = 0.032f;
+    [Min(4)] public int grappleAssistSamples = 10;
+    public float grappleLedgeProbeHeight = 1.6f;
+
+    [Header("Movement (Grapple Visuals)")]
+    public float grappleLaunchVisualDuration = 0.08f;
+    public float grappleHandRecoverSpeed = 10f;
+    public Color grappleViewBodyColor = new Color(0.08f, 0.1f, 0.14f, 1f);
+    public Color grappleViewAccentColor = new Color(0.7f, 0.92f, 1f, 1f);
+
     [Header("FX & Polish")]
     public Camera playerCamera;
     public ParticleSystem slideDust; // Drag a particle system here!
@@ -113,17 +137,6 @@ public class PlayerController : MonoBehaviour, IDamageable
     public float damageFlashDuration = 0.26f;
     [Range(0f, 0.55f)] public float lowHealthVignetteAlpha = 0.34f;
     public float weaponKickDuration = 0.12f;
-
-    [Header("Melee")]
-    public float meleeRange = 2.1f;
-    public float meleeRadius = 1.15f;
-    public float meleeDamage = 28f;
-    public float meleeCooldown = 0.42f;
-    public float parryWindow = 0.16f;
-    public float parryProjectileSpeed = 85f;
-    public float parryDamageMultiplier = 1.6f;
-    public float meleeHitBoost = 5.5f;
-    public Color meleeBurstColor = new Color(1f, 0.86f, 0.48f, 0.95f);
 
     [Header("Look")]
     public float mouseSensitivity = 100f;
@@ -160,16 +173,32 @@ public class PlayerController : MonoBehaviour, IDamageable
     private float weaponKickTimer;
     private float weaponImpactShakeTimer;
     private float weaponImpactShakeAmount;
-    private float meleeCooldownTimer;
-    private float parryTimer;
     private float crosshairFireTimer;
     private Image damageFlashOverlay;
     private Sprite damageVignetteSprite;
     private RectTransform crosshairRect;
+    private RectTransform grappleReticleRect;
+    private Image grappleReticleImage;
     private readonly RectTransform[] crosshairSegmentRects = new RectTransform[4];
     private readonly Image[] crosshairSegmentImages = new Image[4];
     private Material cachedWorldFxMaterial;
     private Vector2 moveInputRaw;
+    private ParticleSystem runtimeSlideGroundFx;
+    private ParticleSystem runtimeSlideAirFx;
+    private LineRenderer grappleLine;
+    private Material cachedGrappleLineMaterial;
+    private Sprite cachedGrappleReticleSprite;
+    private float grappleCooldownTimer;
+    private bool grappleHeldLastFrame;
+    private float activeGrappleRopeLength;
+    private float grappleLaunchVisualTimer;
+    private GrappleTarget aimedGrappleTarget;
+    private GrappleTarget activeGrappleTarget;
+    private Transform grappleViewRoot;
+    private Transform grappleHandPivot;
+    private Transform grappleLauncherMuzzle;
+    private Material cachedGrappleViewBodyMaterial;
+    private Material cachedGrappleViewAccentMaterial;
 
     private float CurrentMoveSpeed => moveSpeed + moveSpeedBonus;
     private float CurrentDashForce => dashForce + dashForceBonus;
@@ -190,10 +219,19 @@ public class PlayerController : MonoBehaviour, IDamageable
     public float DashRecharge01 => DashCharges >= MaxDashCharges || dashCooldown <= 0.01f
         ? 1f
         : 1f - Mathf.Clamp01(dashCooldownTimer / dashCooldown);
+    public bool IsGrappling => activeGrappleTarget.isValid;
 
     private const string MouseSensitivityPrefKey = "project_structure.mouse_sensitivity";
     private const string BaseFovPrefKey = "project_structure.base_fov";
     private const string MasterVolumePrefKey = "project_structure.master_volume";
+
+    private struct GrappleTarget
+    {
+        public bool isValid;
+        public bool isAssisted;
+        public Vector3 point;
+        public Vector3 normal;
+    }
 
     private Interactable currentInteractable;
     public Interactable FocusedInteractable => currentInteractable;
@@ -234,6 +272,8 @@ public class PlayerController : MonoBehaviour, IDamageable
 
         EnsureCameraReferences();
         EnsureSpeedLines();
+        EnsureSlideParticles();
+        EnsureGrappleViewModel();
         if (playerCamera != null) baseFOV = playerCamera.fieldOfView;
         if (cameraTransform != null) baseCameraLocalPos = cameraTransform.localPosition;
         lastSafePosition = transform.position;
@@ -247,6 +287,7 @@ public class PlayerController : MonoBehaviour, IDamageable
             cameraTransform.localPosition = baseCameraLocalPos;
         if (speedLines != null)
             speedLines.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
+        StopSlideParticles(true);
         if (damageFlashOverlay != null)
             damageFlashOverlay.enabled = false;
 
@@ -278,9 +319,6 @@ public class PlayerController : MonoBehaviour, IDamageable
 
         UpdateDamageFeedback();
         UpdateCrosshairVisual();
-        if (meleeCooldownTimer > 0f) meleeCooldownTimer -= Time.deltaTime;
-        if (parryTimer > 0f) parryTimer -= Time.deltaTime;
-
         if (isDead) return;
 
         if (isUIActive) return; // Don't move or interact if a puzzle is open
@@ -293,13 +331,14 @@ public class PlayerController : MonoBehaviour, IDamageable
 
         HandleMovement();
         HandleLook();
-        HandleMelee();
         HandleInteraction();
     }
 
     public void ToggleUIMode(bool uiActive)
     {
         isUIActive = uiActive;
+        if (uiActive)
+            StopGrapple(false);
         if (uiActive)
         {
             Cursor.lockState = CursorLockMode.None;
@@ -313,6 +352,7 @@ public class PlayerController : MonoBehaviour, IDamageable
             EnsureCrosshair();
             if (crosshair != null) crosshair.SetActive(true);
         }
+
     }
 
     public void SetTransitionLock(bool locked)
@@ -465,98 +505,6 @@ public class PlayerController : MonoBehaviour, IDamageable
             // Refresh prompt — interacting may have changed it (e.g. "Terminal Offline")
             if (currentInteractable != null) ShowPrompt(currentInteractable.promptMessage);
         }
-    }
-
-    private void HandleMelee()
-    {
-        if (UnityEngine.InputSystem.Keyboard.current == null) return;
-        if (!UnityEngine.InputSystem.Keyboard.current.fKey.wasPressedThisFrame) return;
-        if (meleeCooldownTimer > 0f) return;
-
-        meleeCooldownTimer = meleeCooldown;
-        parryTimer = parryWindow;
-
-        bool parriedProjectile = TryParryProjectile();
-        int hits = PerformMeleeStrike(parriedProjectile ? meleeDamage * 0.6f : meleeDamage);
-        SpawnWorldBurst(
-            transform.position + transform.forward * 1.2f + Vector3.up * 1f,
-            parriedProjectile ? Color.white : meleeBurstColor,
-            parriedProjectile ? 0.26f : 0.18f,
-            0.22f,
-            parriedProjectile ? 0.68f : 0.52f);
-
-        if (!parriedProjectile && hits == 0)
-            momentum += transform.forward * 1.2f;
-    }
-
-    private bool TryParryProjectile()
-    {
-        Vector3 center = cameraTransform.position + cameraTransform.forward * Mathf.Max(0.8f, meleeRange * 0.75f);
-        Collider[] hits = Physics.OverlapSphere(center, meleeRadius, ~0, QueryTriggerInteraction.Ignore);
-        bool parried = false;
-
-        for (int i = 0; i < hits.Length; i++)
-        {
-            if (hits[i] == null) continue;
-            Projectile projectile = hits[i].GetComponentInParent<Projectile>();
-            if (projectile == null || projectile.owner == gameObject) continue;
-
-            if (ReflectProjectile(projectile))
-                parried = true;
-        }
-
-        return parried;
-    }
-
-    public bool TryParryIncomingProjectile(Projectile projectile)
-    {
-        if (projectile == null || projectile.owner == gameObject) return false;
-        if (parryTimer <= 0f) return false;
-
-        return ReflectProjectile(projectile);
-    }
-
-    private bool ReflectProjectile(Projectile projectile)
-    {
-        if (projectile == null || cameraTransform == null) return false;
-
-        projectile.Reflect(gameObject, cameraTransform.forward, parryProjectileSpeed, parryDamageMultiplier);
-        parryTimer = 0f;
-        meleeCooldownTimer = Mathf.Min(meleeCooldownTimer, meleeCooldown * 0.45f);
-        SpawnWorldBurst(cameraTransform.position + cameraTransform.forward * 1.05f, Color.white, 0.22f, 0.18f, 0.72f);
-        ShowTransientStatus("Parried", 0.45f);
-        return true;
-    }
-
-    private int PerformMeleeStrike(float damage)
-    {
-        Vector3 center = cameraTransform.position + cameraTransform.forward * meleeRange;
-        Collider[] hits = Physics.OverlapSphere(center, meleeRadius, ~0, QueryTriggerInteraction.Ignore);
-        int hitCount = 0;
-
-        for (int i = 0; i < hits.Length; i++)
-        {
-            Collider collider = hits[i];
-            if (collider == null) continue;
-            if (collider.transform.IsChildOf(transform)) continue;
-
-            IDamageable damageable = collider.GetComponentInParent<IDamageable>();
-            if (damageable == null || damageable is PlayerController) continue;
-
-            damageable.TakeDamage(damage);
-            if (damageable is BasicEnemyAI enemy)
-                enemy.ApplyMeleeStun(0.35f);
-
-            if (collider.attachedRigidbody != null)
-                collider.attachedRigidbody.AddForce(cameraTransform.forward * 5.5f, ForceMode.Impulse);
-
-            Vector3 boost = Vector3.ProjectOnPlane(cameraTransform.forward, Vector3.up).normalized * meleeHitBoost;
-            momentum = Vector3.ClampMagnitude(momentum + boost, GetActiveSpeedLimit());
-
-            hitCount++;
-        }
-
-        return hitCount;
     }
 
     private Interactable FindBestInteractable(Ray ray)
@@ -750,6 +698,8 @@ public class PlayerController : MonoBehaviour, IDamageable
 
         float previousDashTimer = dashTimer;
         RechargeDashCharges(Time.deltaTime);
+        if (grappleCooldownTimer > 0f)
+            grappleCooldownTimer = Mathf.Max(0f, grappleCooldownTimer - Time.deltaTime);
         if (dashTimer > 0f) dashTimer = Mathf.Max(0f, dashTimer - Time.deltaTime);
         if (slideLockoutTimer > 0f) slideLockoutTimer -= Time.deltaTime;
         if (slideCooldownTimer > 0f) slideCooldownTimer -= Time.deltaTime;
@@ -787,9 +737,20 @@ public class PlayerController : MonoBehaviour, IDamageable
             UnityEngine.InputSystem.Keyboard.current.ctrlKey.wasPressedThisFrame ||
             UnityEngine.InputSystem.Keyboard.current.cKey.wasPressedThisFrame;
         bool wantsToSlide = UnityEngine.InputSystem.Keyboard.current.ctrlKey.isPressed || UnityEngine.InputSystem.Keyboard.current.cKey.isPressed;
+        bool grappleHeld = UnityEngine.InputSystem.Keyboard.current.fKey.isPressed;
+        bool grapplePressed = grappleHeld && !grappleHeldLastFrame;
+        grappleHeldLastFrame = grappleHeld;
+
+        aimedGrappleTarget = FindAimedGrappleTarget();
 
         if (previousDashTimer > 0f && dashTimer <= 0f)
             FinishDash(inputDir);
+
+        if (activeGrappleTarget.isValid && (!grappleHeld || !IsGrappleTargetStillValid(activeGrappleTarget)))
+            StopGrapple(false);
+
+        if (grapplePressed && !activeGrappleTarget.isValid)
+            TryStartGrapple();
 
         if (jumpBufferTimer > 0f)
             jumpBufferTimer = Mathf.Max(0f, jumpBufferTimer - Time.deltaTime);
@@ -799,7 +760,7 @@ public class PlayerController : MonoBehaviour, IDamageable
         if (jumpPressed || heldJumpReady)
             jumpBufferTimer = jumpBufferTime;
 
-        if (UnityEngine.InputSystem.Keyboard.current.leftShiftKey.wasPressedThisFrame && dashTimer <= 0f && dashCharges > 0)
+        if (UnityEngine.InputSystem.Keyboard.current.leftShiftKey.wasPressedThisFrame && dashTimer <= 0f && dashCharges > 0 && !activeGrappleTarget.isValid)
         {
             dashCharges = Mathf.Max(0, dashCharges - 1);
             if (dashCharges < MaxDashCharges && dashCooldownTimer <= 0f)
@@ -821,7 +782,7 @@ public class PlayerController : MonoBehaviour, IDamageable
             slideRequiresRelease = false;
 
         // Ground Slam (Mid-air drop)
-        if (slamPressedThisFrame && !isGrounded && !isSlamming && !slideRequiresRelease)
+        if (slamPressedThisFrame && !isGrounded && !isSlamming && !slideRequiresRelease && !activeGrappleTarget.isValid)
         {
             ExitSlide(false);
             isSlamming = true;
@@ -829,7 +790,7 @@ public class PlayerController : MonoBehaviour, IDamageable
             momentum = Vector3.ClampMagnitude(Vector3.ProjectOnPlane(momentum, Vector3.up), Mathf.Max(CurrentMoveSpeed, dashExitSpeed));
         }
 
-        if (wantsToSlide && isGrounded && !isSliding && !slideRequiresRelease && slideLockoutTimer <= 0f && slideCooldownTimer <= 0f)
+        if (wantsToSlide && isGrounded && !isSliding && !slideRequiresRelease && slideLockoutTimer <= 0f && slideCooldownTimer <= 0f && !activeGrappleTarget.isValid)
         {
             isSliding = true;
             controller.height = slideHeight;
@@ -867,7 +828,11 @@ public class PlayerController : MonoBehaviour, IDamageable
         }
 
         // --- MOMENTUM & FRICTION LOGIC ---
-        if (dashTimer > 0f)
+        if (activeGrappleTarget.isValid)
+        {
+            UpdateGrappleMotion(Time.deltaTime);
+        }
+        else if (dashTimer > 0f)
         {
             momentum = dashVelocity;
         }
@@ -918,10 +883,21 @@ public class PlayerController : MonoBehaviour, IDamageable
         }
 
         // --- JUMP LOGIC ---
+        if (activeGrappleTarget.isValid && jumpBufferTimer > 0f)
+        {
+            StopGrapple(true);
+            velocity.y = Mathf.Max(velocity.y, Mathf.Sqrt(CurrentJumpHeight * -2f * gravity));
+            jumpBufferTimer = 0f;
+            isGrounded = false;
+        }
+
         bool canGroundJump = isGrounded || coyoteTimer > 0f;
         bool canAirJump = !canGroundJump && jumpsRemaining > 0;
         if (jumpBufferTimer > 0f && (canGroundJump || canAirJump))
         {
+            if (activeGrappleTarget.isValid)
+                StopGrapple(true);
+
             velocity.y = Mathf.Sqrt(CurrentJumpHeight * -2f * gravity);
             jumpBufferTimer = 0f;
             coyoteTimer = 0f;
@@ -968,6 +944,8 @@ public class PlayerController : MonoBehaviour, IDamageable
         if ((collisionFlags & CollisionFlags.Sides) != 0)
         {
             ResetSlideJumpChain();
+            if (activeGrappleTarget.isValid)
+                StopGrapple(false);
             ClipHorizontalMomentumAgainstWall();
             if (dashTimer > 0f)
                 FinishDash(inputDir);
@@ -1005,35 +983,421 @@ public class PlayerController : MonoBehaviour, IDamageable
 
         UpdateSpeedLines();
 
-        if (slideDust != null)
+        UpdateSlideParticles();
+        UpdateGrappleViewModel();
+        UpdateGrappleVisuals();
+    }
+
+    private GrappleTarget FindAimedGrappleTarget()
+    {
+        GrappleTarget bestTarget = default;
+        if (cameraTransform == null)
+            return bestTarget;
+
+        Vector3 origin = cameraTransform.position;
+        Vector3 forward = cameraTransform.forward;
+
+        if (Physics.Raycast(origin, forward, out RaycastHit directHit, grappleRange, ~0, QueryTriggerInteraction.Ignore) &&
+            TryBuildGrappleTarget(directHit, out bestTarget))
         {
-            // Play dust particles if sliding and actually moving, otherwise stop
-            Vector3 actualGroundVel = new Vector3(controller.velocity.x, 0f, controller.velocity.z);
-            if (isSliding && isGrounded && actualGroundVel.magnitude > 2f)
+            return bestTarget;
+        }
+
+        int sampleCount = Mathf.Max(4, grappleAssistSamples);
+        float bestScore = float.MinValue;
+        for (int i = 0; i < sampleCount; i++)
+        {
+            float angle = (Mathf.PI * 2f * i) / sampleCount;
+            Vector2 offset = new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * grappleAssistViewportRadius;
+            Ray sampleRay = playerCamera != null
+                ? playerCamera.ViewportPointToRay(new Vector3(0.5f + offset.x, 0.5f + offset.y, 0f))
+                : new Ray(origin, forward);
+            if (!Physics.Raycast(sampleRay, out RaycastHit sampleHit, grappleRange, ~0, QueryTriggerInteraction.Ignore))
+                continue;
+            if (!TryBuildGrappleTarget(sampleHit, out GrappleTarget sampleTarget))
+                continue;
+
+            float score = ScoreGrappleTarget(sampleRay.direction, sampleTarget);
+            if (score > bestScore)
             {
-                if (!slideDust.isPlaying) slideDust.Play();
-                
-                // Sample the floor color dynamically!
-                if (Physics.Raycast(transform.position, Vector3.down, out RaycastHit hit, 2.5f))
-                {
-                    Renderer floorRenderer = hit.collider.GetComponent<Renderer>();
-                    if (floorRenderer != null && floorRenderer.material != null)
-                    {
-                        var main = slideDust.main;
-                        Color floorColor = floorRenderer.material.color;
-                        
-                        // Mix the floor color with white so the dust stands out clearly against the ground!
-                        Color mixedDustColor = Color.Lerp(floorColor, new Color(0.8f, 0.8f, 0.8f), 0.45f);
-                        mixedDustColor.a = 0.5f; 
-                        main.startColor = mixedDustColor;
-                    }
-                }
-            }
-            else
-            {
-                if (slideDust.isPlaying) slideDust.Stop();
+                bestScore = score;
+                bestTarget = sampleTarget;
             }
         }
+
+        return bestTarget;
+    }
+
+    private bool TryStartGrapple()
+    {
+        if (grappleCooldownTimer > 0f)
+            return false;
+
+        GrappleTarget target = aimedGrappleTarget;
+        if (!target.isValid || !IsGrappleTargetStillValid(target))
+            return false;
+
+        activeGrappleTarget = target;
+        Vector3 attachOrigin = transform.position + Vector3.up * 0.9f;
+        activeGrappleRopeLength = Mathf.Clamp(Vector3.Distance(attachOrigin, target.point), grappleMinReleaseDistance + 0.15f, grappleRange);
+        grappleLaunchVisualTimer = grappleLaunchVisualDuration;
+        dashTimer = 0f;
+        dashVelocity = Vector3.zero;
+        isSlamming = false;
+        ExitSlide(false);
+        velocity.y = Mathf.Max(velocity.y, -4f);
+        EnsureGrappleLine();
+        if (grappleLine != null)
+            grappleLine.enabled = true;
+        return true;
+    }
+
+    private void StopGrapple(bool applyReleaseBoost)
+    {
+        if (!activeGrappleTarget.isValid)
+            return;
+
+        activeGrappleTarget = default;
+        activeGrappleRopeLength = 0f;
+        grappleCooldownTimer = grappleCooldown;
+
+        if (grappleLine != null)
+            grappleLine.enabled = false;
+
+        if (applyReleaseBoost)
+        {
+            Vector3 currentVelocity = momentum + Vector3.up * velocity.y;
+            Vector3 boostDir = currentVelocity.sqrMagnitude > 0.01f
+                ? currentVelocity.normalized
+                : transform.forward;
+            float boostedSpeed = Mathf.Clamp(currentVelocity.magnitude * grappleReleaseJumpBoost, CurrentMoveSpeed, GetActiveSpeedLimit());
+            Vector3 boostedVelocity = boostDir * boostedSpeed;
+            momentum = Vector3.ProjectOnPlane(boostedVelocity, Vector3.up);
+            velocity.y = Mathf.Max(velocity.y, boostedVelocity.y + 2.2f);
+        }
+    }
+
+    private bool IsGrappleTargetStillValid(GrappleTarget target)
+    {
+        if (!target.isValid)
+            return false;
+
+        Vector3 origin = cameraTransform != null ? cameraTransform.position : transform.position + Vector3.up * 1.2f;
+        if (Vector3.Distance(origin, target.point) > grappleRange)
+            return false;
+
+        Vector3 toTarget = target.point - origin;
+        if (Physics.Raycast(origin, toTarget.normalized, out RaycastHit hit, toTarget.magnitude + 0.2f, ~0, QueryTriggerInteraction.Ignore))
+            return IsValidGrappleSurface(hit);
+
+        return true;
+    }
+
+    private void UpdateGrappleMotion(float deltaTime)
+    {
+        if (!activeGrappleTarget.isValid)
+            return;
+
+        Vector3 anchorPoint = activeGrappleTarget.point;
+        Vector3 attachmentPoint = transform.position + Vector3.up * 0.9f;
+        Vector3 toAnchor = anchorPoint - attachmentPoint;
+        float distance = toAnchor.magnitude;
+        if (distance <= grappleMinReleaseDistance)
+        {
+            StopGrapple(false);
+            return;
+        }
+
+        Vector3 pullDir = toAnchor / Mathf.Max(0.001f, distance);
+        Vector3 currentVelocity = momentum + Vector3.up * velocity.y;
+        activeGrappleRopeLength = Mathf.Clamp(
+            activeGrappleRopeLength - grappleReelSpeed * deltaTime,
+            grappleMinReleaseDistance,
+            grappleRange);
+
+        float tautDistance = Mathf.Max(grappleMinReleaseDistance, activeGrappleRopeLength - grappleRopeSlack);
+        float radialSpeed = Vector3.Dot(currentVelocity, pullDir);
+        Vector3 radialVelocity = pullDir * radialSpeed;
+        Vector3 tangentialVelocity = currentVelocity - radialVelocity;
+
+        if (distance >= tautDistance && radialSpeed < 0f)
+            radialVelocity = Vector3.zero;
+
+        float stretch = Mathf.Max(0f, distance - activeGrappleRopeLength);
+        float inwardPull = Mathf.Lerp(grapplePullSpeed * 0.45f, grapplePullSpeed, Mathf.InverseLerp(grappleRange, grappleMinReleaseDistance, distance));
+        float inwardAccel = stretch * grappleSpringStrength;
+        float inwardSpeed = Mathf.Max(0f, -radialSpeed);
+        inwardSpeed = Mathf.MoveTowards(inwardSpeed, inwardPull + inwardAccel, grapplePullAcceleration * deltaTime);
+        Vector3 inwardVelocity = pullDir * inwardSpeed;
+
+        if (distance < tautDistance)
+            inwardVelocity = Vector3.Lerp(radialVelocity, inwardVelocity, 0.35f);
+
+        Vector3 dampedTangential = tangentialVelocity * grappleTangentialPreservation;
+        if (distance >= tautDistance)
+            dampedTangential = Vector3.MoveTowards(dampedTangential, Vector3.zero, grappleRadialDamping * 0.05f * deltaTime);
+
+        Vector3 composedVelocity = inwardVelocity + dampedTangential;
+
+        momentum = Vector3.ProjectOnPlane(composedVelocity, Vector3.up);
+        velocity.y = composedVelocity.y;
+
+        if (distance < 6f && Vector3.Dot(transform.forward, pullDir) < 0.1f)
+            momentum = Vector3.Lerp(momentum, Vector3.ProjectOnPlane(pullDir * momentum.magnitude, Vector3.up), deltaTime * 8f);
+    }
+
+    private void EnsureGrappleLine()
+    {
+        if (grappleLine != null || cameraTransform == null)
+            return;
+
+        GameObject lineObject = new GameObject("GrappleLine");
+        lineObject.transform.SetParent(transform, false);
+        grappleLine = lineObject.AddComponent<LineRenderer>();
+        grappleLine.positionCount = 2;
+        grappleLine.enabled = false;
+        grappleLine.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        grappleLine.receiveShadows = false;
+        grappleLine.textureMode = LineTextureMode.Stretch;
+        grappleLine.alignment = LineAlignment.View;
+        grappleLine.startWidth = 0.03f;
+        grappleLine.endWidth = 0.015f;
+        grappleLine.numCapVertices = 6;
+        grappleLine.material = GetGrappleLineMaterial();
+        grappleLine.startColor = grappleLineColor;
+        Color endColor = grappleLineColor;
+        endColor.a *= 0.15f;
+        grappleLine.endColor = endColor;
+    }
+
+    private Material GetGrappleLineMaterial()
+    {
+        if (cachedGrappleLineMaterial != null)
+            return cachedGrappleLineMaterial;
+
+        Shader shader = Shader.Find("Universal Render Pipeline/Unlit") ?? Shader.Find("Sprites/Default");
+        cachedGrappleLineMaterial = new Material(shader);
+        cachedGrappleLineMaterial.name = "RuntimeGrappleLine";
+        ApplyWorldFxColor(cachedGrappleLineMaterial, grappleLineColor);
+        return cachedGrappleLineMaterial;
+    }
+
+    private void EnsureGrappleViewModel()
+    {
+        if (cameraTransform == null || grappleViewRoot != null)
+            return;
+
+        grappleViewRoot = new GameObject("GrappleViewModel").transform;
+        grappleViewRoot.SetParent(cameraTransform, false);
+        grappleViewRoot.localPosition = new Vector3(-0.24f, -0.22f, 0.48f);
+        grappleViewRoot.localRotation = Quaternion.Euler(10f, -18f, 8f);
+
+        grappleHandPivot = new GameObject("GrappleHandPivot").transform;
+        grappleHandPivot.SetParent(grappleViewRoot, false);
+        grappleHandPivot.localPosition = Vector3.zero;
+
+        Transform forearm = CreateViewPrimitive("Forearm", PrimitiveType.Cube, grappleHandPivot, new Vector3(0.04f, -0.02f, -0.02f), new Vector3(0.075f, 0.075f, 0.28f), GetGrappleViewBodyMaterial());
+        forearm.localRotation = Quaternion.Euler(0f, -8f, 28f);
+
+        Transform palm = CreateViewPrimitive("Palm", PrimitiveType.Cube, grappleHandPivot, new Vector3(0.09f, 0.01f, 0.1f), new Vector3(0.09f, 0.055f, 0.12f), GetGrappleViewBodyMaterial());
+        palm.localRotation = Quaternion.Euler(8f, -12f, 36f);
+
+        for (int i = 0; i < 3; i++)
+        {
+            float yOffset = 0.02f - i * 0.018f;
+            Transform finger = CreateViewPrimitive("Finger_" + i, PrimitiveType.Cube, palm, new Vector3(0.055f, yOffset, 0.055f), new Vector3(0.018f, 0.014f, 0.07f), GetGrappleViewBodyMaterial());
+            finger.localRotation = Quaternion.Euler(0f, 6f, 0f);
+        }
+
+        Transform thumb = CreateViewPrimitive("Thumb", PrimitiveType.Cube, palm, new Vector3(0.015f, -0.028f, 0.025f), new Vector3(0.02f, 0.016f, 0.055f), GetGrappleViewBodyMaterial());
+        thumb.localRotation = Quaternion.Euler(20f, -26f, -38f);
+
+        Transform launcherRoot = new GameObject("LauncherRoot").transform;
+        launcherRoot.SetParent(grappleHandPivot, false);
+        launcherRoot.localPosition = new Vector3(0.14f, 0.025f, 0.12f);
+        launcherRoot.localRotation = Quaternion.Euler(-4f, 16f, 20f);
+
+        Transform launcherBody = CreateViewPrimitive("LauncherBody", PrimitiveType.Cube, launcherRoot, new Vector3(0f, 0f, 0f), new Vector3(0.075f, 0.055f, 0.18f), GetGrappleViewBodyMaterial());
+        CreateViewPrimitive("LauncherTop", PrimitiveType.Cube, launcherBody, new Vector3(0f, 0.03f, -0.01f), new Vector3(0.06f, 0.018f, 0.09f), GetGrappleViewAccentMaterial());
+        CreateViewPrimitive("LauncherBarrel", PrimitiveType.Cylinder, launcherBody, new Vector3(0f, -0.002f, 0.11f), new Vector3(0.022f, 0.055f, 0.022f), GetGrappleViewAccentMaterial()).localRotation = Quaternion.Euler(90f, 0f, 0f);
+        CreateViewPrimitive("LauncherRear", PrimitiveType.Cube, launcherBody, new Vector3(0f, -0.01f, -0.085f), new Vector3(0.05f, 0.04f, 0.05f), GetGrappleViewBodyMaterial());
+
+        grappleLauncherMuzzle = new GameObject("GrappleMuzzle").transform;
+        grappleLauncherMuzzle.SetParent(launcherRoot, false);
+        grappleLauncherMuzzle.localPosition = new Vector3(0f, -0.002f, 0.18f);
+        grappleLauncherMuzzle.localRotation = Quaternion.identity;
+
+        grappleViewRoot.gameObject.SetActive(false);
+    }
+
+    private Transform CreateViewPrimitive(string name, PrimitiveType primitiveType, Transform parent, Vector3 localPosition, Vector3 localScale, Material material)
+    {
+        GameObject primitive = GameObject.CreatePrimitive(primitiveType);
+        primitive.name = name;
+        primitive.transform.SetParent(parent, false);
+        primitive.transform.localPosition = localPosition;
+        primitive.transform.localScale = localScale;
+        Collider primitiveCollider = primitive.GetComponent<Collider>();
+        if (primitiveCollider != null)
+            Destroy(primitiveCollider);
+        Renderer renderer = primitive.GetComponent<Renderer>();
+        if (renderer != null && material != null)
+            renderer.sharedMaterial = material;
+        return primitive.transform;
+    }
+
+    private Material GetGrappleViewBodyMaterial()
+    {
+        if (cachedGrappleViewBodyMaterial != null)
+            return cachedGrappleViewBodyMaterial;
+
+        Shader shader = Shader.Find("Universal Render Pipeline/Lit") ?? Shader.Find("Standard");
+        cachedGrappleViewBodyMaterial = new Material(shader);
+        cachedGrappleViewBodyMaterial.name = "RuntimeGrappleViewBody";
+        ApplyWorldFxColor(cachedGrappleViewBodyMaterial, grappleViewBodyColor);
+        return cachedGrappleViewBodyMaterial;
+    }
+
+    private Material GetGrappleViewAccentMaterial()
+    {
+        if (cachedGrappleViewAccentMaterial != null)
+            return cachedGrappleViewAccentMaterial;
+
+        Shader shader = Shader.Find("Universal Render Pipeline/Lit") ?? Shader.Find("Standard");
+        cachedGrappleViewAccentMaterial = new Material(shader);
+        cachedGrappleViewAccentMaterial.name = "RuntimeGrappleViewAccent";
+        ApplyWorldFxColor(cachedGrappleViewAccentMaterial, grappleViewAccentColor);
+        return cachedGrappleViewAccentMaterial;
+    }
+
+    private void UpdateGrappleViewModel()
+    {
+        EnsureGrappleViewModel();
+        if (grappleViewRoot == null || grappleHandPivot == null)
+            return;
+
+        if (grappleLaunchVisualTimer > 0f)
+            grappleLaunchVisualTimer = Mathf.Max(0f, grappleLaunchVisualTimer - Time.deltaTime);
+
+        bool visible = activeGrappleTarget.isValid || aimedGrappleTarget.isValid || grappleLaunchVisualTimer > 0f;
+        grappleViewRoot.gameObject.SetActive(visible && !isUIActive && !isDead);
+        if (!grappleViewRoot.gameObject.activeSelf)
+            return;
+
+        float launch01 = grappleLaunchVisualDuration <= 0.001f
+            ? 0f
+            : Mathf.Clamp01(grappleLaunchVisualTimer / grappleLaunchVisualDuration);
+        float extend01 = activeGrappleTarget.isValid ? 1f : 1f - launch01;
+        float aim01 = aimedGrappleTarget.isValid ? 1f : 0f;
+
+        Vector3 targetPos = new Vector3(-0.24f, -0.22f, 0.48f)
+            + new Vector3(0.02f, 0.01f, 0f) * aim01
+            + new Vector3(0.08f, 0.045f, 0.11f) * extend01;
+        Quaternion targetRot = Quaternion.Euler(
+            10f - extend01 * 10f,
+            -18f + extend01 * 16f,
+            8f - extend01 * 12f);
+        grappleViewRoot.localPosition = Vector3.Lerp(grappleViewRoot.localPosition, targetPos, Time.deltaTime * grappleHandRecoverSpeed);
+        grappleViewRoot.localRotation = Quaternion.Slerp(grappleViewRoot.localRotation, targetRot, Time.deltaTime * grappleHandRecoverSpeed);
+
+        Vector3 handPos = new Vector3(0f, -0.005f, 0f) + new Vector3(0.015f, -0.012f, 0.02f) * extend01;
+        Quaternion handRot = Quaternion.Euler(extend01 * -20f, extend01 * 8f, extend01 * -10f);
+        grappleHandPivot.localPosition = Vector3.Lerp(grappleHandPivot.localPosition, handPos, Time.deltaTime * 14f);
+        grappleHandPivot.localRotation = Quaternion.Slerp(grappleHandPivot.localRotation, handRot, Time.deltaTime * 14f);
+    }
+
+    private float ScoreGrappleTarget(Vector3 rayDirection, GrappleTarget target)
+    {
+        Vector3 origin = cameraTransform != null ? cameraTransform.position : transform.position + Vector3.up * 1.2f;
+        Vector3 toTarget = (target.point - origin).normalized;
+        float alignment = Vector3.Dot(rayDirection.normalized, toTarget);
+        float distancePenalty = Vector3.Distance(origin, target.point) / Mathf.Max(1f, grappleRange);
+        float assistBonus = target.isAssisted ? 0.08f : 0f;
+        return alignment + assistBonus - distancePenalty * 0.15f;
+    }
+
+    private bool TryBuildGrappleTarget(RaycastHit hit, out GrappleTarget target)
+    {
+        target = default;
+        if (!IsValidGrappleSurface(hit))
+            return false;
+
+        target.isValid = true;
+        target.normal = hit.normal;
+        target.point = hit.point + hit.normal * 0.08f;
+
+        if (TryFindNearbyLedgePoint(hit, out Vector3 ledgePoint))
+        {
+            target.point = ledgePoint;
+            target.isAssisted = true;
+        }
+
+        return true;
+    }
+
+    private bool TryFindNearbyLedgePoint(RaycastHit hit, out Vector3 ledgePoint)
+    {
+        ledgePoint = default;
+        if (cameraTransform == null)
+            return false;
+
+        if (hit.normal.y > 0.78f)
+            return false;
+
+        Vector3 probeOrigin = hit.point + Vector3.up * grappleLedgeProbeHeight - hit.normal * 0.55f;
+        if (!Physics.Raycast(probeOrigin, Vector3.down, out RaycastHit topHit, grappleLedgeProbeHeight * 2.2f, ~0, QueryTriggerInteraction.Ignore))
+            return false;
+        if (!IsValidStandingSurface(topHit))
+            return false;
+
+        ledgePoint = topHit.point + Vector3.up * 0.18f;
+        return Vector3.Distance(cameraTransform.position, ledgePoint) <= grappleRange;
+    }
+
+    private bool IsValidGrappleSurface(RaycastHit hit)
+    {
+        Collider hitCollider = hit.collider;
+        if (hitCollider == null || hitCollider.isTrigger)
+            return false;
+        if (hit.normal.y < -0.2f)
+            return false;
+        if (hitCollider.transform == transform || hitCollider.transform.IsChildOf(transform))
+            return false;
+        if (hitCollider.GetComponentInParent<PlayerController>() != null)
+            return false;
+        if (hitCollider.GetComponentInParent<BasicEnemyAI>() != null)
+            return false;
+        if (hitCollider.GetComponentInParent<Projectile>() != null)
+            return false;
+        if (hitCollider.GetComponentInParent<Interactable>() != null)
+            return false;
+        return true;
+    }
+
+    private void UpdateGrappleVisuals()
+    {
+        EnsureGrappleLine();
+        if (grappleLine == null)
+            return;
+
+        if (!activeGrappleTarget.isValid || cameraTransform == null)
+        {
+            grappleLine.enabled = false;
+            return;
+        }
+
+        grappleLine.enabled = true;
+        Vector3 start = grappleLauncherMuzzle != null
+            ? grappleLauncherMuzzle.position
+            : cameraTransform.position + cameraTransform.forward * 0.22f + cameraTransform.right * 0.08f + Vector3.down * 0.06f;
+        Vector3 end = activeGrappleTarget.point;
+        if (grappleLaunchVisualTimer > 0f && grappleLaunchVisualDuration > 0.001f)
+        {
+            float travel01 = 1f - Mathf.Clamp01(grappleLaunchVisualTimer / grappleLaunchVisualDuration);
+            end = Vector3.Lerp(start, end, travel01);
+        }
+        grappleLine.SetPosition(0, start);
+        grappleLine.SetPosition(1, end);
     }
 
     private void TrackSafePosition()
@@ -1061,6 +1425,7 @@ public class PlayerController : MonoBehaviour, IDamageable
 
     private void RecoverFromAbyss()
     {
+        StopGrapple(false);
         abyssRecoveredThisAirborneState = true;
         Vector3 targetPosition = lastSafePosition + Vector3.up * 1.2f;
 
@@ -1086,6 +1451,7 @@ public class PlayerController : MonoBehaviour, IDamageable
 
     private void ClearMovementCarry(bool clearCooldowns)
     {
+        StopGrapple(false);
         CacheControllerDefaults();
         velocity = Vector3.zero;
         momentum = Vector3.zero;
@@ -1453,6 +1819,7 @@ public class PlayerController : MonoBehaviour, IDamageable
     private void HandleDeath()
     {
         if (isDead) return;
+        StopGrapple(false);
 
         if (respawnOnDeath)
         {
@@ -1559,6 +1926,12 @@ public class PlayerController : MonoBehaviour, IDamageable
             else
                 DestroyImmediate(root.gameObject);
         }
+
+        if (healthText != null) healthText.gameObject.SetActive(false);
+        if (currencyText != null) currencyText.gameObject.SetActive(false);
+        if (healthBarFill != null && healthBarFill.transform.parent != null) healthBarFill.transform.parent.gameObject.SetActive(false);
+        if (healthBarBack != null) healthBarBack.gameObject.SetActive(false);
+        if (currencyPanel != null) currencyPanel.gameObject.SetActive(false);
 
         healthText = null;
         currencyText = null;
@@ -1773,6 +2146,133 @@ public class PlayerController : MonoBehaviour, IDamageable
         }
     }
 
+    private void EnsureSlideParticles()
+    {
+        if (cameraTransform == null)
+            return;
+
+        if (runtimeSlideGroundFx == null)
+            runtimeSlideGroundFx = CreateSlideParticleSystem("SlideGroundFX", transform, new Vector3(0f, 0.06f, -0.38f), false);
+        if (runtimeSlideAirFx == null)
+            runtimeSlideAirFx = CreateSlideParticleSystem("SlideAirFX", cameraTransform, new Vector3(0f, 0f, 0.95f), true);
+
+        if (slideDust != null && slideDust != runtimeSlideGroundFx)
+            slideDust.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
+    }
+
+    private ParticleSystem CreateSlideParticleSystem(string name, Transform parent, Vector3 localPosition, bool airFx)
+    {
+        GameObject go = new GameObject(name);
+        go.transform.SetParent(parent, false);
+        go.transform.localPosition = localPosition;
+        go.transform.localRotation = airFx ? Quaternion.Euler(0f, 180f, 0f) : Quaternion.identity;
+
+        ParticleSystem ps = go.AddComponent<ParticleSystem>();
+        var main = ps.main;
+        main.loop = true;
+        main.playOnAwake = false;
+        main.simulationSpace = airFx ? ParticleSystemSimulationSpace.Local : ParticleSystemSimulationSpace.World;
+        main.startLifetime = airFx ? new ParticleSystem.MinMaxCurve(0.14f, 0.22f) : new ParticleSystem.MinMaxCurve(0.18f, 0.34f);
+        main.startSpeed = airFx ? new ParticleSystem.MinMaxCurve(8f, 14f) : new ParticleSystem.MinMaxCurve(1.2f, 3.2f);
+        main.startSize = airFx ? new ParticleSystem.MinMaxCurve(0.015f, 0.03f) : new ParticleSystem.MinMaxCurve(0.08f, 0.16f);
+        main.startColor = airFx
+            ? new ParticleSystem.MinMaxGradient(new Color(0.74f, 0.92f, 1f, 0.08f), new Color(0.9f, 0.98f, 1f, 0.22f))
+            : new ParticleSystem.MinMaxGradient(new Color(0.72f, 0.74f, 0.76f, 0.22f), new Color(0.92f, 0.94f, 0.96f, 0.44f));
+        main.maxParticles = airFx ? 96 : 72;
+
+        var emission = ps.emission;
+        emission.rateOverTime = 0f;
+
+        var shape = ps.shape;
+        shape.shapeType = airFx ? ParticleSystemShapeType.Box : ParticleSystemShapeType.Cone;
+        shape.scale = airFx ? new Vector3(0.58f, 0.4f, 0.02f) : new Vector3(0.18f, 0.06f, 0.18f);
+        if (!airFx)
+            shape.angle = 18f;
+
+        var velocity = ps.velocityOverLifetime;
+        velocity.enabled = airFx;
+        if (airFx)
+        {
+            velocity.space = ParticleSystemSimulationSpace.Local;
+            velocity.z = new ParticleSystem.MinMaxCurve(7f, 12f);
+        }
+
+        ParticleSystemRenderer renderer = ps.GetComponent<ParticleSystemRenderer>();
+        renderer.renderMode = airFx ? ParticleSystemRenderMode.Stretch : ParticleSystemRenderMode.Billboard;
+        renderer.velocityScale = airFx ? 0.1f : 0f;
+        renderer.lengthScale = airFx ? 4.8f : 1f;
+        renderer.material = CreateSpeedLineMaterial();
+
+        return ps;
+    }
+
+    private void UpdateSlideParticles()
+    {
+        EnsureSlideParticles();
+        Vector3 actualGroundVel = controller != null ? new Vector3(controller.velocity.x, 0f, controller.velocity.z) : Vector3.zero;
+        bool groundSlide = isSliding && isGrounded && actualGroundVel.magnitude > 2f;
+        bool airSlide = isSliding && !isGrounded && momentum.magnitude > 10f;
+
+        if (groundSlide)
+        {
+            UpdateGroundSlideColor();
+            if (runtimeSlideGroundFx != null && !runtimeSlideGroundFx.isPlaying)
+                runtimeSlideGroundFx.Play();
+        }
+        else if (runtimeSlideGroundFx != null && runtimeSlideGroundFx.isPlaying)
+        {
+            runtimeSlideGroundFx.Stop(false, ParticleSystemStopBehavior.StopEmitting);
+        }
+
+        if (airSlide)
+        {
+            if (runtimeSlideAirFx != null)
+            {
+                var emission = runtimeSlideAirFx.emission;
+                emission.rateOverTime = Mathf.Lerp(16f, 52f, Mathf.InverseLerp(10f, Mathf.Max(18f, slideHoldSpeed), momentum.magnitude));
+                if (!runtimeSlideAirFx.isPlaying)
+                    runtimeSlideAirFx.Play();
+            }
+        }
+        else if (runtimeSlideAirFx != null && runtimeSlideAirFx.isPlaying)
+        {
+            runtimeSlideAirFx.Stop(false, ParticleSystemStopBehavior.StopEmitting);
+        }
+    }
+
+    private void UpdateGroundSlideColor()
+    {
+        if (runtimeSlideGroundFx == null)
+            return;
+
+        Color dustColor = new Color(0.84f, 0.86f, 0.88f, 0.42f);
+        if (Physics.Raycast(transform.position + Vector3.up * 0.12f, Vector3.down, out RaycastHit hit, 2.5f))
+        {
+            Renderer floorRenderer = hit.collider != null ? hit.collider.GetComponent<Renderer>() : null;
+            if (floorRenderer != null && floorRenderer.material != null)
+            {
+                dustColor = Color.Lerp(floorRenderer.material.color, new Color(0.88f, 0.9f, 0.92f), 0.52f);
+                dustColor.a = 0.42f;
+            }
+        }
+
+        var main = runtimeSlideGroundFx.main;
+        main.startColor = dustColor;
+        var emission = runtimeSlideGroundFx.emission;
+        emission.rateOverTime = Mathf.Lerp(10f, 42f, Mathf.InverseLerp(2f, Mathf.Max(12f, slideHoldSpeed), PlanarSpeed));
+    }
+
+    private void StopSlideParticles(bool clear)
+    {
+        ParticleSystemStopBehavior stopBehavior = clear
+            ? ParticleSystemStopBehavior.StopEmittingAndClear
+            : ParticleSystemStopBehavior.StopEmitting;
+        if (runtimeSlideGroundFx != null)
+            runtimeSlideGroundFx.Stop(true, stopBehavior);
+        if (runtimeSlideAirFx != null)
+            runtimeSlideAirFx.Stop(true, stopBehavior);
+    }
+
     private void SpawnDashBurst()
     {
         SpawnWorldBurst(transform.position + Vector3.up * 0.08f, dashBurstColor, 0.09f, 0.28f, 0.92f);
@@ -1924,17 +2424,31 @@ public class PlayerController : MonoBehaviour, IDamageable
             }
         }
 
+        if (grappleReticleRect == null || grappleReticleImage == null)
+            needsSegments = true;
+
         if (!needsSegments) return;
 
         Image[] images = crosshair.GetComponentsInChildren<Image>(true);
         if (images.Length >= 4)
         {
-            for (int i = 0; i < 4; i++)
+            int segmentIndex = 0;
+            for (int i = 0; i < images.Length && segmentIndex < 4; i++)
             {
-                crosshairSegmentImages[i] = images[i];
-                crosshairSegmentRects[i] = images[i].rectTransform;
+                if (images[i] == null) continue;
+                if (images[i].gameObject.name == "GrappleReticle")
+                {
+                    grappleReticleImage = images[i];
+                    grappleReticleRect = images[i].rectTransform;
+                    continue;
+                }
+
+                crosshairSegmentImages[segmentIndex] = images[i];
+                crosshairSegmentRects[segmentIndex] = images[i].rectTransform;
+                segmentIndex++;
             }
-            return;
+            if (segmentIndex >= 4 && grappleReticleImage != null && grappleReticleRect != null)
+                return;
         }
 
         BuildCrosshairSegments(crosshair.transform);
@@ -1983,6 +2497,19 @@ public class PlayerController : MonoBehaviour, IDamageable
             crosshairSegmentRects[i] = rect;
             crosshairSegmentImages[i] = image;
         }
+
+        GameObject ringObject = new GameObject("GrappleReticle");
+        ringObject.transform.SetParent(root, false);
+        grappleReticleRect = ringObject.AddComponent<RectTransform>();
+        grappleReticleRect.anchorMin = new Vector2(0.5f, 0.5f);
+        grappleReticleRect.anchorMax = new Vector2(0.5f, 0.5f);
+        grappleReticleRect.pivot = new Vector2(0.5f, 0.5f);
+        grappleReticleRect.sizeDelta = new Vector2(26f, 26f);
+        grappleReticleImage = ringObject.AddComponent<Image>();
+        grappleReticleImage.sprite = GetGrappleReticleSprite();
+        grappleReticleImage.color = grappleReticleColor;
+        grappleReticleImage.raycastTarget = false;
+        grappleReticleImage.enabled = false;
     }
 
     private void UpdateCrosshairVisual()
@@ -1996,6 +2523,7 @@ public class PlayerController : MonoBehaviour, IDamageable
         float fire01 = Mathf.Clamp01(crosshairFireTimer / 0.14f);
         bool focused = currentInteractable != null && !isUIActive && !isDead;
         bool hostile = IsAimingAtHostile();
+        bool grappleReady = aimedGrappleTarget.isValid || activeGrappleTarget.isValid;
 
         Color targetColor = focused
             ? crosshairFocusColor
@@ -2024,6 +2552,63 @@ public class PlayerController : MonoBehaviour, IDamageable
                 : new Vector2(length, thickness);
             crosshairSegmentImages[i].color = targetColor;
         }
+
+        UpdateGrappleReticleVisual(grappleReady, fire01);
+    }
+
+    private void UpdateGrappleReticleVisual(bool grappleReady, float fire01)
+    {
+        if (grappleReticleRect == null || grappleReticleImage == null)
+            return;
+
+        bool grappling = activeGrappleTarget.isValid;
+        grappleReticleImage.enabled = grappleReady;
+        if (!grappleReady)
+            return;
+
+        float size = grappling ? 32f : aimedGrappleTarget.isAssisted ? 30f : 26f;
+        float alpha = grappling ? 1f : aimedGrappleTarget.isAssisted ? 0.95f : 0.72f;
+        float pulse = grappling ? 1.08f : 1f + Mathf.Sin(Time.unscaledTime * 10f) * 0.04f;
+        grappleReticleRect.sizeDelta = Vector2.one * (size + fire01 * 3f) * pulse;
+        grappleReticleRect.localRotation = Quaternion.Euler(0f, 0f, grappling ? 0f : 45f);
+        Color ringColor = grappleReticleColor;
+        ringColor.a *= alpha;
+        grappleReticleImage.color = ringColor;
+    }
+
+    private Sprite GetGrappleReticleSprite()
+    {
+        if (cachedGrappleReticleSprite != null)
+            return cachedGrappleReticleSprite;
+
+        const int size = 64;
+        Texture2D texture = new Texture2D(size, size, TextureFormat.RGBA32, false);
+        texture.name = "RuntimeGrappleReticle";
+        texture.filterMode = FilterMode.Bilinear;
+        texture.wrapMode = TextureWrapMode.Clamp;
+
+        Vector2 center = new Vector2((size - 1) * 0.5f, (size - 1) * 0.5f);
+        float outerRadius = size * 0.34f;
+        float innerRadius = size * 0.26f;
+        float diamondRadius = size * 0.17f;
+
+        for (int y = 0; y < size; y++)
+        {
+            for (int x = 0; x < size; x++)
+            {
+                Vector2 delta = new Vector2(x, y) - center;
+                float radius = delta.magnitude;
+                float diamond = Mathf.Abs(delta.x) + Mathf.Abs(delta.y);
+                bool ring = radius <= outerRadius && radius >= innerRadius;
+                bool diamondCut = diamond <= diamondRadius;
+                texture.SetPixel(x, y, ring && !diamondCut ? Color.white : Color.clear);
+            }
+        }
+
+        texture.Apply(false, true);
+        cachedGrappleReticleSprite = Sprite.Create(texture, new Rect(0f, 0f, size, size), new Vector2(0.5f, 0.5f), size);
+        cachedGrappleReticleSprite.name = "RuntimeGrappleReticleSprite";
+        return cachedGrappleReticleSprite;
     }
 
     private bool IsAimingAtHostile()
