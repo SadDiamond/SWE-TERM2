@@ -68,6 +68,7 @@ public class PlayerController : MonoBehaviour, IDamageable
     [Header("Movement (Slide Jump Chain)")]
     public float slideJumpChainWindow = 2f;
     [Range(0f, 0.2f)] public float slideJumpChainBonus = 0.08f;
+    [Min(0f)] public float heldJumpLandingDelay = 0.14f;
     public float airTurnDamping = 1.8f;
     public float airNoInputBrake = 0.15f;
     [Range(0.05f, 0.45f)] public float airControlImpulseScale = 0.18f;
@@ -101,6 +102,7 @@ public class PlayerController : MonoBehaviour, IDamageable
     private float slideTimer;
     private float slideJumpChainTimer;
     private int slideJumpChain;
+    private float groundedHoldTimer;
     private float moveSpeedBonus;
     private float dashForceBonus;
     private float jumpHeightBonus;
@@ -176,6 +178,7 @@ public class PlayerController : MonoBehaviour, IDamageable
     public float EffectiveMaxHealth => CurrentMaxHealth;
     public float Health01 => CurrentMaxHealth <= 0.01f ? 0f : Mathf.Clamp01(currentHealth / CurrentMaxHealth);
     public float PlanarSpeed => new Vector3(momentum.x, 0f, momentum.z).magnitude;
+    public Vector3 WorldVelocity => momentum + Vector3.up * velocity.y;
     public int SlideJumpChain => slideJumpChain;
     public bool DebugIsSliding => isSliding;
     public bool DebugIsSlamming => isSlamming;
@@ -734,6 +737,9 @@ public class PlayerController : MonoBehaviour, IDamageable
         }
 
         bool landedThisFrame = isGrounded && !wasGrounded;
+        groundedHoldTimer = isGrounded
+            ? (landedThisFrame ? 0f : groundedHoldTimer + Time.deltaTime)
+            : 0f;
         if (landedThisFrame && isSlamming)
         {
             isSlamming = false;
@@ -787,8 +793,10 @@ public class PlayerController : MonoBehaviour, IDamageable
 
         if (jumpBufferTimer > 0f)
             jumpBufferTimer = Mathf.Max(0f, jumpBufferTimer - Time.deltaTime);
-        if (UnityEngine.InputSystem.Keyboard.current.spaceKey.wasPressedThisFrame ||
-            (UnityEngine.InputSystem.Keyboard.current.spaceKey.isPressed && isGrounded))
+        bool jumpPressed = UnityEngine.InputSystem.Keyboard.current.spaceKey.wasPressedThisFrame;
+        bool heldJumpReady = UnityEngine.InputSystem.Keyboard.current.spaceKey.isPressed &&
+            isGrounded && groundedHoldTimer >= heldJumpLandingDelay;
+        if (jumpPressed || heldJumpReady)
             jumpBufferTimer = jumpBufferTime;
 
         if (UnityEngine.InputSystem.Keyboard.current.leftShiftKey.wasPressedThisFrame && dashTimer <= 0f && dashCharges > 0)
@@ -1090,6 +1098,7 @@ public class PlayerController : MonoBehaviour, IDamageable
         slideTimer = 0f;
         slideJumpChain = 0;
         slideJumpChainTimer = 0f;
+        groundedHoldTimer = 0f;
         jumpBufferTimer = 0f;
         coyoteTimer = 0f;
         disableGroundCheckTimer = 0f;
@@ -1151,6 +1160,7 @@ public class PlayerController : MonoBehaviour, IDamageable
         slideSteerStrength = Mathf.Max(slideSteerStrength, 18f);
         slideJumpChainWindow = Mathf.Clamp(slideJumpChainWindow, 0.8f, 3f);
         slideJumpChainBonus = Mathf.Clamp(slideJumpChainBonus, 0f, 0.2f);
+        heldJumpLandingDelay = Mathf.Clamp(heldJumpLandingDelay, 0f, 0.35f);
         maxSpeedLimit = Mathf.Clamp(maxSpeedLimit, CurrentMoveSpeed * 2.05f, CurrentMoveSpeed * 2.35f);
         groundedStopSpeed = Mathf.Min(groundedStopSpeed, 0.2f);
     }

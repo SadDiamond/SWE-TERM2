@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.InputSystem;
+using UnityEngine.UI;
 
 public class Gun : MonoBehaviour
 {
@@ -136,6 +137,10 @@ public class Gun : MonoBehaviour
     private readonly List<Transform> tridentNeedles = new List<Transform>();
     private readonly List<WeaponAbilityObject> vesperCoins = new List<WeaponAbilityObject>();
     private readonly List<WeaponAbilityObject> cinderBombs = new List<WeaponAbilityObject>();
+    private readonly Dictionary<int, Material> fxMaterialCache = new Dictionary<int, Material>();
+    private readonly Dictionary<PrimitiveType, Stack<GameObject>> fxPrimitivePool = new Dictionary<PrimitiveType, Stack<GameObject>>();
+    private readonly Dictionary<GameObject, PrimitiveType> fxPrimitiveTypes = new Dictionary<GameObject, PrimitiveType>();
+    private Transform fxPoolRoot;
     private WeaponAbilityObject lodestarAnchor;
     private Vector3? firstTetherPoint;
     private float redlineChargeStart = -1f;
@@ -631,12 +636,16 @@ public class Gun : MonoBehaviour
             Vector3 hitPoint = cameraPos + direction * maxHitScanDistance;
             RaycastHit hit;
             bool didHit = TryGetAimHit(cameraPos, direction, out hit);
+            bool hitCoin = false;
             if (didHit)
             {
                 hitPoint = hit.point;
                 WeaponAbilityObject abilityObject = hit.collider.GetComponentInParent<WeaponAbilityObject>();
                 if (abilityObject != null)
+                {
+                    hitCoin = abilityObject.kind == WeaponAbilityObject.Kind.Coin;
                     abilityObject.Hit(baseDamage, direction);
+                }
                 ApplyHitScanDamage(hit, baseDamage);
                 ApplyWeaponOnHit(preset, hit, baseDamage);
                 if (preset.archetype == WeaponArchetype.Splitter && tridentNeedles.Count < 24)
@@ -648,7 +657,7 @@ public class Gun : MonoBehaviour
                 ? (hitPoint - barrelPos).normalized
                 : direction;
             SpawnVisualTracer(barrelPos, tracerDirection, preset);
-            if (didHit)
+            if (didHit && !hitCoin)
                 SpawnImpactBurst(hitPoint, hit.normal, tracerDirection, preset.accentColor, preset.archetype == WeaponArchetype.CoreEject ? 0.22f : 0.12f, 0.16f);
         }
     }
@@ -680,11 +689,18 @@ public class Gun : MonoBehaviour
         switch (preset.archetype)
         {
             case WeaponArchetype.Marksman:
+                nextAltFireTime = Time.time + 0.01f;
                 vesperCoins.RemoveAll(coin => coin == null);
                 if (vesperCoins.Count < 4)
-                    vesperCoins.Add(SpawnAbilityObject(WeaponAbilityObject.Kind.Coin, cameraPos + forward * 1.4f, forward * 7f + Vector3.up * 5f, 0.32f, preset.accentColor));
-                else
-                    nextAltFireTime = Time.time + 0.12f;
+                {
+                    Vector3 inheritedVelocity = player != null ? player.WorldVelocity : Vector3.zero;
+                    vesperCoins.Add(SpawnAbilityObject(
+                        WeaponAbilityObject.Kind.Coin,
+                        cameraPos + forward * 0.9f,
+                        inheritedVelocity + forward * 7f + Vector3.up * 5f,
+                        0.132f,
+                        preset.accentColor));
+                }
                 break;
 
             case WeaponArchetype.Rail:
@@ -738,35 +754,117 @@ public class Gun : MonoBehaviour
 
     private WeaponAbilityObject SpawnAbilityObject(WeaponAbilityObject.Kind kind, Vector3 position, Vector3 velocity, float size, Color color)
     {
-        PrimitiveType primitive = kind == WeaponAbilityObject.Kind.Coin
-            ? PrimitiveType.Quad
-            : kind == WeaponAbilityObject.Kind.Bomb
+        PrimitiveType primitive = kind == WeaponAbilityObject.Kind.Bomb
                 ? PrimitiveType.Capsule
                 : PrimitiveType.Sphere;
-        GameObject go = GameObject.CreatePrimitive(primitive);
+        GameObject go = kind == WeaponAbilityObject.Kind.Coin
+            ? CreateCoinObject(size, color)
+            : GameObject.CreatePrimitive(primitive);
         go.name = $"Ability_{kind}";
         go.transform.position = position;
-        go.transform.localScale = kind == WeaponAbilityObject.Kind.Coin
-            ? new Vector3(size, size, 1f)
-            : kind == WeaponAbilityObject.Kind.Bomb
+        if (kind != WeaponAbilityObject.Kind.Coin)
+            go.transform.localScale = kind == WeaponAbilityObject.Kind.Bomb
                 ? new Vector3(size, size * 1.5f, size)
                 : Vector3.one * size;
         if (kind == WeaponAbilityObject.Kind.Coin)
         {
-            Collider oldCollider = go.GetComponent<Collider>();
-            if (oldCollider != null) Destroy(oldCollider);
-            BoxCollider coinCollider = go.AddComponent<BoxCollider>();
-            coinCollider.size = new Vector3(1f, 1f, 0.08f);
+            Vector3 facing = Camera.main != null ? Camera.main.transform.forward : transform.forward;
+            go.transform.rotation = Quaternion.FromToRotation(Vector3.up, facing);
         }
-        go.GetComponent<Renderer>().material = GetFxMaterial(color, 1.8f);
+        else
+            go.GetComponent<Renderer>().sharedMaterial = GetFxMaterial(color, 1.8f);
         Rigidbody body = go.AddComponent<Rigidbody>();
         body.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
+        body.interpolation = RigidbodyInterpolation.Interpolate;
         body.linearVelocity = velocity;
+        if (kind == WeaponAbilityObject.Kind.Coin)
+        {
+            body.maxAngularVelocity = 40f;
+            body.angularVelocity = new Vector3(16f, 22f, 12f);
+            Collider coinCollider = go.GetComponent<Collider>();
+            if (coinCollider != null && player != null)
+            {
+                Collider[] ownerColliders = player.GetComponentsInChildren<Collider>(true);
+                for (int i = 0; i < ownerColliders.Length; i++)
+                    if (ownerColliders[i] != null) Physics.IgnoreCollision(coinCollider, ownerColliders[i], true);
+            }
+        }
         WeaponAbilityObject ability = go.AddComponent<WeaponAbilityObject>();
         ability.kind = kind;
         ability.owner = this;
         ability.lifetime = kind == WeaponAbilityObject.Kind.Coin ? 3.5f : 12f;
         return ability;
+    }
+
+    private GameObject CreateCoinObject(float diameter, Color accent)
+    {
+        GameObject root = new GameObject("CoinRoot");
+        float halfThickness = diameter * 0.055f;
+        BoxCollider collider = root.AddComponent<BoxCollider>();
+        collider.size = new Vector3(diameter, halfThickness * 2f, diameter);
+
+        Material dark = GetFxMaterial(new Color(0.012f, 0.025f, 0.032f, 1f), 0.18f);
+        Material rim = GetFxMaterial(Color.Lerp(accent, Color.white, 0.12f), 3.8f);
+        Material center = GetFxMaterial(Color.white, 5.5f);
+
+        CreateCoinPart(root.transform, "CoinBody", PrimitiveType.Cylinder, Vector3.zero,
+            Quaternion.identity, new Vector3(diameter, halfThickness, diameter), dark);
+
+        const int rimSegments = 10;
+        float radius = diameter * 0.46f;
+        for (int i = 0; i < rimSegments; i++)
+        {
+            if (i == 1 || i == 2) continue;
+            float angle = i * (360f / rimSegments);
+            float radians = angle * Mathf.Deg2Rad;
+            Vector3 localPosition = new Vector3(Mathf.Sin(radians) * radius, 0f, Mathf.Cos(radians) * radius);
+            CreateCoinPart(root.transform, $"Rim_{i:00}", PrimitiveType.Cube, localPosition,
+                Quaternion.Euler(0f, angle, 0f), new Vector3(diameter * 0.26f, halfThickness * 2.5f, diameter * 0.055f), rim);
+        }
+
+        for (int face = -1; face <= 1; face += 2)
+        {
+            CreateCoinPart(root.transform, face > 0 ? "CenterFront" : "CenterBack", PrimitiveType.Cylinder,
+                Vector3.up * (halfThickness * 1.15f * face), Quaternion.identity,
+                new Vector3(diameter * 0.17f, halfThickness * 0.25f, diameter * 0.17f), center);
+        }
+
+        for (int i = 0; i < 3; i++)
+        {
+            float angle = 120f * i;
+            float radians = angle * Mathf.Deg2Rad;
+            Vector3 localPosition = new Vector3(Mathf.Sin(radians), 0f, Mathf.Cos(radians)) * diameter * 0.19f;
+            localPosition.y = halfThickness * 1.3f;
+            CreateCoinPart(root.transform, $"FaceGroove_{i}", PrimitiveType.Cube, localPosition,
+                Quaternion.Euler(0f, angle, 0f), new Vector3(diameter * 0.028f, halfThickness * 0.25f, diameter * 0.24f), rim);
+        }
+
+        TrailRenderer trail = root.AddComponent<TrailRenderer>();
+        trail.time = 0.11f;
+        trail.minVertexDistance = 0.025f;
+        trail.alignment = LineAlignment.View;
+        trail.startWidth = diameter * 0.11f;
+        trail.endWidth = 0f;
+        trail.sharedMaterial = rim;
+        trail.startColor = new Color(accent.r, accent.g, accent.b, 0.62f);
+        trail.endColor = new Color(accent.r, accent.g, accent.b, 0f);
+        return root;
+    }
+
+    private void CreateCoinPart(Transform parent, string name, PrimitiveType primitive, Vector3 localPosition,
+        Quaternion localRotation, Vector3 localScale, Material material)
+    {
+        GameObject part = GameObject.CreatePrimitive(primitive);
+        part.name = name;
+        part.transform.SetParent(parent, false);
+        part.transform.localPosition = localPosition;
+        part.transform.localRotation = localRotation;
+        part.transform.localScale = localScale;
+        Collider partCollider = part.GetComponent<Collider>();
+        if (partCollider != null) partCollider.enabled = false;
+        DestroyComponentSafe(partCollider);
+        Renderer renderer = part.GetComponent<Renderer>();
+        if (renderer != null) renderer.sharedMaterial = material;
     }
 
     public void HandleAbilityObjectHit(WeaponAbilityObject ability, float damage, Vector3 direction)
@@ -777,26 +875,7 @@ public class Gun : MonoBehaviour
         switch (ability.kind)
         {
             case WeaponAbilityObject.Kind.Coin:
-                Collider[] targets = Physics.OverlapSphere(ability.transform.position, 18f, ~0, QueryTriggerInteraction.Ignore);
-                IDamageable best = null;
-                Vector3 bestPoint = ability.transform.position + direction * 18f;
-                float bestDistance = float.MaxValue;
-                for (int i = 0; i < targets.Length; i++)
-                {
-                    IDamageable candidate = targets[i].GetComponentInParent<IDamageable>();
-                    if (candidate == null || candidate is PlayerController) continue;
-                    float distance = Vector3.Distance(ability.transform.position, targets[i].bounds.center);
-                    if (distance >= bestDistance) continue;
-                    best = candidate;
-                    bestPoint = targets[i].bounds.center;
-                    bestDistance = distance;
-                }
-                float coinMultiplier = preset != null && preset.archetype == WeaponArchetype.Rail ? 3.4f : 2.2f;
-                if (best != null) DealDamage(best, damage * coinMultiplier, color);
-                SpawnVisualTracer(ability.transform.position, (bestPoint - ability.transform.position).normalized, preset);
-                SpawnImpactBurst(ability.transform.position, color, 0.32f, 0.16f);
-                TriggerHeavyImpact(coinMultiplier > 3f ? 0.085f : 0.045f, coinMultiplier > 3f ? 0.16f : 0.1f);
-                Destroy(ability.gameObject);
+                ResolveCoinChain(ability, damage, direction, preset, color);
                 break;
             case WeaponAbilityObject.Kind.Core:
                 float coreMultiplier = preset != null && preset.archetype == WeaponArchetype.Rail ? 4f : 2.4f;
@@ -820,11 +899,194 @@ public class Gun : MonoBehaviour
         }
     }
 
+    private void ResolveCoinChain(WeaponAbilityObject struckCoin, float damage, Vector3 shotDirection, WeaponPreset preset, Color color)
+    {
+        Vector3 chainPoint = struckCoin.transform.position;
+        List<WeaponAbilityObject> remainingCoins = new List<WeaponAbilityObject>();
+        for (int i = 0; i < vesperCoins.Count; i++)
+        {
+            WeaponAbilityObject coin = vesperCoins[i];
+            if (coin != null && coin != struckCoin)
+                remainingCoins.Add(coin);
+        }
+
+        int chainedCoins = 1;
+        while (remainingCoins.Count > 0)
+        {
+            int nearestIndex = 0;
+            float nearestDistance = float.MaxValue;
+            for (int i = 0; i < remainingCoins.Count; i++)
+            {
+                float distance = (remainingCoins[i].transform.position - chainPoint).sqrMagnitude;
+                if (distance >= nearestDistance) continue;
+                nearestDistance = distance;
+                nearestIndex = i;
+            }
+
+            WeaponAbilityObject nextCoin = remainingCoins[nearestIndex];
+            remainingCoins.RemoveAt(nearestIndex);
+            if (!nextCoin.TryResolve())
+                continue;
+            Vector3 nextPoint = nextCoin.transform.position;
+            SpawnVisualTracer(chainPoint, (nextPoint - chainPoint).normalized, preset);
+            chainPoint = nextPoint;
+            chainedCoins++;
+            vesperCoins.Remove(nextCoin);
+            Destroy(nextCoin.gameObject);
+        }
+
+        Collider[] targets = Physics.OverlapSphere(chainPoint, 24f, ~0, QueryTriggerInteraction.Ignore);
+        HashSet<IDamageable> evaluatedTargets = new HashSet<IDamageable>();
+        IDamageable best = null;
+        Vector3 bestPoint = chainPoint + shotDirection * 24f;
+        int bestPriority = int.MaxValue;
+        float bestDistance = float.MaxValue;
+        for (int i = 0; i < targets.Length; i++)
+        {
+            if (IsPlayerOwnedCollider(targets[i])) continue;
+            IDamageable candidate = targets[i].GetComponentInParent<IDamageable>();
+            if (candidate == null || candidate is PlayerController) continue;
+            if (!evaluatedTargets.Add(candidate)) continue;
+            int priority = GetCoinRicochetPriority(candidate);
+            float distance = Vector3.Distance(chainPoint, targets[i].bounds.center);
+            if (priority > bestPriority || (priority == bestPriority && distance >= bestDistance)) continue;
+            best = candidate;
+            bestPoint = targets[i].bounds.center;
+            bestPriority = priority;
+            bestDistance = distance;
+        }
+
+        float baseMultiplier = preset != null && preset.archetype == WeaponArchetype.Rail ? 3.4f : 2.2f;
+        float chainMultiplier = baseMultiplier + (chainedCoins - 1) * 0.55f;
+        if (best != null)
+            DealDamage(best, damage * chainMultiplier, color);
+        SpawnVisualTracer(chainPoint, (bestPoint - chainPoint).normalized, preset);
+        TriggerHeavyImpact(chainMultiplier > 3f ? 0.085f : 0.045f, chainMultiplier > 3f ? 0.16f : 0.1f);
+        vesperCoins.Remove(struckCoin);
+        Destroy(struckCoin.gameObject);
+    }
+
+    private int GetCoinRicochetPriority(IDamageable candidate)
+    {
+        if (candidate == taggedTarget && taggedTargetTimer > 0f)
+            return 1;
+        if (candidate is BasicEnemyAI enemy)
+            return enemy.isBoss ? 2 : 3;
+        if (candidate is Target)
+            return 4;
+        return 5;
+    }
+
+    public void HandleCoinGlint(WeaponAbilityObject coin, bool subtle)
+    {
+        if (coin == null) return;
+        WeaponPreset preset = ActivePreset;
+        Color color = preset != null ? preset.accentColor : new Color(0.2f, 0.85f, 1f);
+        Color glintColor = Color.Lerp(color, Color.white, 0.9f);
+        SpawnCoinGlint2D(coin, glintColor, subtle);
+    }
+
+    private void SpawnCoinGlint2D(WeaponAbilityObject coin, Color color, bool subtle)
+    {
+        GameObject root = new GameObject(subtle ? "CoinGlintSubtleCanvas" : "CoinGlintFlashCanvas", typeof(RectTransform), typeof(Canvas), typeof(CanvasGroup));
+        Canvas canvas = root.GetComponent<Canvas>();
+        canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+        canvas.overrideSorting = true;
+        canvas.sortingOrder = 500;
+        CanvasGroup group = root.GetComponent<CanvasGroup>();
+
+        GameObject graphic = new GameObject("CoinGlintX", typeof(RectTransform));
+        RectTransform rootRect = graphic.GetComponent<RectTransform>();
+        rootRect.SetParent(root.transform, false);
+        rootRect.anchorMin = rootRect.anchorMax = new Vector2(0.5f, 0.5f);
+        rootRect.sizeDelta = new Vector2(100f, 100f);
+        rootRect.localScale = Vector3.one * (subtle ? 0.72f : 1f);
+
+        CreateCoinGlintRay(rootRect, "SlashA", new Vector2(subtle ? 58f : 92f, subtle ? 4f : 7f), Vector2.zero, color, 45f);
+        CreateCoinGlintRay(rootRect, "SlashB", new Vector2(subtle ? 58f : 92f, subtle ? 4f : 7f), Vector2.zero, color, -45f);
+        CreateCoinGlintRay(rootRect, "Core", new Vector2(subtle ? 12f : 18f, subtle ? 12f : 18f), Vector2.zero, Color.white, 45f);
+        if (!subtle)
+            CreateCoinGlintRay(rootRect, "CyanAfterimage", new Vector2(52f, 3f), new Vector2(0f, -5f),
+                new Color(0.08f, 0.82f, 1f, 0.9f), 0f);
+
+        if (subtle)
+            StartCoroutine(AnimatePersistentCoinGlint(rootRect, group, coin));
+        else
+            StartCoroutine(AnimateCoinGlintFlash(rootRect, group, coin, 0.2f));
+    }
+
+    private static void CreateCoinGlintRay(RectTransform parent, string name, Vector2 size, Vector2 position, Color color, float rotation)
+    {
+        GameObject ray = new GameObject(name, typeof(RectTransform), typeof(Image));
+        RectTransform rect = ray.GetComponent<RectTransform>();
+        rect.SetParent(parent, false);
+        rect.anchorMin = rect.anchorMax = new Vector2(0.5f, 0.5f);
+        rect.anchoredPosition = position;
+        rect.sizeDelta = size;
+        rect.localRotation = Quaternion.Euler(0f, 0f, rotation);
+        Image image = ray.GetComponent<Image>();
+        image.color = color;
+        image.raycastTarget = false;
+    }
+
+    private System.Collections.IEnumerator AnimateCoinGlintFlash(RectTransform glint, CanvasGroup group, WeaponAbilityObject coin, float duration)
+    {
+        if (glint == null) yield break;
+        Vector3 fullScale = glint.localScale;
+        float elapsed = 0f;
+        while (elapsed < duration && glint != null)
+        {
+            elapsed += Time.deltaTime;
+            float t = Mathf.Clamp01(elapsed / Mathf.Max(0.01f, duration));
+            float pulse = Mathf.Sin(t * Mathf.PI);
+            glint.localScale = fullScale * Mathf.Lerp(0.25f, 1.2f, pulse);
+            if (group != null)
+                group.alpha = UpdateCoinGlintScreenPosition(glint, coin) ? pulse : 0f;
+            yield return null;
+        }
+
+        if (group != null)
+            Destroy(group.gameObject);
+    }
+
+    private System.Collections.IEnumerator AnimatePersistentCoinGlint(RectTransform glint, CanvasGroup group, WeaponAbilityObject coin)
+    {
+        if (glint == null) yield break;
+        Vector3 baseScale = glint.localScale;
+        while (glint != null && coin != null)
+        {
+            float pulse = 0.5f + Mathf.Sin(Time.time * 8f) * 0.5f;
+            glint.localScale = baseScale * Mathf.Lerp(0.92f, 1.08f, pulse);
+            if (group != null)
+                group.alpha = UpdateCoinGlintScreenPosition(glint, coin) ? Mathf.Lerp(0.18f, 0.42f, pulse) : 0f;
+            yield return null;
+        }
+
+        if (group != null)
+            Destroy(group.gameObject);
+    }
+
+    private static bool UpdateCoinGlintScreenPosition(RectTransform glint, WeaponAbilityObject coin)
+    {
+        if (glint == null || coin == null || Camera.main == null)
+            return false;
+
+        Vector3 screenPoint = Camera.main.WorldToScreenPoint(coin.transform.position);
+        if (screenPoint.z <= 0f)
+            return false;
+
+        glint.position = new Vector3(screenPoint.x, screenPoint.y, 0f);
+        glint.localRotation = Quaternion.identity;
+        return true;
+    }
+
     public void HandleAbilityObjectCollision(WeaponAbilityObject ability, Collision collision)
     {
         if (ability == null) return;
         if (ability.kind == WeaponAbilityObject.Kind.Coin)
         {
+            if (collision != null && IsPlayerOwnedCollider(collision.collider)) return;
+            if (!ability.TryResolve()) return;
             vesperCoins.Remove(ability);
             Destroy(ability.gameObject);
             return;
@@ -878,7 +1140,7 @@ public class Gun : MonoBehaviour
         needle.transform.localScale = new Vector3(0.035f, 0.22f, 0.035f);
         Collider collider = needle.GetComponent<Collider>();
         if (collider != null) Destroy(collider);
-        needle.GetComponent<Renderer>().material = GetFxMaterial(Color.Lerp(color, Color.white, 0.25f), 2.8f);
+        needle.GetComponent<Renderer>().sharedMaterial = GetFxMaterial(Color.Lerp(color, Color.white, 0.25f), 2.8f);
         tridentNeedles.Add(needle.transform);
         SpawnImpactBurst(point, normal, -normal, color, 0.08f, 0.12f);
     }
@@ -974,7 +1236,7 @@ public class Gun : MonoBehaviour
         Vector3 origin = cam != null ? cam.transform.position : transform.position;
         Vector3 direction = cam != null ? cam.transform.forward : transform.forward;
         FirePiercingLine(origin, direction, GetEffectiveDamage(preset.damage) * Mathf.Lerp(1.1f, 3.4f, charge), preset, Mathf.Lerp(0.5f, 3f, charge), Mathf.Lerp(4f, 16f, charge));
-        SpawnRadialAbilityBurst(GetBarrelWorldPosition(origin), Mathf.Lerp(1f, 3f, charge), preset.accentColor, 12);
+        SpawnMuzzleBurst(GetBarrelWorldPosition(origin), preset, true);
         if (charge > 0.55f) TriggerHeavyImpact(Mathf.Lerp(0.025f, 0.075f, charge), Mathf.Lerp(0.08f, 0.18f, charge));
         if (player != null) player.NotifyWeaponFired(true);
     }
@@ -986,7 +1248,7 @@ public class Gun : MonoBehaviour
         orb.name = "RedlineChargeIndicator";
         Collider collider = orb.GetComponent<Collider>();
         if (collider != null) Destroy(collider);
-        orb.GetComponent<Renderer>().material = GetFxMaterial(preset.accentColor, 3.2f);
+        orb.GetComponent<Renderer>().sharedMaterial = GetFxMaterial(preset.accentColor, 3.2f);
         redlineChargeFx = orb.transform;
     }
 
@@ -1135,19 +1397,18 @@ public class Gun : MonoBehaviour
 
     private void SpawnRadialAbilityBurst(Vector3 center, float radius, Color color, int spokes)
     {
+        Material material = GetFxMaterial(color, 2.2f);
         for (int i = 0; i < spokes; i++)
         {
             float angle = (Mathf.PI * 2f * i) / spokes;
             Vector3 direction = new Vector3(Mathf.Cos(angle), 0.12f, Mathf.Sin(angle)).normalized;
-            GameObject spoke = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            spoke.name = "WeaponAbilitySpoke";
-            spoke.transform.position = center + direction * radius * 0.5f;
-            spoke.transform.rotation = Quaternion.LookRotation(direction);
-            spoke.transform.localScale = new Vector3(0.045f, 0.045f, radius);
-            Collider collider = spoke.GetComponent<Collider>();
-            if (collider != null) Destroy(collider);
-            Material material = GetFxMaterial(color, 2.2f);
-            spoke.GetComponent<Renderer>().material = material;
+            GameObject spoke = CreateFxPrimitive(
+                "WeaponAbilitySpoke",
+                PrimitiveType.Cube,
+                center + direction * radius * 0.5f,
+                Quaternion.LookRotation(direction),
+                new Vector3(0.045f, 0.045f, radius),
+                material);
             StartCoroutine(ScaleBurstDown(spoke.transform, 0.28f, new Vector3(0.01f, 0.01f, radius * 1.35f)));
         }
     }
@@ -1213,6 +1474,7 @@ public class Gun : MonoBehaviour
 
         Vector3 endPoint = origin + direction * maxHitScanDistance;
         bool hitAnyDamageable = false;
+        bool hitCoinAbility = false;
         for (int i = 0; i < hits.Length; i++)
         {
             Collider hitCollider = hits[i].collider;
@@ -1224,7 +1486,10 @@ public class Gun : MonoBehaviour
             IDamageable damageable = hitCollider.GetComponentInParent<IDamageable>();
             WeaponAbilityObject abilityObject = hitCollider.GetComponentInParent<WeaponAbilityObject>();
             if (abilityObject != null)
+            {
+                hitCoinAbility |= abilityObject.kind == WeaponAbilityObject.Kind.Coin;
                 abilityObject.Hit(damage, direction);
+            }
             if (damageable != null)
             {
                 DealDamage(damageable, damage, preset.accentColor);
@@ -1240,7 +1505,7 @@ public class Gun : MonoBehaviour
         }
 
         SpawnVisualTracer(GetBarrelWorldPosition(origin), direction, preset);
-        if (!hitAnyDamageable)
+        if (!hitAnyDamageable && !hitCoinAbility)
             SpawnImpactBurst(endPoint, -direction, direction, preset.accentColor, 0.18f, 0.16f);
     }
 
@@ -1251,13 +1516,19 @@ public class Gun : MonoBehaviour
             Vector3 direction = ApplySpread(forward, spread);
             RaycastHit hit;
             Vector3 hitPoint = cameraPos + direction * maxHitScanDistance;
+            bool hitCoin = false;
             if (TryGetAimHit(cameraPos, direction, out hit))
             {
                 hitPoint = hit.point;
                 WeaponAbilityObject abilityObject = hit.collider.GetComponentInParent<WeaponAbilityObject>();
-                if (abilityObject != null) abilityObject.Hit(damage, direction);
+                if (abilityObject != null)
+                {
+                    hitCoin = abilityObject.kind == WeaponAbilityObject.Kind.Coin;
+                    abilityObject.Hit(damage, direction);
+                }
                 ApplyHitScanDamage(hit, damage);
-                SpawnImpactBurst(hitPoint, hit.normal, direction, preset.accentColor, 0.12f, 0.14f);
+                if (!hitCoin)
+                    SpawnImpactBurst(hitPoint, hit.normal, direction, preset.accentColor, 0.12f, 0.14f);
             }
 
             SpawnVisualTracer(GetBarrelWorldPosition(cameraPos), direction, preset);
@@ -1586,20 +1857,25 @@ public class Gun : MonoBehaviour
 
     private GameObject SpawnProceduralTracer(Vector3 barrelPos, Vector3 direction, WeaponPreset preset)
     {
-        GameObject tracer = GameObject.CreatePrimitive(PrimitiveType.Cube);
-        tracer.name = "ProceduralTracer";
-        tracer.transform.position = barrelPos;
-        tracer.transform.rotation = Quaternion.LookRotation(direction);
         float coreScale = GetTracerCoreScale(preset);
-        tracer.transform.localScale = new Vector3(coreScale * 0.42f, coreScale * 0.42f, coreScale * 3.4f);
-        Collider collider = tracer.GetComponent<Collider>();
-        DestroyComponentSafe(collider);
-        Renderer renderer = tracer.GetComponent<Renderer>();
-        if (renderer != null)
-            AssignRendererMaterial(renderer, GetFxMaterial(preset.accentColor, 2.4f));
-        BulletTrail trail = tracer.AddComponent<BulletTrail>();
+        GameObject tracer = CreateFxPrimitive(
+            "ProceduralTracer",
+            PrimitiveType.Cube,
+            barrelPos,
+            Quaternion.LookRotation(direction),
+            new Vector3(coreScale * 0.42f, coreScale * 0.42f, coreScale * 3.4f),
+            GetFxMaterial(preset.accentColor, 2.4f));
+        BulletTrail trail = tracer.GetComponent<BulletTrail>();
+        if (trail == null) trail = tracer.AddComponent<BulletTrail>();
         trail.Configure(preset.accentColor, GetTracerWidth(preset), GetTracerTime(preset));
-        StartCoroutine(MoveProceduralTracer(tracer.transform, direction, preset.bulletSpeed, Mathf.Max(0.12f, GetTracerTime(preset) + 0.08f)));
+        TrailRenderer trailRenderer = tracer.GetComponent<TrailRenderer>();
+        if (trailRenderer != null)
+        {
+            trailRenderer.enabled = true;
+            trailRenderer.Clear();
+        }
+        float visualTracerSpeed = Mathf.Max(220f, preset.bulletSpeed * 2.5f);
+        StartCoroutine(MoveProceduralTracer(tracer.transform, direction, visualTracerSpeed, Mathf.Max(0.12f, GetTracerTime(preset) + 0.08f)));
         return tracer;
     }
 
@@ -1614,7 +1890,7 @@ public class Gun : MonoBehaviour
         }
 
         if (tracer != null)
-            Destroy(tracer.gameObject);
+            ReleaseFxPrimitive(tracer.gameObject);
     }
 
     private void SpawnImpactRing(Vector3 position, Vector3 normal, Color color, float radius, float lifetime)
@@ -1632,18 +1908,74 @@ public class Gun : MonoBehaviour
 
     private GameObject CreateFxPrimitive(string name, PrimitiveType type, Vector3 position, Quaternion rotation, Vector3 scale, Material material)
     {
-        GameObject fx = GameObject.CreatePrimitive(type);
+        GameObject fx = AcquireFxPrimitive(type);
         fx.name = name;
         fx.transform.position = position;
         fx.transform.rotation = rotation;
         fx.transform.localScale = scale;
-        DestroyComponentSafe(fx.GetComponent<Collider>());
 
         Renderer renderer = fx.GetComponent<Renderer>();
         if (renderer != null)
+        {
             AssignRendererMaterial(renderer, material);
+            renderer.SetPropertyBlock(null);
+        }
 
         return fx;
+    }
+
+    private GameObject AcquireFxPrimitive(PrimitiveType type)
+    {
+        if (!fxPrimitivePool.TryGetValue(type, out Stack<GameObject> pool))
+        {
+            pool = new Stack<GameObject>();
+            fxPrimitivePool[type] = pool;
+        }
+
+        GameObject fx = null;
+        while (pool.Count > 0 && fx == null)
+            fx = pool.Pop();
+
+        if (fx == null)
+        {
+            fx = GameObject.CreatePrimitive(type);
+            Collider collider = fx.GetComponent<Collider>();
+            if (collider != null) collider.enabled = false;
+            DestroyComponentSafe(collider);
+            fxPrimitiveTypes[fx] = type;
+        }
+
+        fx.transform.SetParent(null, false);
+        fx.SetActive(true);
+        return fx;
+    }
+
+    private void ReleaseFxPrimitive(GameObject fx)
+    {
+        if (fx == null) return;
+        if (!fxPrimitiveTypes.TryGetValue(fx, out PrimitiveType type))
+        {
+            Destroy(fx);
+            return;
+        }
+
+        TrailRenderer trail = fx.GetComponent<TrailRenderer>();
+        if (trail != null)
+        {
+            trail.Clear();
+            trail.enabled = false;
+        }
+
+        if (fxPoolRoot == null)
+        {
+            GameObject root = new GameObject("_WeaponFxPool");
+            root.transform.SetParent(transform, false);
+            fxPoolRoot = root.transform;
+        }
+
+        fx.SetActive(false);
+        fx.transform.SetParent(fxPoolRoot, false);
+        fxPrimitivePool[type].Push(fx);
     }
 
     private void DestroyComponentSafe(Component component)
@@ -1656,33 +1988,36 @@ public class Gun : MonoBehaviour
     private void AssignRendererMaterial(Renderer renderer, Material material)
     {
         if (renderer == null || material == null) return;
-        if (Application.isPlaying) renderer.material = material;
-        else renderer.sharedMaterial = material;
+        renderer.sharedMaterial = material;
     }
 
     private System.Collections.IEnumerator AnimateFxScale(Transform target, Vector3 startScale, Vector3 endScale, float lifetime)
     {
         if (target == null) yield break;
         Renderer renderer = target.GetComponent<Renderer>();
-        Material mat = renderer != null ? renderer.material : null;
-        Color startColor = mat != null ? mat.color : Color.white;
+        Material mat = renderer != null ? renderer.sharedMaterial : null;
+        Color startColor = mat != null && mat.HasProperty(BaseColorId) ? mat.GetColor(BaseColorId) : Color.white;
+        MaterialPropertyBlock properties = renderer != null ? new MaterialPropertyBlock() : null;
         float elapsed = 0f;
         while (elapsed < lifetime && target != null)
         {
             elapsed += Time.deltaTime;
             float t = Mathf.Clamp01(elapsed / Mathf.Max(0.01f, lifetime));
             target.localScale = Vector3.Lerp(startScale, endScale, Mathf.SmoothStep(0f, 1f, t));
-            if (mat != null)
+            if (renderer != null && properties != null)
             {
                 Color c = startColor;
                 c.a *= 1f - t;
-                SetMaterialColor(mat, c, c * 1.6f);
+                properties.SetColor(BaseColorId, c);
+                properties.SetColor(ColorId, c);
+                properties.SetColor(EmissionColorId, c * 1.6f);
+                renderer.SetPropertyBlock(properties);
             }
             yield return null;
         }
 
         if (target != null)
-            Destroy(target.gameObject);
+            ReleaseFxPrimitive(target.gameObject);
     }
 
     private float GetTracerWidth(WeaponPreset preset)
@@ -1734,7 +2069,7 @@ public class Gun : MonoBehaviour
         }
 
         if (shard != null)
-            Destroy(shard.gameObject);
+            ReleaseFxPrimitive(shard.gameObject);
     }
 
     private System.Collections.IEnumerator ScaleBurstDown(Transform burst, float lifetime)
@@ -1756,7 +2091,7 @@ public class Gun : MonoBehaviour
         }
 
         if (burst != null)
-            Destroy(burst.gameObject);
+            ReleaseFxPrimitive(burst.gameObject);
     }
 
     private Vector3 ApplySpread(Vector3 direction, float spreadDegrees)
@@ -2231,9 +2566,30 @@ public class Gun : MonoBehaviour
 
     private Material GetFxMaterial(Color color, float emissionStrength)
     {
+        Color32 packed = color;
+        int emissionStep = Mathf.RoundToInt(Mathf.Max(0f, emissionStrength) * 10f);
+        int key = packed.r;
+        key = (key * 397) ^ packed.g;
+        key = (key * 397) ^ packed.b;
+        key = (key * 397) ^ packed.a;
+        key = (key * 397) ^ emissionStep;
+        if (fxMaterialCache.TryGetValue(key, out Material cached) && cached != null)
+            return cached;
+
         Material material = new Material(FindUrpShader(true)) { name = "RuntimeWeaponFX" };
         SetMaterialColor(material, color, color * Mathf.Max(0f, emissionStrength));
+        fxMaterialCache[key] = material;
         return material;
+    }
+
+    private void OnDestroy()
+    {
+        foreach (Material material in fxMaterialCache.Values)
+        {
+            if (material != null)
+                Destroy(material);
+        }
+        fxMaterialCache.Clear();
     }
 
     private Shader FindUrpShader(bool unlit)

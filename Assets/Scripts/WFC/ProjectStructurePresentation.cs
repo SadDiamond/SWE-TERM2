@@ -1,6 +1,7 @@
 using System;
 using TMPro;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 
 public class ProjectStructurePresentation : MonoBehaviour
@@ -290,9 +291,12 @@ public class ProjectStructurePresentation : MonoBehaviour
 
     private void ReturnToTitle()
     {
-        if (panelRoot != null)
-            panelRoot.SetActive(false);
-        ShowTitleScreen();
+        Time.timeScale = 1f;
+        if (player != null)
+            player.ToggleUIMode(false);
+        Cursor.lockState = CursorLockMode.None;
+        Cursor.visible = true;
+        SceneManager.LoadScene("StartMenu");
     }
 
     private void ShowFailure()

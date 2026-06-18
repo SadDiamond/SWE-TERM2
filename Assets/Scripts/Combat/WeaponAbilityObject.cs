@@ -8,27 +8,50 @@ public class WeaponAbilityObject : MonoBehaviour
     public Gun owner;
     public float lifetime = 10f;
     public bool conductive = true;
+    [Min(0f)] public float coinFirstGlintDelay = 1f / 3f;
+    [Min(0f)] public float coinPersistentGlintDelay = 1f;
+
+    private float coinAge;
+    private bool coinFirstGlintTriggered;
+    private bool coinPersistentGlintTriggered;
+    private bool resolved;
+
+    public bool TryResolve()
+    {
+        if (resolved) return false;
+        resolved = true;
+        return true;
+    }
 
     private void Update()
     {
         lifetime -= Time.deltaTime;
         if (lifetime <= 0f) Destroy(gameObject);
-        if (kind == Kind.Coin && Camera.main != null)
+        if (kind == Kind.Coin)
         {
-            transform.forward = Camera.main.transform.forward;
-            float flash = 0.72f + Mathf.Sin(Time.time * 18f) * 0.28f;
-            Renderer renderer = GetComponent<Renderer>();
-            if (renderer != null) renderer.material.color = Color.Lerp(Color.white, new Color(0.2f, 0.85f, 1f), flash);
+            coinAge += Time.deltaTime;
+            if (!coinFirstGlintTriggered && coinAge >= coinFirstGlintDelay)
+            {
+                coinFirstGlintTriggered = true;
+                if (owner != null) owner.HandleCoinGlint(this, false);
+            }
+            if (!coinPersistentGlintTriggered && coinAge >= coinPersistentGlintDelay)
+            {
+                coinPersistentGlintTriggered = true;
+                if (owner != null) owner.HandleCoinGlint(this, true);
+            }
         }
     }
 
     private void OnCollisionEnter(Collision collision)
     {
+        if (resolved) return;
         if (owner != null) owner.HandleAbilityObjectCollision(this, collision);
     }
 
     public void Hit(float damage, Vector3 direction)
     {
+        if (kind == Kind.Coin && !TryResolve()) return;
         if (owner != null) owner.HandleAbilityObjectHit(this, damage, direction);
     }
 }

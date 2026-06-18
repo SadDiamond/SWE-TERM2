@@ -1,6 +1,6 @@
 using UnityEngine;
 
-public class WeaponLabProjectileTurret : MonoBehaviour
+public class SandboxProjectileTurret : MonoBehaviour
 {
     public PlayerController target;
     public float fireInterval = 1.4f;
@@ -15,7 +15,7 @@ public class WeaponLabProjectileTurret : MonoBehaviour
         Vector3 destination = target.transform.position + Vector3.up * 1.1f;
         Vector3 direction = (destination - origin).normalized;
         GameObject shot = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-        shot.name = "WeaponLabParryShot";
+        shot.name = "SandboxParryShot";
         shot.transform.position = origin;
         shot.transform.localScale = Vector3.one * 0.24f;
         Renderer renderer = shot.GetComponent<Renderer>();

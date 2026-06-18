@@ -1720,7 +1720,6 @@ MonoBehaviour:
   curtainHoldDuration: 1.35
   curtainOpenDuration: 0.55
   curtainColor: {r: 0.008, g: 0.016, b: 0.022, a: 1}
-  useElevatorHologramTransition: 1
   oldArenaDropDuration: 2.15
   newArenaRiseDuration: 2.45
   swapHoldDuration: 0.45
