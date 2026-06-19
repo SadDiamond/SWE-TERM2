@@ -270,6 +270,11 @@ public class HeroArenaController : MonoBehaviour
         text.alignment = TextAlignmentOptions.Center;
         text.fontSize = 12f;
         text.color = new Color(0.84f, 0.94f, 0.98f);
-        text.text = "HERO ARENA   benchmark space for scale, height, and route clarity\nF grapple surface   Shift dash   Ctrl slide   Space jump";
+        text.text =
+            "HERO ARENA   benchmark space for scale, height, and route clarity\n" +
+            $"{ProjectStructureBindings.GetDisplayString(ProjectStructureAction.Grapple)} grapple   " +
+            $"{ProjectStructureBindings.GetDisplayString(ProjectStructureAction.Dash)} dash   " +
+            $"{ProjectStructureBindings.GetDisplayString(ProjectStructureAction.Slide)} slide   " +
+            $"{ProjectStructureBindings.GetDisplayString(ProjectStructureAction.Jump)} jump";
     }
 }

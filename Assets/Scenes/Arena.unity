@@ -682,9 +682,13 @@ MonoBehaviour:
   dashText: {fileID: 0}
   hpText: {fileID: 0}
   coinText: {fileID: 0}
+  fpsText: {fileID: 0}
+  fpsLowText: {fileID: 0}
   coreProgressFill: {fileID: 0}
   hpFill: {fileID: 0}
   dashRechargeFill: {fileID: 0}
+  fpsBarFill: {fileID: 0}
+  fpsLowBarFill: {fileID: 0}
   dashPips:
   - {fileID: 0}
   - {fileID: 0}
@@ -695,6 +699,8 @@ MonoBehaviour:
   objectivePanel: {fileID: 0}
   vitalsPanel: {fileID: 0}
   refreshInterval: 0.2
+  fpsSampleCount: 180
+  fpsBarMax: 240
 --- !u!224 &309707575 stripped
 RectTransform:
   m_CorrespondingSourceObject: {fileID: 6349391256589938752, guid: 92eb70f1c1e264e5f8cd490ae079e84e, type: 3}
@@ -2865,7 +2871,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!224 &2087081676
 RectTransform:
   m_ObjectHideFlags: 0

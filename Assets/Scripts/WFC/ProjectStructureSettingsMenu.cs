@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
@@ -18,6 +19,9 @@ public class ProjectStructureSettingsMenu : MonoBehaviour
     private Image panelImage;
     private int selectedIndex;
     private bool isOpen;
+    private bool isBindingMenu;
+    private bool awaitingBinding;
+    private ProjectStructureAction pendingBindingAction;
 
     private float sensitivity;
     private float baseFov;
@@ -33,6 +37,7 @@ public class ProjectStructureSettingsMenu : MonoBehaviour
         "Field of View",
         "Volume",
         "UI Scale",
+        "Keybinds",
         "Reset",
         "Restart Run",
         "Back to Title"
@@ -40,6 +45,7 @@ public class ProjectStructureSettingsMenu : MonoBehaviour
 
     private void Start()
     {
+        ProjectStructureBindings.EnsureLoaded();
         if (instance != null && instance != this)
         {
             Destroy(gameObject);
@@ -70,16 +76,48 @@ public class ProjectStructureSettingsMenu : MonoBehaviour
 
         if (UnityEngine.InputSystem.Keyboard.current.escapeKey.wasPressedThisFrame)
         {
+            if (awaitingBinding)
+            {
+                awaitingBinding = false;
+                RefreshText();
+                return;
+            }
+            if (isBindingMenu)
+            {
+                isBindingMenu = false;
+                selectedIndex = 4;
+                RefreshText();
+                return;
+            }
             Toggle();
             return;
         }
 
         if (!isOpen) return;
 
+        if (awaitingBinding)
+        {
+            if (ProjectStructureBindings.TryCaptureBinding(out ProjectStructureBindingValue binding, out bool cancelled))
+            {
+                ProjectStructureBindings.SetBinding(pendingBindingAction, binding);
+                awaitingBinding = false;
+                ShowPreviewStatus($"{ProjectStructureBindings.GetLabel(pendingBindingAction)}: {ProjectStructureBindings.GetDisplayString(binding)}");
+            }
+            else if (cancelled)
+            {
+                awaitingBinding = false;
+            }
+
+            RefreshText();
+            return;
+        }
+
+        string[] activeLabels = isBindingMenu ? GetBindingLabels() : optionLabels;
+
         if (UnityEngine.InputSystem.Keyboard.current.upArrowKey.wasPressedThisFrame)
-            selectedIndex = (selectedIndex + optionLabels.Length - 1) % optionLabels.Length;
+            selectedIndex = (selectedIndex + activeLabels.Length - 1) % activeLabels.Length;
         else if (UnityEngine.InputSystem.Keyboard.current.downArrowKey.wasPressedThisFrame)
-            selectedIndex = (selectedIndex + 1) % optionLabels.Length;
+            selectedIndex = (selectedIndex + 1) % activeLabels.Length;
 
         float delta = 0f;
         if (UnityEngine.InputSystem.Keyboard.current.leftArrowKey.wasPressedThisFrame)
@@ -87,7 +125,7 @@ public class ProjectStructureSettingsMenu : MonoBehaviour
         else if (UnityEngine.InputSystem.Keyboard.current.rightArrowKey.wasPressedThisFrame)
             delta = 1f;
 
-        if (Mathf.Abs(delta) > 0.01f)
+        if (!isBindingMenu && Mathf.Abs(delta) > 0.01f)
             AdjustSelected(delta);
 
         if (UnityEngine.InputSystem.Keyboard.current.enterKey.wasPressedThisFrame ||
@@ -110,6 +148,9 @@ public class ProjectStructureSettingsMenu : MonoBehaviour
 
         CacheValues();
         isOpen = true;
+        isBindingMenu = false;
+        awaitingBinding = false;
+        selectedIndex = 0;
         previousTimeScale = Time.timeScale;
         previousUiState = player != null && player.isUIActive;
         Time.timeScale = 0f;
@@ -126,6 +167,8 @@ public class ProjectStructureSettingsMenu : MonoBehaviour
         ProjectStructureUIRoot.SetUIScale(uiScale);
 
         isOpen = false;
+        isBindingMenu = false;
+        awaitingBinding = false;
         Time.timeScale = previousTimeScale;
         if (player != null)
             player.ToggleUIMode(previousUiState);
@@ -143,7 +186,7 @@ public class ProjectStructureSettingsMenu : MonoBehaviour
 
     private void AdjustSelected(float direction)
     {
-        if (selectedIndex == optionLabels.Length - 1) return;
+        if (selectedIndex >= 4) return;
 
         switch (selectedIndex)
         {
@@ -168,9 +211,19 @@ public class ProjectStructureSettingsMenu : MonoBehaviour
 
     private void ActivateSelected()
     {
+        if (isBindingMenu)
+        {
+            ActivateBindingMenuOption();
+            return;
+        }
+
         switch (selectedIndex)
         {
             case 4:
+                isBindingMenu = true;
+                selectedIndex = 0;
+                break;
+            case 5:
                 sensitivity = 100f;
                 baseFov = 90f;
                 masterVolume = 1f;
@@ -179,19 +232,40 @@ public class ProjectStructureSettingsMenu : MonoBehaviour
                     player.ApplySettings(sensitivity, baseFov, masterVolume, false);
                 ProjectStructureUIRoot.SetUIScale(uiScale, false);
                 break;
-            case 5:
+            case 6:
                 if (presentation != null)
                     presentation.RestartRunFromMenu();
                 isOpen = false;
                 SetVisible(false);
                 break;
-            case 6:
+            case 7:
                 if (presentation != null)
                     presentation.ReturnToTitleFromMenu();
                 isOpen = false;
                 SetVisible(false);
                 break;
         }
+    }
+
+    private void ActivateBindingMenuOption()
+    {
+        int actionCount = ProjectStructureBindings.GameplayActions.Count;
+        if (selectedIndex < actionCount)
+        {
+            pendingBindingAction = ProjectStructureBindings.GameplayActions[selectedIndex];
+            awaitingBinding = true;
+            return;
+        }
+
+        if (selectedIndex == actionCount)
+        {
+            ProjectStructureBindings.ResetAll();
+            ShowPreviewStatus("Keybinds reset");
+            return;
+        }
+
+        isBindingMenu = false;
+        selectedIndex = 4;
     }
 
     private void BuildOverlay()
@@ -213,6 +287,7 @@ public class ProjectStructureSettingsMenu : MonoBehaviour
 
         titleText = CreateText(panelRoot.transform, "SettingsTitle", 44f, TextAlignmentOptions.Center, new Vector2(0.5f, 0.72f));
         bodyText = CreateText(panelRoot.transform, "SettingsBody", 24f, TextAlignmentOptions.Center, new Vector2(0.5f, 0.44f));
+        bodyText.rectTransform.sizeDelta = new Vector2(1280f, 760f);
     }
 
     private TMP_Text CreateText(Transform parent, string name, float size, TextAlignmentOptions alignment, Vector2 anchor)
@@ -258,8 +333,19 @@ public class ProjectStructureSettingsMenu : MonoBehaviour
         if (panelImage != null)
             panelImage.color = ResolvePanelColor();
 
+        if (isBindingMenu)
+        {
+            bodyText.fontSize = 18f;
+            bodyText.alignment = TextAlignmentOptions.TopLeft;
+            RefreshBindingText();
+            return;
+        }
+
+        bodyText.fontSize = 24f;
+        bodyText.alignment = TextAlignmentOptions.Center;
+
         bool actionLine = selectedIndex >= 4;
-        string footer = selectedIndex == 4
+        string footer = selectedIndex == 5
             ? "UP / DOWN select   LEFT / RIGHT change   ENTER reset   ESC close"
             : actionLine
                 ? "UP / DOWN select   ENTER confirm   ESC close"
@@ -271,10 +357,51 @@ public class ProjectStructureSettingsMenu : MonoBehaviour
             $"{GetLine(1, $"Field of View      {Mathf.RoundToInt(baseFov),3}   {BuildMeter(Mathf.InverseLerp(70f, 120f, baseFov), 12)}")}\n" +
             $"{GetLine(2, $"Volume             {Mathf.RoundToInt(masterVolume * 100f),3}%  {BuildMeter(masterVolume, 12)}")}\n" +
             $"{GetLine(3, $"UI Scale           {Mathf.RoundToInt(uiScale * 100f),3}%  {BuildMeter(Mathf.InverseLerp(ProjectStructureUIRoot.MinUIScale, ProjectStructureUIRoot.MaxUIScale, uiScale), 12)}")}\n" +
-            $"{GetLine(4, "Reset")}\n" +
-            $"{GetLine(5, restartLabel)}\n" +
-            $"{GetLine(6, "Back to Title")}\n\n" +
+            $"{GetLine(4, "Keybinds")}\n" +
+            $"{GetLine(5, "Reset")}\n" +
+            $"{GetLine(6, restartLabel)}\n" +
+            $"{GetLine(7, "Back to Title")}\n\n" +
             footer;
+    }
+
+    private void RefreshBindingText()
+    {
+        string[] bindingLabels = GetBindingLabels();
+        string lines = BuildStatusLine() + "\n\n";
+        for (int i = 0; i < bindingLabels.Length; i++)
+            lines += GetLine(i, bindingLabels[i]) + "\n";
+
+        string footer = awaitingBinding
+            ? "Press a key or mouse button   ESC cancel"
+            : "UP / DOWN select   ENTER rebind   ESC back";
+
+        string currentLine = awaitingBinding
+            ? $"\nWaiting for {ProjectStructureBindings.GetLabel(pendingBindingAction).ToLowerInvariant()}..."
+            : string.Empty;
+
+        bodyText.text = lines + currentLine + "\n" + footer;
+    }
+
+    private string[] GetBindingLabels()
+    {
+        var actions = ProjectStructureBindings.GameplayActions;
+        string[] labels = new string[actions.Count + 2];
+        for (int i = 0; i < actions.Count; i++)
+        {
+            ProjectStructureAction action = actions[i];
+            labels[i] = $"{ProjectStructureBindings.GetLabel(action),-18} {ProjectStructureBindings.GetDisplayString(action)}";
+        }
+
+        labels[actions.Count] = "Reset Keybinds";
+        labels[actions.Count + 1] = "Back";
+        return labels;
+    }
+
+    private void ShowPreviewStatus(string message)
+    {
+        if (player == null || string.IsNullOrWhiteSpace(message))
+            return;
+        player.ShowTransientStatus(message, 1.2f);
     }
 
     private string GetLine(int index, string label)

@@ -166,6 +166,7 @@ public class Gun : MonoBehaviour
 
     private void Start()
     {
+        ProjectStructureBindings.EnsureLoaded();
         player = GetComponentInParent<PlayerController>();
         if (gunBarrel == null && Camera.main != null)
             gunBarrel = Camera.main.transform;
@@ -190,25 +191,23 @@ public class Gun : MonoBehaviour
             taggedTarget = null;
 
         if (player != null && player.isUIActive) return;
-        if (Mouse.current == null) return;
-
-        bool wantsFire = Mouse.current.leftButton.wasPressedThisFrame;
+        bool wantsFire = ProjectStructureBindings.WasPressedThisFrame(ProjectStructureAction.Fire);
         WeaponPreset preset = ActivePreset;
         if (preset != null && preset.archetype == WeaponArchetype.Magnet)
-            wantsFire = Mouse.current.leftButton.isPressed;
+            wantsFire = ProjectStructureBindings.IsPressed(ProjectStructureAction.Fire);
 
-        bool wantsAltFire = Mouse.current.rightButton.wasPressedThisFrame;
+        bool wantsAltFire = ProjectStructureBindings.WasPressedThisFrame(ProjectStructureAction.AltFire);
 
         if (preset != null && preset.archetype == WeaponArchetype.Rail)
         {
-            if (Mouse.current.rightButton.wasPressedThisFrame)
+            if (ProjectStructureBindings.WasPressedThisFrame(ProjectStructureAction.AltFire))
             {
                 redlineChargeStart = Time.time;
                 BeginRedlineChargeFx(preset);
             }
             if (redlineChargeStart >= 0f)
                 UpdateRedlineChargeFx(Mathf.Clamp01((Time.time - redlineChargeStart) / 1.35f), preset);
-            if (Mouse.current.rightButton.wasReleasedThisFrame && redlineChargeStart >= 0f)
+            if (ProjectStructureBindings.WasReleasedThisFrame(ProjectStructureAction.AltFire) && redlineChargeStart >= 0f)
             {
                 FireRedlineCharge(Mathf.Clamp01((Time.time - redlineChargeStart) / 1.35f));
                 redlineChargeStart = -1f;
@@ -329,16 +328,14 @@ public class Gun : MonoBehaviour
 
     private void HandleWeaponSwitching()
     {
-        if (Keyboard.current == null) return;
-
-        if (Keyboard.current.digit1Key.wasPressedThisFrame) SetFamily(WeaponFamily.Pistol);
-        if (Keyboard.current.digit2Key.wasPressedThisFrame) SetFamily(WeaponFamily.Shotgun);
-        if (Keyboard.current.digit3Key.wasPressedThisFrame) SetFamily(WeaponFamily.Heavy);
+        if (ProjectStructureBindings.WasPressedThisFrame(ProjectStructureAction.WeaponSlot1)) SetFamily(WeaponFamily.Pistol);
+        if (ProjectStructureBindings.WasPressedThisFrame(ProjectStructureAction.WeaponSlot2)) SetFamily(WeaponFamily.Shotgun);
+        if (ProjectStructureBindings.WasPressedThisFrame(ProjectStructureAction.WeaponSlot3)) SetFamily(WeaponFamily.Heavy);
 
         bool lookingAtInteractable = IsLookingAtInteractable();
-        if (Keyboard.current.qKey.wasPressedThisFrame)
+        if (ProjectStructureBindings.WasPressedThisFrame(ProjectStructureAction.VariantPrev))
             CycleVariant(-1);
-        if (Keyboard.current.eKey.wasPressedThisFrame && !lookingAtInteractable)
+        if (ProjectStructureBindings.WasPressedThisFrame(ProjectStructureAction.VariantNext) && !lookingAtInteractable)
             CycleVariant(1);
     }
 
@@ -930,11 +927,22 @@ public class Gun : MonoBehaviour
         yield return new WaitForSecondsRealtime(0.035f);
         while (remainingCoins.Count > 0)
         {
+            for (int i = remainingCoins.Count - 1; i >= 0; i--)
+            {
+                if (remainingCoins[i] == null)
+                    remainingCoins.RemoveAt(i);
+            }
+            if (remainingCoins.Count == 0)
+                break;
+
             int nearestIndex = 0;
             float nearestDistance = float.MaxValue;
             for (int i = 0; i < remainingCoins.Count; i++)
             {
-                float distance = (remainingCoins[i].transform.position - chainPoint).sqrMagnitude;
+                WeaponAbilityObject candidate = remainingCoins[i];
+                if (candidate == null)
+                    continue;
+                float distance = (candidate.transform.position - chainPoint).sqrMagnitude;
                 if (distance >= nearestDistance) continue;
                 nearestDistance = distance;
                 nearestIndex = i;
@@ -942,6 +950,8 @@ public class Gun : MonoBehaviour
 
             WeaponAbilityObject nextCoin = remainingCoins[nearestIndex];
             remainingCoins.RemoveAt(nearestIndex);
+            if (nextCoin == null)
+                continue;
             if (!nextCoin.TryResolve())
                 continue;
             Vector3 nextPoint = nextCoin.transform.position;

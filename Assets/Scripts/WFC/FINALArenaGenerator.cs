@@ -191,6 +191,17 @@ public class CybergrindArenaGenerator : MonoBehaviour
         public float ambientBoost;
     }
 
+    private struct StairVisualCandidate
+    {
+        public int x;
+        public int z;
+        public int dx;
+        public int dz;
+        public float low;
+        public float high;
+        public int score;
+    }
+
     private static readonly int BaseColorId = Shader.PropertyToID("_BaseColor");
     private static readonly int ColorId = Shader.PropertyToID("_Color");
     private static readonly int EmissionColorId = Shader.PropertyToID("_EmissionColor");
@@ -2424,8 +2435,10 @@ public class CybergrindArenaGenerator : MonoBehaviour
             {
                 if (cells[x, z] == CellKind.Void) continue;
                 float topY = GetCellHeight(cells[x, z]) - (pillarDepth * 0.5f) - 0.2f;
-                float widthScale = cells[x, z] == CellKind.Platform || cells[x, z] == CellKind.Bridge ? tileSize * 0.82f : tileSize * 0.72f;
-                CreateCube(root, $"ModularDepthPillar_{x}_{z}", CellCenter(x, z, topY), new Vector3(widthScale, pillarDepth, widthScale), darkMaterial, false);
+                float widthScale = cells[x, z] == CellKind.Platform || cells[x, z] == CellKind.Bridge
+                    ? tileSize * 1.08f
+                    : tileSize * 1.04f;
+                CreateCube(root, $"ModularDepthPillar_{x}_{z}", CellCenter(x, z, topY), new Vector3(widthScale, pillarDepth, widthScale), darkMaterial, true);
             }
         }
     }
@@ -2498,41 +2511,116 @@ public class CybergrindArenaGenerator : MonoBehaviour
 
     private void SpawnStairsAndParkour(Transform root, CellKind[,] cells)
     {
-        int stairsMade = 0;
-        for (int x = 2; x < width - 2; x++)
-        {
-            for (int z = 2; z < length - 2; z++)
-            {
-                if (!IsWalkableForContentCell(x, z)) continue;
-                TryCreateStairsTo(root, cells, x, z, 1, 0, ref stairsMade);
-                TryCreateStairsTo(root, cells, x, z, -1, 0, ref stairsMade);
-                TryCreateStairsTo(root, cells, x, z, 0, 1, ref stairsMade);
-                TryCreateStairsTo(root, cells, x, z, 0, -1, ref stairsMade);
-            }
-        }
+        List<StairVisualCandidate> candidates = CollectStairVisualCandidates(cells);
+        SpawnSelectedStairVisuals(root, cells, candidates);
 
         Vector2Int center = new Vector2Int(width / 2, length / 2);
         SpawnParkourCluster(root, center + new Vector2Int(-5, -4));
         SpawnParkourCluster(root, center + new Vector2Int(5, 4));
     }
 
-    private void TryCreateStairsTo(Transform root, CellKind[,] cells, int x, int z, int dx, int dz, ref int stairsMade)
+    private List<StairVisualCandidate> CollectStairVisualCandidates(CellKind[,] cells)
+    {
+        List<StairVisualCandidate> candidates = new List<StairVisualCandidate>();
+        for (int x = 2; x < width - 2; x++)
+        {
+            for (int z = 2; z < length - 2; z++)
+            {
+                if (!IsWalkableForContentCell(x, z)) continue;
+                TryAddStairVisualCandidate(candidates, cells, x, z, 1, 0);
+                TryAddStairVisualCandidate(candidates, cells, x, z, 0, 1);
+            }
+        }
+
+        candidates.Sort((a, b) => b.score.CompareTo(a.score));
+        return candidates;
+    }
+
+    private void TryAddStairVisualCandidate(List<StairVisualCandidate> candidates, CellKind[,] cells, int x, int z, int dx, int dz)
     {
         int ex = x + dx;
         int ez = z + dz;
         if (!InBounds(ex, ez)) return;
         if (!IsWalkableForContentCell(ex, ez)) return;
 
-        float low = GetCellHeight(cells[x, z]);
-        float high = GetCellHeight(cells[ex, ez]);
-        if (high <= low + 1f) return;
-        if (high - low > levelHeight + 0.75f) return;
+        float fromY = GetCellHeight(cells[x, z]);
+        float toY = GetCellHeight(cells[ex, ez]);
+        if (Mathf.Abs(fromY - toY) <= 1f) return;
+        if (Mathf.Abs(fromY - toY) > levelHeight + 0.75f) return;
+        if (HasTraversalConnectorBetween(new Vector2Int(x, z), new Vector2Int(ex, ez)) == false)
+            return;
+
+        bool toHigher = toY > fromY;
+        int score = 0;
+        score += Mathf.RoundToInt(Mathf.Abs(toY - fromY) * 10f);
+        score -= Mathf.Abs(x - width / 2) + Mathf.Abs(z - length / 2);
+        score += (cells[x, z] == CellKind.Platform || cells[ex, ez] == CellKind.Platform) ? 4 : 0;
+        score += (cells[x, z] == CellKind.UpperPlatform || cells[ex, ez] == CellKind.UpperPlatform) ? 6 : 0;
+        score += Mathf.Abs(x * 92821 ^ z * 68917 ^ dx * 2713 ^ dz * 3821 ^ lastGeneratedSeed) % 5;
+
+        candidates.Add(new StairVisualCandidate
+        {
+            x = toHigher ? x : ex,
+            z = toHigher ? z : ez,
+            dx = toHigher ? dx : -dx,
+            dz = toHigher ? dz : -dz,
+            low = Mathf.Min(fromY, toY),
+            high = Mathf.Max(fromY, toY),
+            score = score
+        });
+    }
+
+    private int SpawnSelectedStairVisuals(Transform root, CellKind[,] cells, List<StairVisualCandidate> candidates)
+    {
+        if (candidates == null || candidates.Count == 0)
+            return 0;
+
+        int targetCount = arenaMode == ArenaMode.Shop
+            ? 1
+            : arenaMode == ArenaMode.Boss
+                ? Mathf.Clamp(Mathf.RoundToInt((width + length) / 18f), 1, 3)
+                : Mathf.Clamp(Mathf.RoundToInt((width + length) / 12f), 1, 5);
+
+        int stairsMade = 0;
+        HashSet<long> usedEdges = new HashSet<long>();
+        HashSet<int> usedCells = new HashSet<int>();
+        for (int i = 0; i < candidates.Count && stairsMade < targetCount; i++)
+        {
+            StairVisualCandidate candidate = candidates[i];
+            int ex = candidate.x + candidate.dx;
+            int ez = candidate.z + candidate.dz;
+            long edgeKey = EncodeTraversalKey(new Vector2Int(candidate.x, candidate.z), new Vector2Int(ex, ez));
+            int fromCellKey = candidate.x * 1024 + candidate.z;
+            int toCellKey = ex * 1024 + ez;
+            if (usedEdges.Contains(edgeKey) || usedCells.Contains(fromCellKey) || usedCells.Contains(toCellKey))
+                continue;
+
+            CreateStairVisual(root, candidate);
+            usedEdges.Add(edgeKey);
+            usedCells.Add(fromCellKey);
+            usedCells.Add(toCellKey);
+            stairsMade++;
+        }
+
+        if (stairsMade == 0)
+        {
+            CreateStairVisual(root, candidates[0]);
+            stairsMade = 1;
+        }
+
+        return stairsMade;
+    }
+
+    private void CreateStairVisual(Transform root, StairVisualCandidate candidate)
+    {
+        int x = candidate.x;
+        int z = candidate.z;
+        int dx = candidate.dx;
+        int dz = candidate.dz;
+        float low = candidate.low;
+        float high = candidate.high;
 
         int steps = 3;
-        var connectorPoints = new List<Vector3>(steps + 1)
-        {
-            CellCenter(x, z, low + 0.12f)
-        };
         for (int i = 1; i <= steps; i++)
         {
             float t = i / (float)(steps + 1);
@@ -2540,11 +2628,7 @@ public class CybergrindArenaGenerator : MonoBehaviour
             pos += new Vector3(dx * tileSize * t, 0f, dz * tileSize * t);
             Vector3 scale = new Vector3(dx == 0 ? tileSize * 0.68f : tileSize * 0.52f, 0.24f, dz == 0 ? tileSize * 0.68f : tileSize * 0.52f);
             CreateCube(root, $"Step_{x}_{z}_{i}", pos, scale, darkMaterial);
-            connectorPoints.Add(pos + Vector3.up * 0.18f);
         }
-        connectorPoints.Add(CellCenter(ex, ez, high + 0.12f));
-        RegisterTraversalConnector(new Vector2Int(x, z), new Vector2Int(ex, ez), connectorPoints);
-        stairsMade++;
     }
 
     private void SpawnParkourCluster(Transform root, Vector2Int around)
