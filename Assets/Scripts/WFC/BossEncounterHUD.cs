@@ -139,7 +139,7 @@ public class BossEncounterHUD : MonoBehaviour
             if (rewardPending && !lastRewardPending)
             {
                 ShowEncounterBanner(
-                    arenaDirector.IsFinalBossFloor() ? "CORE DROP READY" : "REWARD READY",
+                    "REWARD READY",
                     arenaDirector.IsFinalBossFloor()
                         ? "Take the weapon, then enter the core."
                         : "Grab the weapon before you leave.",

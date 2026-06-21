@@ -1,6 +1,7 @@
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
+using UnityEngine.Rendering;
 
 public class HeroArenaController : MonoBehaviour
 {
@@ -18,6 +19,9 @@ public class HeroArenaController : MonoBehaviour
     private Material accentMaterial;
     private Material hazardMaterial;
     private float rebuildTimer;
+    private readonly System.Collections.Generic.List<Light> presentationLights = new System.Collections.Generic.List<Light>();
+    private ParticleSystem ambientFx;
+    private int CurrentThemeIndex => director != null ? director.CurrentThemeIndex : (generator != null ? generator.themeIndex : 0);
 
     private void Start()
     {
@@ -33,6 +37,8 @@ public class HeroArenaController : MonoBehaviour
         BuildHeroArena();
         BuildTargets();
         BuildGuide();
+        ApplyPresentation();
+        BuildAmbientFx();
     }
 
     private void Update()
@@ -77,6 +83,7 @@ public class HeroArenaController : MonoBehaviour
         BuildTowers();
         BuildCrossLinks();
         BuildCombatAccents();
+        BuildBackdrop();
 
         PlacePlayer(origin + new Vector3(0f, 1.2f, -24f));
     }
@@ -158,6 +165,85 @@ public class HeroArenaController : MonoBehaviour
             CreateBlock("HazardLineNorth", new Vector3(0f, 0.05f, 36f), new Vector3(18f, 0.04f, 0.35f), hazardMaterial);
             CreateBlock("HazardLineSouth", new Vector3(0f, 0.05f, -24f), new Vector3(18f, 0.04f, 0.35f), hazardMaterial);
         }
+    }
+
+    private void BuildBackdrop()
+    {
+        Color pulseColor = ProjectStructureThemePalette.ResolveAccent(CurrentThemeIndex);
+        CreateBlock("HeroNorthBridge", new Vector3(0f, 25f, 42f), new Vector3(58f, 0.45f, 1.2f), darkMaterial);
+        CreateBlock("HeroSouthBridge", new Vector3(0f, 24f, -34f), new Vector3(52f, 0.38f, 1.1f), darkMaterial);
+        AddPulseFx(CreateBlock("HeroNorthGlow", new Vector3(0f, 25.15f, 41.2f), new Vector3(42f, 0.08f, 0.08f), accentMaterial), pulseColor, 1.8f, Vector3.zero);
+        AddPulseFx(CreateBlock("HeroSouthGlow", new Vector3(0f, 24.15f, -33.2f), new Vector3(38f, 0.08f, 0.08f), accentMaterial), pulseColor, 1.6f, Vector3.zero);
+
+        for (int side = -1; side <= 1; side += 2)
+        {
+            float x = side * 30f;
+            CreateBlock($"HeroSideMass_{side}", new Vector3(x, 10f, 4f), new Vector3(3.2f, 18f, 70f), darkMaterial);
+            AddPulseFx(CreateBlock($"HeroSideGlow_{side}", new Vector3(x - side * 0.9f, 11f, 4f), new Vector3(0.18f, 12f, 54f), accentMaterial), pulseColor, 1.4f, Vector3.zero);
+            BuildBackdropCluster($"HeroFrameCluster_{side}", side * 39f, side > 0 ? 48f : -40f, 16f, 10f, pulseColor);
+        }
+
+        CreateBlock("HeroUpperTrussNorth", new Vector3(0f, 31f, 44f), new Vector3(66f, 0.5f, 1.4f), darkMaterial);
+        CreateBlock("HeroUpperTrussSouth", new Vector3(0f, 30f, -36f), new Vector3(60f, 0.5f, 1.4f), darkMaterial);
+        AddPulseFx(CreateBlock("HeroUpperTrussGlowNorth", new Vector3(0f, 31.18f, 43.1f), new Vector3(52f, 0.08f, 0.08f), accentMaterial), pulseColor, 1.55f, Vector3.zero);
+        AddPulseFx(CreateBlock("HeroUpperTrussGlowSouth", new Vector3(0f, 30.18f, -35.1f), new Vector3(46f, 0.08f, 0.08f), accentMaterial), pulseColor, 1.45f, Vector3.zero);
+
+        BuildBackdropTower("HeroBackdropNorthWest", new Vector3(-24f, 0f, 44f), 22f);
+        BuildBackdropTower("HeroBackdropNorthEast", new Vector3(24f, 0f, 44f), 24f);
+        BuildBackdropTower("HeroBackdropSouthWest", new Vector3(-26f, 0f, -36f), 18f);
+        BuildBackdropTower("HeroBackdropSouthEast", new Vector3(26f, 0f, -36f), 20f);
+        BuildBackdropCluster("HeroFarNorthCore", 0f, 54f, 24f, 18f, pulseColor);
+        BuildBackdropCluster("HeroFarSouthCore", 0f, -46f, 20f, 16f, pulseColor);
+
+        switch (Mathf.Abs(CurrentThemeIndex) % 4)
+        {
+            case 1:
+                CreateBlock("HeroSkySpine", new Vector3(0f, 29f, 8f), new Vector3(14f, 0.3f, 2.2f), darkMaterial);
+                AddPulseFx(CreateBlock("HeroSkySpineGlow", new Vector3(0f, 29.16f, 8f), new Vector3(10f, 0.06f, 0.12f), accentMaterial), pulseColor, 2.2f, new Vector3(0f, 14f, 0f));
+                CreateBlock("HeroHighRiseMastL", new Vector3(-30f, 24f, 30f), new Vector3(0.32f, 11f, 0.32f), darkMaterial);
+                CreateBlock("HeroHighRiseMastR", new Vector3(30f, 25f, -20f), new Vector3(0.32f, 13f, 0.32f), darkMaterial);
+                AddPulseFx(CreateBlock("HeroHighRiseBeaconL", new Vector3(-30f, 29.8f, 30f), new Vector3(0.42f, 0.9f, 0.42f), accentMaterial), pulseColor, 2.5f, Vector3.zero);
+                AddPulseFx(CreateBlock("HeroHighRiseBeaconR", new Vector3(30f, 31.8f, -20f), new Vector3(0.42f, 0.9f, 0.42f), accentMaterial), pulseColor, 2.3f, Vector3.zero);
+                break;
+            case 2:
+                CreateBlock("HeroHeatVentA", new Vector3(-18f, 18f, 40f), new Vector3(7f, 0.22f, 2.2f), accentMaterial);
+                CreateBlock("HeroHeatVentB", new Vector3(18f, 17f, -32f), new Vector3(7f, 0.22f, 2.2f), accentMaterial);
+                CreateBlock("HeroHeatBulkheadL", new Vector3(-31f, 12f, 18f), new Vector3(2.4f, 12f, 18f), darkMaterial);
+                CreateBlock("HeroHeatBulkheadR", new Vector3(31f, 11f, -10f), new Vector3(2.4f, 10f, 16f), darkMaterial);
+                AddPulseFx(CreateBlock("HeroHeatSlitL", new Vector3(-29.7f, 13f, 18f), new Vector3(0.12f, 8f, 12f), accentMaterial), pulseColor, 1.9f, Vector3.zero);
+                AddPulseFx(CreateBlock("HeroHeatSlitR", new Vector3(29.7f, 12f, -10f), new Vector3(0.12f, 7f, 10f), accentMaterial), pulseColor, 1.8f, Vector3.zero);
+                break;
+            case 3:
+                AddPulseFx(CreateBlock("HeroSignalRing", new Vector3(0f, 27f, 8f), new Vector3(18f, 0.08f, 18f), accentMaterial), pulseColor, 2.6f, new Vector3(0f, 18f, 0f));
+                AddPulseFx(CreateBlock("HeroSignalAxisNorth", new Vector3(0f, 23f, 41f), new Vector3(0.12f, 9f, 0.12f), accentMaterial), pulseColor, 2.1f, Vector3.zero);
+                AddPulseFx(CreateBlock("HeroSignalAxisSouth", new Vector3(0f, 22f, -33f), new Vector3(0.12f, 8f, 0.12f), accentMaterial), pulseColor, 2.1f, Vector3.zero);
+                CreateBlock("HeroSignalBridge", new Vector3(0f, 30f, 8f), new Vector3(24f, 0.22f, 0.6f), darkMaterial);
+                break;
+            default:
+                CreateBlock("HeroCrossfireTowerL", new Vector3(-32f, 15f, 8f), new Vector3(1.8f, 16f, 8f), darkMaterial);
+                CreateBlock("HeroCrossfireTowerR", new Vector3(32f, 15f, 8f), new Vector3(1.8f, 16f, 8f), darkMaterial);
+                AddPulseFx(CreateBlock("HeroCrossfireSpineL", new Vector3(-30.9f, 16f, 8f), new Vector3(0.14f, 12f, 5.8f), accentMaterial), pulseColor, 1.7f, Vector3.zero);
+                AddPulseFx(CreateBlock("HeroCrossfireSpineR", new Vector3(30.9f, 16f, 8f), new Vector3(0.14f, 12f, 5.8f), accentMaterial), pulseColor, 1.7f, Vector3.zero);
+                break;
+        }
+    }
+
+    private void BuildBackdropTower(string name, Vector3 localPosition, float height)
+    {
+        CreateBlock(name + "_Core", localPosition + new Vector3(0f, height * 0.5f, 0f), new Vector3(6.4f, height, 6.4f), darkMaterial);
+        CreateBlock(name + "_ShoulderL", localPosition + new Vector3(-4.2f, height * 0.42f, 0f), new Vector3(2.4f, height * 0.78f, 3.4f), darkMaterial);
+        CreateBlock(name + "_ShoulderR", localPosition + new Vector3(4.2f, height * 0.36f, 0f), new Vector3(2.0f, height * 0.66f, 3f), darkMaterial);
+        CreateBlock(name + "_Cap", localPosition + new Vector3(0f, height + 0.7f, 0f), new Vector3(8.4f, 0.45f, 8.4f), darkMaterial);
+        AddPulseFx(CreateBlock(name + "_Glow", localPosition + new Vector3(0f, height * 0.62f, 2.8f), new Vector3(0.12f, height * 0.52f, 0.12f), accentMaterial), ProjectStructureThemePalette.ResolveAccent(CurrentThemeIndex), 1.7f, Vector3.zero);
+    }
+
+    private void BuildBackdropCluster(string name, float x, float z, float height, float width, Color pulseColor)
+    {
+        CreateBlock(name + "_Core", new Vector3(x, height * 0.5f, z), new Vector3(width, height, 7.5f), darkMaterial);
+        CreateBlock(name + "_ShoulderLeft", new Vector3(x - width * 0.42f, height * 0.38f, z + 1.8f), new Vector3(width * 0.24f, height * 0.72f, 4.2f), darkMaterial);
+        CreateBlock(name + "_ShoulderRight", new Vector3(x + width * 0.36f, height * 0.34f, z - 1.4f), new Vector3(width * 0.18f, height * 0.6f, 3.8f), darkMaterial);
+        CreateBlock(name + "_Deck", new Vector3(x, height + 0.45f, z), new Vector3(width + 4f, 0.42f, 8.8f), darkMaterial);
+        AddPulseFx(CreateBlock(name + "_Glow", new Vector3(x, height * 0.58f, z + 3.2f), new Vector3(0.14f, height * 0.5f, 0.14f), accentMaterial), pulseColor, 1.5f, Vector3.zero);
     }
 
     private void BuildTargets()
@@ -245,6 +331,185 @@ public class HeroArenaController : MonoBehaviour
         if (renderer != null && material != null)
             renderer.sharedMaterial = material;
         return block;
+    }
+
+    private void ApplyPresentation()
+    {
+        ResolveThemePresentation(out Color fogColor, out Color skyColor, out Color equatorColor, out Color groundColor, out Color keyColor, out Color fillColorA, out Color fillColorB, out float fogDensity);
+        RenderSettings.fog = true;
+        RenderSettings.fogMode = FogMode.ExponentialSquared;
+        RenderSettings.fogColor = fogColor;
+        RenderSettings.fogDensity = fogDensity;
+        RenderSettings.ambientMode = AmbientMode.Trilight;
+        RenderSettings.ambientSkyColor = skyColor;
+        RenderSettings.ambientEquatorColor = equatorColor;
+        RenderSettings.ambientGroundColor = groundColor;
+
+        ClearPresentationLights();
+        CreatePresentationLight("HeroKeyLight", LightType.Directional, new Vector3(0f, 0f, 0f), Quaternion.Euler(48f, -30f, 0f), keyColor, 1.55f, 0f);
+        CreatePresentationLight("HeroFillNorth", LightType.Point, new Vector3(0f, 16f, 28f), Quaternion.identity, fillColorA, 1.1f, 72f);
+        CreatePresentationLight("HeroFillCore", LightType.Point, new Vector3(0f, 12f, 8f), Quaternion.identity, fillColorB, 0.8f, 54f);
+    }
+
+    private void BuildAmbientFx()
+    {
+        if (heroRoot == null)
+            return;
+
+        Transform existing = heroRoot.Find("HeroAmbientFx");
+        if (existing != null)
+            Destroy(existing.gameObject);
+
+        GameObject fxRoot = new GameObject("HeroAmbientFx");
+        fxRoot.transform.SetParent(heroRoot, false);
+        fxRoot.transform.localPosition = new Vector3(0f, 6f, 6f);
+
+        Color baseColor = ProjectStructureThemePalette.ResolveAccent(CurrentThemeIndex);
+        ambientFx = CreateAmbientEmitter(
+            fxRoot.transform,
+            "HeroMotes",
+            Mathf.Abs(CurrentThemeIndex) % 4 == 2 ? 12f : 8f,
+            Mathf.Abs(CurrentThemeIndex) % 4 == 2 ? 0.18f : 0.3f,
+            new Color(baseColor.r, baseColor.g, baseColor.b, 0.16f),
+            new Vector3(56f, 10f, 62f),
+            Mathf.Abs(CurrentThemeIndex) % 4 != 2);
+
+        switch (Mathf.Abs(CurrentThemeIndex) % 4)
+        {
+            case 1:
+                CreateAmbientEmitter(fxRoot.transform, "HeroLiftSparks", 5f, 0.4f, new Color(baseColor.r, baseColor.g, baseColor.b, 0.11f), new Vector3(38f, 18f, 42f), true).transform.localPosition = new Vector3(0f, 10f, 8f);
+                break;
+            case 2:
+                CreateAmbientEmitter(fxRoot.transform, "HeroHeatAsh", 9f, 0.16f, new Color(baseColor.r, baseColor.g, baseColor.b, 0.16f), new Vector3(44f, 8f, 46f), false).transform.localPosition = new Vector3(0f, 3f, 6f);
+                break;
+            case 3:
+                CreateAmbientEmitter(fxRoot.transform, "HeroSignalDust", 6f, 0.34f, new Color(baseColor.r, baseColor.g, baseColor.b, 0.1f), new Vector3(42f, 16f, 44f), true).transform.localPosition = new Vector3(0f, 9f, 6f);
+                break;
+            default:
+                CreateAmbientEmitter(fxRoot.transform, "HeroCrossfireShards", 5f, 0.22f, new Color(baseColor.r, baseColor.g, baseColor.b, 0.12f), new Vector3(36f, 12f, 38f), false).transform.localPosition = new Vector3(0f, 8f, 8f);
+                break;
+        }
+    }
+
+    private void ResolveThemePresentation(out Color fogColor, out Color skyColor, out Color equatorColor, out Color groundColor, out Color keyColor, out Color fillColorA, out Color fillColorB, out float fogDensity)
+    {
+        ProjectStructureThemePalette.SupportPresentation presentation = ProjectStructureThemePalette.ResolveHeroArenaPresentation(CurrentThemeIndex);
+        fogColor = presentation.fogColor;
+        skyColor = presentation.skyColor;
+        equatorColor = presentation.equatorColor;
+        groundColor = presentation.groundColor;
+        keyColor = presentation.keyColor;
+        fillColorA = presentation.fillColorA;
+        fillColorB = presentation.fillColorB;
+        fogDensity = presentation.fogDensity;
+    }
+
+    private void AddPulseFx(GameObject target, Color emissionColor, float pulseSpeed, Vector3 rotationSpeed)
+    {
+        if (target == null)
+            return;
+
+        ArenaPulseFx pulse = target.GetComponent<ArenaPulseFx>();
+        if (pulse == null)
+            pulse = target.AddComponent<ArenaPulseFx>();
+        pulse.pulseSpeed = pulseSpeed;
+        pulse.rotationDegreesPerSecond = rotationSpeed;
+        pulse.emissionColor = emissionColor;
+        pulse.emissionStrength = 1.15f;
+        pulse.emissionPulse = 0.24f;
+        pulse.scalePulse = 0.01f;
+    }
+
+    private ParticleSystem CreateAmbientEmitter(Transform parent, string name, float rate, float particleLifetime, Color color, Vector3 boxSize, bool drifting)
+    {
+        GameObject go = new GameObject(name);
+        go.transform.SetParent(parent, false);
+        ParticleSystem ps = go.AddComponent<ParticleSystem>();
+        ParticleSystemRenderer renderer = go.GetComponent<ParticleSystemRenderer>();
+        if (renderer != null)
+        {
+            Shader shader = Shader.Find("Universal Render Pipeline/Particles/Unlit");
+            if (shader == null) shader = Shader.Find("Particles/Standard Unlit");
+            if (shader == null) shader = Shader.Find("Standard");
+            Material mat = new Material(shader);
+            mat.color = color;
+            renderer.material = mat;
+        }
+
+        var main = ps.main;
+        main.loop = true;
+        main.playOnAwake = true;
+        main.startLifetime = particleLifetime;
+        main.startSpeed = drifting ? 0.35f : 0.12f;
+        main.startSize = drifting ? 0.14f : 0.08f;
+        main.startColor = color;
+        main.maxParticles = Mathf.Clamp(Mathf.RoundToInt(rate * particleLifetime * 18f), 48, drifting ? 220 : 120);
+
+        var emission = ps.emission;
+        emission.rateOverTime = rate;
+
+        var shape = ps.shape;
+        shape.shapeType = ParticleSystemShapeType.Box;
+        shape.scale = boxSize;
+
+        var velocityOverLifetime = ps.velocityOverLifetime;
+        velocityOverLifetime.enabled = drifting;
+        if (drifting)
+        {
+            velocityOverLifetime.space = ParticleSystemSimulationSpace.Local;
+            velocityOverLifetime.x = new ParticleSystem.MinMaxCurve(-0.08f, 0.08f);
+            velocityOverLifetime.y = new ParticleSystem.MinMaxCurve(0.08f, 0.22f);
+            velocityOverLifetime.z = new ParticleSystem.MinMaxCurve(-0.08f, 0.08f);
+        }
+
+        var colorOverLifetime = ps.colorOverLifetime;
+        colorOverLifetime.enabled = true;
+        Gradient gradient = new Gradient();
+        gradient.SetKeys(
+            new[]
+            {
+                new GradientColorKey(new Color(color.r, color.g, color.b), 0f),
+                new GradientColorKey(new Color(color.r, color.g, color.b), 1f)
+            },
+            new[]
+            {
+                new GradientAlphaKey(0f, 0f),
+                new GradientAlphaKey(color.a, 0.18f),
+                new GradientAlphaKey(color.a * 0.65f, 0.72f),
+                new GradientAlphaKey(0f, 1f)
+            });
+        colorOverLifetime.color = new ParticleSystem.MinMaxGradient(gradient);
+
+        return ps;
+    }
+
+    private void CreatePresentationLight(string name, LightType type, Vector3 localPosition, Quaternion localRotation, Color color, float intensity, float range)
+    {
+        if (heroRoot == null)
+            return;
+
+        GameObject go = new GameObject(name);
+        go.transform.SetParent(heroRoot, false);
+        go.transform.localPosition = localPosition;
+        go.transform.localRotation = localRotation;
+        Light light = go.AddComponent<Light>();
+        light.type = type;
+        light.color = color;
+        light.intensity = intensity;
+        if (type != LightType.Directional)
+            light.range = range;
+        light.shadows = LightShadows.None;
+        presentationLights.Add(light);
+    }
+
+    private void ClearPresentationLights()
+    {
+        for (int i = 0; i < presentationLights.Count; i++)
+        {
+            if (presentationLights[i] != null)
+                Destroy(presentationLights[i].gameObject);
+        }
+        presentationLights.Clear();
     }
 
     private void BuildGuide()

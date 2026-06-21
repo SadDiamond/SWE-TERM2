@@ -16,6 +16,7 @@ public class RunStatusHUD : MonoBehaviour
     public TMP_Text cycleText;
     public TMP_Text directiveText;
     public TMP_Text objectiveText;
+    public TMP_Text floorTimerText;
     public TMP_Text seedText;
     public TMP_Text coreProgressText;
     public TMP_Text speedText;
@@ -31,6 +32,7 @@ public class RunStatusHUD : MonoBehaviour
     public Image fpsLowBarFill;
     public Image[] dashPips = new Image[5];
     public Image headerPanel;
+    public Image floorTimerPanel;
     public Image objectivePanel;
     public Image vitalsPanel;
 
@@ -44,10 +46,13 @@ public class RunStatusHUD : MonoBehaviour
     private float[] fpsSortBuffer;
     private int fpsSampleCursor;
     private int fpsSampleUsed;
+    private float referenceRefreshTimer;
     private PlayerController cachedPlayer;
     private Transform cachedArenaRoot;
     private Terminal[] cachedTerminals = System.Array.Empty<Terminal>();
     private BasicEnemyAI[] cachedEnemies = System.Array.Empty<BasicEnemyAI>();
+    private float displayedHealth01 = 1f;
+    private bool healthDisplayInitialized;
 
     private void Start()
     {
@@ -79,6 +84,9 @@ public class RunStatusHUD : MonoBehaviour
     private void Update()
     {
         CaptureFrameSample();
+        RefreshFloorTimerDisplay();
+        UpdateCachedReferences();
+        UpdateHealthBarVisual(Time.unscaledDeltaTime);
 
         refreshTimer -= Time.deltaTime;
         if (refreshTimer > 0f) return;
@@ -99,6 +107,7 @@ public class RunStatusHUD : MonoBehaviour
         RefreshSeedText();
         RefreshCoreProgress();
         RefreshVitals();
+        RefreshFloorTimerDisplay();
 
         if (objectiveText == null) return;
 
@@ -226,10 +235,7 @@ public class RunStatusHUD : MonoBehaviour
         if (arenaDirector == null || runState == null) return;
 
         if (coreProgressText != null)
-            coreProgressText.text = $"Core {runState.bossesClearedThisRun}/{arenaDirector.bossFloorsToReachCore}";
-
-        if (coreProgressFill != null)
-            coreProgressFill.fillAmount = Mathf.Clamp01((float)runState.bossesClearedThisRun / Mathf.Max(1, arenaDirector.bossFloorsToReachCore));
+            coreProgressText.text = $"Floor {arenaDirector.floor}";
 
         if (headerPanel != null && arenaDirector.generator != null)
             headerPanel.color = ResolvePanelColor(arenaDirector.generator.arenaMode, 0.86f);
@@ -239,13 +245,11 @@ public class RunStatusHUD : MonoBehaviour
 
     private void RefreshVitals()
     {
-        if (cachedPlayer == null)
-            cachedPlayer = FindAnyObjectByType<PlayerController>();
         PlayerController player = cachedPlayer;
         if (player == null) return;
 
         if (hpText != null)
-            hpText.text = $"{Mathf.CeilToInt(player.currentHealth):000}";
+            hpText.text = $"HP {Mathf.CeilToInt(player.currentHealth):000}";
         if (coinText != null)
             coinText.text = $"{player.currency:000} C";
         if (speedText != null)
@@ -254,10 +258,47 @@ public class RunStatusHUD : MonoBehaviour
             dashText.text = "Dash";
         RefreshDashPips(player);
         if (hpFill != null)
-            hpFill.fillAmount = Mathf.Clamp01(player.currentHealth / Mathf.Max(1f, player.EffectiveMaxHealth));
-        if (hpFill != null)
             hpFill.color = player.Health01 < 0.3f ? new Color(1f, 0.16f, 0.12f, 1f) : new Color(0.12f, 0.88f, 0.95f, 1f);
         RefreshPerformance();
+    }
+
+    private void RefreshFloorTimerDisplay()
+    {
+        bool visible = arenaDirector != null &&
+                       arenaDirector.enabled &&
+                       arenaDirector.IsFloorTimerVisible;
+        if (floorTimerPanel != null)
+            floorTimerPanel.gameObject.SetActive(visible);
+        if (floorTimerText != null)
+            floorTimerText.gameObject.SetActive(visible);
+        if (!visible || floorTimerText == null)
+            return;
+
+        float remaining = Mathf.Max(0f, arenaDirector.FloorTimerRemaining);
+        int minutes = Mathf.FloorToInt(remaining / 60f);
+        int seconds = Mathf.FloorToInt(remaining % 60f);
+        int centiseconds = Mathf.FloorToInt((remaining - Mathf.Floor(remaining)) * 100f);
+        floorTimerText.text = remaining >= 10f
+            ? $"{minutes:00}:{seconds:00}"
+            : $"{minutes:00}:{seconds:00}.{centiseconds:00}";
+
+        Color panelColor = new Color(0.012f, 0.02f, 0.028f, 0.9f);
+        Color textColor = new Color(0.82f, 0.98f, 1f, 0.98f);
+        if (arenaDirector.IsFloorTimerCritical)
+        {
+            float pulse = 0.65f + Mathf.PingPong(Time.unscaledTime * 2.8f, 0.35f);
+            panelColor = new Color(0.18f, 0.028f, 0.028f, 0.92f);
+            textColor = Color.Lerp(new Color(1f, 0.82f, 0.82f, 0.96f), new Color(1f, 0.2f, 0.2f, 1f), pulse);
+        }
+        else if (arenaDirector.IsFloorTimerUrgent)
+        {
+            panelColor = new Color(0.12f, 0.08f, 0.02f, 0.9f);
+            textColor = new Color(1f, 0.86f, 0.42f, 0.98f);
+        }
+
+        if (floorTimerPanel != null)
+            floorTimerPanel.color = panelColor;
+        floorTimerText.color = textColor;
     }
 
     private void CaptureFrameSample()
@@ -303,11 +344,6 @@ public class RunStatusHUD : MonoBehaviour
         if (fpsLowText != null)
             fpsLowText.text = $"1% {Mathf.RoundToInt(lowFps)}";
 
-        float barMax = Mathf.Max(30f, fpsBarMax);
-        if (fpsBarFill != null)
-            fpsBarFill.fillAmount = Mathf.Clamp01(fps / barMax);
-        if (fpsLowBarFill != null)
-            fpsLowBarFill.fillAmount = Mathf.Clamp01(lowFps / barMax);
     }
 
     private int CountUnsolvedPuzzleTerminals()
@@ -366,13 +402,6 @@ public class RunStatusHUD : MonoBehaviour
 
     private void RefreshArenaCaches()
     {
-        if (arenaDirector == null)
-            arenaDirector = FindAnyObjectByType<CybergrindArenaDirector>();
-        if (runState == null)
-            runState = FindAnyObjectByType<CybergrindRunState>();
-        if (cachedPlayer == null)
-            cachedPlayer = FindAnyObjectByType<PlayerController>();
-
         Transform root = GetCurrentArenaRoot();
         if (root == cachedArenaRoot)
             return;
@@ -384,6 +413,21 @@ public class RunStatusHUD : MonoBehaviour
         cachedEnemies = root != null
             ? root.GetComponentsInChildren<BasicEnemyAI>(true)
             : System.Array.Empty<BasicEnemyAI>();
+    }
+
+    private void UpdateCachedReferences(bool force = false)
+    {
+        referenceRefreshTimer -= Time.deltaTime;
+        if (!force && referenceRefreshTimer > 0f)
+            return;
+
+        referenceRefreshTimer = 1f;
+        if (arenaDirector == null)
+            arenaDirector = FindAnyObjectByType<CybergrindArenaDirector>();
+        if (runState == null)
+            runState = FindAnyObjectByType<CybergrindRunState>();
+        if (cachedPlayer == null)
+            cachedPlayer = FindAnyObjectByType<PlayerController>();
     }
 
     private void EnsureHudTexts()
@@ -406,15 +450,15 @@ public class RunStatusHUD : MonoBehaviour
         objectiveText = objectiveText != null ? objectiveText : CreateHudText("ObjectiveText", new Vector2(22f, -150f), 14f);
         ApplyTextLayout(objectiveText, new Vector2(22f, -150f), new Vector2(330f, 21f), 14f);
         ApplyTextStyle(objectiveText, new Color(1f, 0.92f, 0.62f, 1f), FontStyles.Bold);
+        floorTimerText = floorTimerText != null ? floorTimerText : CreateHudText("FloorTimerText", new Vector2(22f, -126f), 18f);
+        ApplyTextLayout(floorTimerText, new Vector2(22f, -126f), new Vector2(180f, 28f), 18f);
+        ApplyTextStyle(floorTimerText, new Color(0.82f, 0.98f, 1f, 0.98f), FontStyles.Bold);
         seedText = seedText != null ? seedText : CreateHudText("SeedText", new Vector2(22f, -174f), 9f);
         ApplyTextLayout(seedText, new Vector2(22f, -174f), new Vector2(330f, 18f), 9f);
         ApplyTextStyle(seedText, new Color(0.62f, 0.70f, 0.74f, 0.9f), FontStyles.Normal);
         coreProgressText = coreProgressText != null ? coreProgressText : CreateHudText("CoreProgressText", new Vector2(22f, -193f), 10f);
         ApplyTextLayout(coreProgressText, new Vector2(22f, -193f), new Vector2(330f, 18f), 10f);
         ApplyTextStyle(coreProgressText, new Color(0.80f, 0.96f, 1f, 0.95f), FontStyles.Normal);
-        if (coreProgressFill == null)
-            coreProgressFill = CreateProgressBar("CoreProgressBar", new Vector2(22f, -213f), new Vector2(178f, 8f), new Color(0.74f, 0.95f, 1f, 0.95f));
-        ApplyProgressLayout(coreProgressFill, new Vector2(22f, -213f), new Vector2(178f, 8f));
         speedText = speedText != null ? speedText : CreateHudText("SpeedText", new Vector2(22f, -246f), 14f);
         ApplyTextLayout(speedText, new Vector2(22f, -246f), new Vector2(220f, 22f), 14f);
         ApplyTextStyle(speedText, new Color(0.88f, 1f, 0.62f, 1f), FontStyles.Bold);
@@ -434,35 +478,81 @@ public class RunStatusHUD : MonoBehaviour
         fpsLowText = fpsLowText != null ? fpsLowText : CreateHudText("FPSLowText", new Vector2(128f, -226f), 11f);
         ApplyTextLayout(fpsLowText, new Vector2(128f, -226f), new Vector2(84f, 18f), 11f);
         ApplyTextStyle(fpsLowText, new Color(0.66f, 0.9f, 1f, 0.9f), FontStyles.Normal);
-        if (fpsBarFill == null)
-            fpsBarFill = CreateProgressBar("FPSBar", new Vector2(22f, -246f), new Vector2(190f, 6f), new Color(0.82f, 0.96f, 1f, 0.9f));
-        ApplyProgressLayout(fpsBarFill, new Vector2(22f, -246f), new Vector2(190f, 6f));
-        if (fpsLowBarFill == null)
-            fpsLowBarFill = CreateProgressBar("FPSLowBar", new Vector2(22f, -255f), new Vector2(190f, 4f), new Color(0.34f, 0.86f, 1f, 0.9f));
-        ApplyProgressLayout(fpsLowBarFill, new Vector2(22f, -255f), new Vector2(190f, 4f));
         if (hpFill == null)
             hpFill = CreateProgressBar("HPProgressBar", new Vector2(22f, -320f), new Vector2(285f, 10f), new Color(0.45f, 1f, 0.34f, 0.95f));
         ApplyProgressLayout(hpFill, new Vector2(22f, -320f), new Vector2(285f, 10f));
+        ConfigureHealthBar(hpFill);
 
         directiveText.gameObject.SetActive(false);
         seedText.gameObject.SetActive(false);
         dashText.gameObject.SetActive(false);
+        coreProgressText.gameObject.SetActive(false);
+        HideHudElement("CoreProgressBar");
+        HideHudElement("FPSBar");
+        HideHudElement("FPSLowBar");
         ApplyViewportLayout(floorText.rectTransform, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(32f, -28f), new Vector2(120f, 28f));
         ApplyViewportLayout(cycleText.rectTransform, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(32f, -58f), new Vector2(280f, 20f));
+        ApplyViewportLayout(floorTimerText.rectTransform, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -34f), new Vector2(160f, 28f));
+        floorTimerText.alignment = TextAlignmentOptions.Center;
         ApplyViewportLayout(objectiveText.rectTransform, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -90f), new Vector2(420f, 28f));
         objectiveText.alignment = TextAlignmentOptions.Center;
         ApplyViewportLayout(coreProgressText.rectTransform, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(190f, -31f), new Vector2(125f, 20f));
-        ApplyViewportLayout(fpsText.rectTransform, Vector2.zero, Vector2.zero, new Vector2(26f, 166f), new Vector2(98f, 18f));
-        ApplyViewportLayout(fpsLowText.rectTransform, Vector2.zero, Vector2.zero, new Vector2(128f, 166f), new Vector2(88f, 18f));
-        ApplyViewportLayout(hpText.rectTransform, Vector2.zero, Vector2.zero, new Vector2(30f, 96f), new Vector2(130f, 52f));
-        hpText.fontSize = 36f;
-        ApplyViewportLayout(coinText.rectTransform, Vector2.zero, Vector2.zero, new Vector2(190f, 96f), new Vector2(130f, 28f));
+        ApplyViewportLayout(fpsText.rectTransform, Vector2.zero, Vector2.zero, new Vector2(28f, 28f), new Vector2(68f, 16f));
+        fpsText.fontSize = 9f;
+        ApplyViewportLayout(fpsLowText.rectTransform, Vector2.zero, Vector2.zero, new Vector2(98f, 28f), new Vector2(66f, 16f));
+        fpsLowText.fontSize = 9f;
+        ApplyViewportLayout(hpText.rectTransform, Vector2.zero, Vector2.zero, new Vector2(28f, 72f), new Vector2(78f, 26f));
+        hpText.fontSize = 21f;
+        ApplyViewportLayout(coinText.rectTransform, Vector2.zero, Vector2.zero, new Vector2(174f, 49f), new Vector2(112f, 18f));
+        coinText.fontSize = 10f;
         coinText.alignment = TextAlignmentOptions.Right;
-        ApplyViewportLayout(speedText.rectTransform, Vector2.zero, Vector2.zero, new Vector2(30f, 136f), new Vector2(280f, 24f));
-        ApplyViewportLayout(fpsBarFill.transform.parent as RectTransform, Vector2.zero, Vector2.zero, new Vector2(28f, 146f), new Vector2(190f, 6f));
-        ApplyViewportLayout(fpsLowBarFill.transform.parent as RectTransform, Vector2.zero, Vector2.zero, new Vector2(28f, 137f), new Vector2(190f, 4f));
-        ApplyViewportLayout(hpFill.transform.parent as RectTransform, Vector2.zero, Vector2.zero, new Vector2(30f, 58f), new Vector2(290f, 14f));
-        ApplyViewportLayout(coreProgressFill.transform.parent as RectTransform, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(190f, -54f), new Vector2(125f, 6f));
+        ApplyViewportLayout(speedText.rectTransform, Vector2.zero, Vector2.zero, new Vector2(28f, 49f), new Vector2(142f, 18f));
+        speedText.fontSize = 10f;
+        ApplyViewportLayout(hpFill.transform.parent as RectTransform, Vector2.zero, Vector2.zero, new Vector2(112f, 79f), new Vector2(174f, 9f));
+    }
+
+    private void ConfigureHealthBar(Image fill)
+    {
+        if (fill == null) return;
+        fill.type = Image.Type.Simple;
+        fill.preserveAspect = false;
+        RectTransform rect = fill.rectTransform;
+        rect.anchorMin = Vector2.zero;
+        rect.anchorMax = Vector2.one;
+        rect.pivot = new Vector2(0f, 0.5f);
+        rect.offsetMin = Vector2.zero;
+        rect.offsetMax = Vector2.zero;
+        rect.localScale = Vector3.one;
+    }
+
+    private void UpdateHealthBarVisual(float deltaTime)
+    {
+        if (hpFill == null || cachedPlayer == null) return;
+
+        float target = cachedPlayer.Health01;
+        if (!healthDisplayInitialized)
+        {
+            displayedHealth01 = target;
+            healthDisplayInitialized = true;
+        }
+        else
+        {
+            float speed = target < displayedHealth01 ? 2.8f : 5.5f;
+            displayedHealth01 = Mathf.MoveTowards(displayedHealth01, target, speed * Mathf.Max(0f, deltaTime));
+        }
+
+        RectTransform rect = hpFill.rectTransform;
+        rect.localScale = new Vector3(Mathf.Clamp01(displayedHealth01), 1f, 1f);
+        hpFill.color = target < 0.3f
+            ? new Color(1f, 0.16f, 0.12f, 1f)
+            : new Color(0.12f, 0.88f, 0.95f, 1f);
+    }
+
+    private void HideHudElement(string elementName)
+    {
+        Transform element = transform.Find(elementName);
+        if (element != null)
+            element.gameObject.SetActive(false);
     }
 
     private void EnsureDashPips()
@@ -569,18 +659,23 @@ public class RunStatusHUD : MonoBehaviour
 
         headerPanel = headerPanel != null ? headerPanel : CreatePanel("HeaderPanel", new Vector2(12f, -60f), new Vector2(360f, 72f));
         ApplyPanelLayout(headerPanel, new Vector2(12f, -60f), new Vector2(360f, 72f));
+        floorTimerPanel = floorTimerPanel != null ? floorTimerPanel : CreatePanel("FloorTimerPanel", new Vector2(12f, -92f), new Vector2(180f, 36f));
+        ApplyPanelLayout(floorTimerPanel, new Vector2(12f, -92f), new Vector2(180f, 36f));
         objectivePanel = objectivePanel != null ? objectivePanel : CreatePanel("ObjectivePanel", new Vector2(12f, -140f), new Vector2(360f, 94f));
         ApplyPanelLayout(objectivePanel, new Vector2(12f, -140f), new Vector2(360f, 94f));
         vitalsPanel = vitalsPanel != null ? vitalsPanel : CreatePanel("VitalsPanel", new Vector2(12f, -238f), new Vector2(360f, 104f));
         ApplyPanelLayout(vitalsPanel, new Vector2(12f, -238f), new Vector2(360f, 104f));
 
         ApplyViewportLayout(headerPanel.rectTransform, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(20f, -20f), new Vector2(310f, 66f));
+        ApplyViewportLayout(floorTimerPanel.rectTransform, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -18f), new Vector2(176f, 30f));
         ApplyViewportLayout(objectivePanel.rectTransform, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -78f), new Vector2(460f, 48f));
-        ApplyViewportLayout(vitalsPanel.rectTransform, Vector2.zero, Vector2.zero, new Vector2(20f, 20f), new Vector2(330f, 136f));
+        ApplyViewportLayout(vitalsPanel.rectTransform, Vector2.zero, Vector2.zero, new Vector2(20f, 20f), new Vector2(276f, 84f));
         headerPanel.color = new Color(0.015f, 0.025f, 0.032f, 0.84f);
+        floorTimerPanel.color = new Color(0.012f, 0.02f, 0.028f, 0.9f);
         objectivePanel.color = new Color(0.015f, 0.025f, 0.032f, 0.78f);
-        vitalsPanel.color = new Color(0.015f, 0.025f, 0.032f, 0.9f);
+        vitalsPanel.color = new Color(0.015f, 0.025f, 0.032f, 0.76f);
         DisablePanelOutline(headerPanel);
+        DisablePanelOutline(floorTimerPanel);
         DisablePanelOutline(objectivePanel);
         DisablePanelOutline(vitalsPanel);
     }

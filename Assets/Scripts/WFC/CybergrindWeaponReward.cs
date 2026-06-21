@@ -126,7 +126,7 @@ public class CybergrindWeaponReward : Interactable
         WeaponStatusHUD armoryHud = FindAnyObjectByType<WeaponStatusHUD>();
         if (armoryHud != null)
         {
-            string title = isBossReward ? "CORE DROP READY" : "GUN READY";
+            string title = "GUN READY";
             string detail = $"{weaponName.ToUpperInvariant()} - {guideText}";
             armoryHud.ShowArmoryMoment(title, detail, GetRewardColor(presetIndex), isBossReward ? 3.4f : 2.8f);
         }
@@ -135,7 +135,7 @@ public class CybergrindWeaponReward : Interactable
         if (encounterHud != null)
         {
             encounterHud.ShowSystemBanner(
-                isBossReward ? "CORE DROP READY" : "GUN TAKEN",
+                "GUN TAKEN",
                 isBossReward
                     ? $"{weaponName.ToUpperInvariant()} is ready. The next drop is open."
                     : $"{weaponName.ToUpperInvariant()} is ready. Exit is live.",
@@ -479,18 +479,16 @@ public class CybergrindWeaponReward : Interactable
             rewardPanelImage.color = Color.Lerp(new Color(0.02f, 0.04f, 0.055f, 0.94f), accent * new Color(1f, 1f, 1f, 0.92f), activeRewardGuide.isBossReward ? 0.4f : 0.26f);
         if (rewardTitleText != null)
         {
-            rewardTitleText.text = (activeRewardGuide.isBossReward ? "CORE DROP - " : "NEW GUN - ") + activeRewardGuide.weaponName.ToUpperInvariant();
+            rewardTitleText.text = "NEW GUN - " + activeRewardGuide.weaponName.ToUpperInvariant();
             rewardTitleText.color = Color.Lerp(Color.white, accent, 0.28f);
         }
         if (rewardBodyText != null)
         {
-            rewardBodyText.text =
-                activeRewardGuide.guideText +
-                (activeRewardGuide.isBossReward ? " Take the lift deeper when ready." : " Add it to the run before leaving.");
+            rewardBodyText.text = activeRewardGuide.guideText + " Pick it up before leaving.";
             rewardBodyText.color = new Color(0.84f, 0.9f, 0.96f);
         }
         if (rewardControlsText != null)
-            rewardControlsText.text = "1/2/3 slot   Q/E variant   RMB alt fire";
+            rewardControlsText.text = "1/2 SWITCH   Q/E VARIANT   RMB ABILITY";
         if (rewardProgressFill != null)
         {
             rewardProgressFill.fillAmount = Mathf.Clamp01(activeRewardGuide.guideTimer / Mathf.Max(0.01f, activeRewardGuide.guideDuration));

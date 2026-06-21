@@ -22,6 +22,7 @@ public class GrappleHookProjectile : MonoBehaviour
     private Vector3 anchorNormal;
     private Vector3 retractPoint;
     private Vector3 bounceVelocity;
+    private float retractTimer;
     private Renderer[] renderers;
     private readonly RaycastHit[] hitBuffer = new RaycastHit[16];
     private static Material sharedBodyMaterial;
@@ -140,6 +141,7 @@ public class GrappleHookProjectile : MonoBehaviour
         state = HookState.Retracting;
         anchorTransform = null;
         bounceVelocity = (bounceDirection.sqrMagnitude > 0.0001f ? bounceDirection.normalized : -direction) * speed * 0.22f;
+        retractTimer = 0f;
         retractPoint = bouncePoint;
         transform.position = bouncePoint;
         transform.rotation = Quaternion.LookRotation(bounceVelocity.sqrMagnitude > 0.0001f ? bounceVelocity.normalized : -direction, Vector3.up);
@@ -184,11 +186,13 @@ public class GrappleHookProjectile : MonoBehaviour
         }
 
         Vector3 returnPoint = owner.GetGrappleReturnPoint();
-        bounceVelocity = Vector3.Lerp(bounceVelocity, Vector3.zero, Time.deltaTime * 16f);
+        retractTimer += Time.deltaTime;
+        float tighten01 = Mathf.Clamp01(retractTimer / 0.18f);
+        bounceVelocity = Vector3.Lerp(bounceVelocity, Vector3.zero, Time.deltaTime * Mathf.Lerp(5.5f, 14f, tighten01));
         retractPoint += bounceVelocity * Time.deltaTime;
         Vector3 toReturn = returnPoint - retractPoint;
         float returnDistance = toReturn.magnitude;
-        if (returnDistance <= 0.08f)
+        if (returnDistance <= 0.12f)
         {
             owner.NotifyGrappleHookExpired(this);
             gameObject.SetActive(false);
@@ -196,7 +200,7 @@ public class GrappleHookProjectile : MonoBehaviour
         }
 
         Vector3 pullDir = toReturn / Mathf.Max(0.001f, returnDistance);
-        float retractSpeed = speed * 1.6f;
+        float retractSpeed = speed * Mathf.Lerp(0.58f, 1.18f, tighten01);
         retractPoint += pullDir * retractSpeed * Time.deltaTime;
         transform.position = retractPoint;
         Vector3 facing = pullDir + bounceVelocity * 0.02f;

@@ -83,11 +83,76 @@ public class CybergrindTransitionController : MonoBehaviour
     private CanvasGroup bannerGroup;
     private TMP_Text bannerTitleText;
     private TMP_Text bannerSubtitleText;
+    private Image bannerFrameImage;
+    private Image bannerCoreImage;
+    private Image bannerRuleTopImage;
+    private Image bannerRuleBottomImage;
+    private Image bannerMassLeftImage;
+    private Image bannerMassRightImage;
+    private Image curtainMassLeftImage;
+    private Image curtainMassRightImage;
+    private Image curtainConduitTopImage;
+    private Image curtainConduitBottomImage;
     private const string TransitionPreviewSnapshotName = "TransitionPreviewSnapshot";
+    private int currentTransitionThemeIndex;
 
     private void Awake()
     {
         EnsureOverlay();
+    }
+
+    private void Update()
+    {
+        if (!IsTransitioning && (bannerGroup == null || bannerGroup.alpha <= 0.001f))
+            return;
+
+        float pulseA = 0.5f + 0.5f * Mathf.Sin(Time.unscaledTime * 1.45f);
+        float pulseB = 0.5f + 0.5f * Mathf.Sin(Time.unscaledTime * 0.85f + 1.1f);
+        float drift = Mathf.Sin(Time.unscaledTime * 0.32f + 0.35f) * 10f;
+
+        if (bannerRuleTopImage != null)
+        {
+            Color c = bannerRuleTopImage.color;
+            c.a = Mathf.Clamp01(0.1f + pulseA * 0.22f);
+            bannerRuleTopImage.color = c;
+        }
+
+        if (bannerRuleBottomImage != null)
+        {
+            Color c = bannerRuleBottomImage.color;
+            c.a = Mathf.Clamp01(0.08f + pulseB * 0.18f);
+            bannerRuleBottomImage.color = c;
+        }
+
+        if (bannerMassLeftImage != null)
+        {
+            Color c = bannerMassLeftImage.color;
+            c.a = Mathf.Clamp01(0.86f + pulseA * 0.08f);
+            bannerMassLeftImage.color = c;
+            bannerMassLeftImage.rectTransform.anchoredPosition = new Vector2(0f, drift * 0.25f);
+        }
+
+        if (bannerMassRightImage != null)
+        {
+            Color c = bannerMassRightImage.color;
+            c.a = Mathf.Clamp01(0.82f + pulseB * 0.08f);
+            bannerMassRightImage.color = c;
+            bannerMassRightImage.rectTransform.anchoredPosition = new Vector2(0f, -drift * 0.22f);
+        }
+
+        if (curtainConduitTopImage != null)
+        {
+            Color c = curtainConduitTopImage.color;
+            c.a = Mathf.Clamp01(0.06f + pulseA * 0.16f);
+            curtainConduitTopImage.color = c;
+        }
+
+        if (curtainConduitBottomImage != null)
+        {
+            Color c = curtainConduitBottomImage.color;
+            c.a = Mathf.Clamp01(0.05f + pulseB * 0.14f);
+            curtainConduitBottomImage.color = c;
+        }
     }
 
     public void Play(CybergrindArenaGenerator generator, Action swapAction)
@@ -113,6 +178,8 @@ public class CybergrindTransitionController : MonoBehaviour
         IsTransitioning = true;
         DebugStage = "Start";
         onTransitionStarted?.Invoke();
+        currentTransitionThemeIndex = generator != null ? generator.themeIndex : 0;
+        ApplyTransitionTheme(currentTransitionThemeIndex);
         string themeLabel = generator != null ? generator.GetThemeLabel() : "Arena";
         ShowTransitionBanner("FLOOR SHIFT", $"{themeLabel}. Tiles moving.");
         StartTransitionRoutine(PulseFlash(flashColor, flashDuration));
@@ -203,9 +270,11 @@ public class CybergrindTransitionController : MonoBehaviour
         IsTransitioning = true;
         DebugStage = "CurtainClose";
         onTransitionStarted?.Invoke();
+        currentTransitionThemeIndex = generator != null ? generator.themeIndex : 0;
+        ApplyTransitionTheme(currentTransitionThemeIndex);
 
-        string themeLabel = generator != null ? generator.GetThemeLabel() : "Arena";
-        ShowTransitionBanner("FLOOR SHIFT", $"{themeLabel}. Rebuilding arena.");
+        if (bannerGroup != null)
+            bannerGroup.alpha = 0f;
 
         if (player != null)
         {
@@ -241,14 +310,6 @@ public class CybergrindTransitionController : MonoBehaviour
 
         if (oldRoot != null && oldRoot != newRoot)
             DestroyTransitionObject(oldRoot.gameObject);
-
-        string nextThemeLabel = generator != null ? generator.GetThemeLabel() : themeLabel;
-        string nextDirectiveTitle = generator != null ? generator.GetThemeDirectiveTitle() : string.Empty;
-        ShowTransitionBanner(
-            "NEXT FLOOR",
-            string.IsNullOrWhiteSpace(nextDirectiveTitle)
-                ? nextThemeLabel
-                : $"{nextThemeLabel}. {nextDirectiveTitle}");
 
         if (curtainHoldDuration > 0f)
         {
@@ -301,6 +362,7 @@ public class CybergrindTransitionController : MonoBehaviour
         if (visible && klotskiLoader == null && transitionCurtain != null)
             EnsureScreenSpaceKlotski(transitionCurtain.transform);
         if (klotskiLoader == null) return;
+        ApplyTransitionTheme(currentTransitionThemeIndex);
         klotskiLoader.SetVisible(visible);
         if (visible)
             klotskiLoader.ResetScrambled();
@@ -1646,6 +1708,10 @@ public class CybergrindTransitionController : MonoBehaviour
         else
         {
             transitionCurtain = curtain.GetComponent<Image>();
+            curtainMassLeftImage = curtain.Find("CurtainMassLeft")?.GetComponent<Image>();
+            curtainMassRightImage = curtain.Find("CurtainMassRight")?.GetComponent<Image>();
+            curtainConduitTopImage = curtain.Find("CurtainConduitTop")?.GetComponent<Image>();
+            curtainConduitBottomImage = curtain.Find("CurtainConduitBottom")?.GetComponent<Image>();
         }
 
 
@@ -1682,16 +1748,30 @@ public class CybergrindTransitionController : MonoBehaviour
             bannerGroup = bannerGo.AddComponent<CanvasGroup>();
             bannerGroup.alpha = 0f;
 
+            bannerFrameImage = CreatePanelImage(bannerGo.transform, "BannerFrame", new Vector2(0.5f, 0.5f), new Vector2(760f, 120f), new Color(0.01f, 0.02f, 0.03f, 0.88f));
+            bannerCoreImage = CreatePanelImage(bannerGo.transform, "BannerCore", new Vector2(0.5f, 0.5f), new Vector2(722f, 92f), new Color(0.012f, 0.022f, 0.032f, 0.9f));
+            bannerRuleTopImage = CreatePanelImage(bannerGo.transform, "BannerRuleTop", new Vector2(0.5f, 0.82f), new Vector2(664f, 2f), new Color(0.72f, 0.92f, 1f, 0.2f));
+            bannerRuleBottomImage = CreatePanelImage(bannerGo.transform, "BannerRuleBottom", new Vector2(0.5f, 0.18f), new Vector2(568f, 2f), new Color(0.72f, 0.92f, 1f, 0.14f));
+            bannerMassLeftImage = CreatePanelImage(bannerGo.transform, "BannerMassLeft", new Vector2(0.94f, 0.5f), new Vector2(28f, 84f), new Color(0.02f, 0.03f, 0.04f, 0.9f));
+            bannerMassRightImage = CreatePanelImage(bannerGo.transform, "BannerMassRight", new Vector2(0.985f, 0.42f), new Vector2(12f, 58f), new Color(0.03f, 0.022f, 0.018f, 0.92f));
+
             bannerTitleText = CreateBannerText(bannerGo.transform, "TransitionBannerTitle", 34f, new Vector2(0.5f, 0.68f), Color.white);
             bannerSubtitleText = CreateBannerText(bannerGo.transform, "TransitionBannerSubtitle", 20f, new Vector2(0.5f, 0.34f), new Color(0.72f, 0.92f, 1f));
         }
         else
         {
             bannerGroup = banner.GetComponent<CanvasGroup>();
+            bannerFrameImage = banner.Find("BannerFrame")?.GetComponent<Image>();
+            bannerCoreImage = banner.Find("BannerCore")?.GetComponent<Image>();
+            bannerRuleTopImage = banner.Find("BannerRuleTop")?.GetComponent<Image>();
+            bannerRuleBottomImage = banner.Find("BannerRuleBottom")?.GetComponent<Image>();
+            bannerMassLeftImage = banner.Find("BannerMassLeft")?.GetComponent<Image>();
+            bannerMassRightImage = banner.Find("BannerMassRight")?.GetComponent<Image>();
             bannerTitleText = banner.Find("TransitionBannerTitle")?.GetComponent<TMP_Text>();
             bannerSubtitleText = banner.Find("TransitionBannerSubtitle")?.GetComponent<TMP_Text>();
         }
 
+        ApplyTransitionTheme(currentTransitionThemeIndex);
     }
 
     private void EnsureScreenSpaceKlotski(Transform curtain)
@@ -1737,6 +1817,83 @@ public class CybergrindTransitionController : MonoBehaviour
         if (bannerTitleText != null) bannerTitleText.text = title;
         if (bannerSubtitleText != null) bannerSubtitleText.text = subtitle;
         StartCoroutine(BannerRoutine());
+    }
+
+    private void ApplyTransitionTheme(int themeIndex)
+    {
+        ProjectStructureThemePalette.ResolveTransitionColors(themeIndex, out Color accent, out Color panel, out Color flash);
+
+        curtainColor = Color.black;
+        flashColor = flash;
+        if (transitionCurtain != null)
+            transitionCurtain.color = new Color(0f, 0f, 0f, transitionCurtain.enabled ? transitionCurtain.color.a : 0f);
+        if (curtainMassLeftImage != null)
+            curtainMassLeftImage.color = new Color(panel.r * 1.04f, panel.g * 1.06f, panel.b * 1.08f, 0.94f);
+        if (curtainMassRightImage != null)
+            curtainMassRightImage.color = new Color(panel.r * 0.92f, panel.g * 0.86f, panel.b * 0.82f, 0.94f);
+        if (curtainConduitTopImage != null)
+            curtainConduitTopImage.color = new Color(accent.r, accent.g, accent.b, 0.16f);
+        if (curtainConduitBottomImage != null)
+            curtainConduitBottomImage.color = new Color(accent.r, accent.g, accent.b, 0.12f);
+        if (bannerFrameImage != null)
+            bannerFrameImage.color = new Color(panel.r * 0.9f, panel.g * 1.04f, panel.b * 1.08f, 0.9f);
+        if (bannerCoreImage != null)
+            bannerCoreImage.color = new Color(panel.r * 1.05f, panel.g * 0.98f, panel.b * 0.96f, 0.92f);
+        if (bannerRuleTopImage != null)
+            bannerRuleTopImage.color = new Color(accent.r, accent.g, accent.b, 0.22f);
+        if (bannerRuleBottomImage != null)
+            bannerRuleBottomImage.color = new Color(accent.r, accent.g, accent.b, 0.16f);
+        if (bannerMassLeftImage != null)
+            bannerMassLeftImage.color = new Color(panel.r * 0.98f, panel.g * 1.06f, panel.b * 1.12f, 0.9f);
+        if (bannerMassRightImage != null)
+            bannerMassRightImage.color = new Color(panel.r * 1.14f, panel.g * 0.84f, panel.b * 0.78f, 0.92f);
+        if (bannerTitleText != null)
+            bannerTitleText.color = Color.Lerp(Color.white, accent, 0.45f);
+        if (bannerSubtitleText != null)
+            bannerSubtitleText.color = accent;
+        if (klotskiLoader != null)
+            klotskiLoader.SetThemeColors(
+                new Color(accent.r, accent.g, accent.b, 0.3f),
+                new Color(panel.r, panel.g, panel.b, 0.92f),
+                new Color(accent.r, accent.g, accent.b, 0.12f));
+    }
+
+    private void BuildCurtainStructure(Transform curtain)
+    {
+        curtainMassLeftImage = CreateStretchImage(curtain, "CurtainMassLeft", new Vector2(0f, 0f), new Vector2(0f, 1f), new Vector2(0f, 0.5f), new Vector2(84f, 0f), new Color(0.015f, 0.025f, 0.035f, 0.94f));
+        curtainMassRightImage = CreateStretchImage(curtain, "CurtainMassRight", new Vector2(1f, 0f), new Vector2(1f, 1f), new Vector2(1f, 0.5f), new Vector2(72f, 0f), new Color(0.03f, 0.02f, 0.018f, 0.94f));
+        curtainConduitTopImage = CreateStretchImage(curtain, "CurtainConduitTop", new Vector2(0.68f, 1f), new Vector2(0.86f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, 6f), new Color(0.72f, 0.92f, 1f, 0.14f));
+        curtainConduitBottomImage = CreateStretchImage(curtain, "CurtainConduitBottom", new Vector2(0.12f, 0f), new Vector2(0.3f, 0f), new Vector2(0.5f, 0f), new Vector2(0f, 6f), new Color(0.72f, 0.92f, 1f, 0.1f));
+    }
+
+    private Image CreatePanelImage(Transform parent, string name, Vector2 anchor, Vector2 size, Color color)
+    {
+        GameObject go = new GameObject(name);
+        go.transform.SetParent(parent, false);
+        RectTransform rect = go.AddComponent<RectTransform>();
+        rect.anchorMin = anchor;
+        rect.anchorMax = anchor;
+        rect.pivot = new Vector2(0.5f, 0.5f);
+        rect.sizeDelta = size;
+        Image image = go.AddComponent<Image>();
+        image.color = color;
+        image.raycastTarget = false;
+        return image;
+    }
+
+    private Image CreateStretchImage(Transform parent, string name, Vector2 anchorMin, Vector2 anchorMax, Vector2 pivot, Vector2 sizeDelta, Color color)
+    {
+        GameObject go = new GameObject(name);
+        go.transform.SetParent(parent, false);
+        RectTransform rect = go.AddComponent<RectTransform>();
+        rect.anchorMin = anchorMin;
+        rect.anchorMax = anchorMax;
+        rect.pivot = pivot;
+        rect.sizeDelta = sizeDelta;
+        Image image = go.AddComponent<Image>();
+        image.color = color;
+        image.raycastTarget = false;
+        return image;
     }
 
     private IEnumerator BannerRoutine()

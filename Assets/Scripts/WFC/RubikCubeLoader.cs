@@ -24,16 +24,25 @@ public class RubikCubeLoader : MonoBehaviour
     private float axisBlendTimer;
     private float axisBlendDuration;
     private float rotationSpeed;
-
     public void Configure(string textureName, string cameraName, string cubeName)
     {
         canvasGroup = gameObject.GetComponent<CanvasGroup>();
         if (canvasGroup == null)
             canvasGroup = gameObject.AddComponent<CanvasGroup>();
 
-        preview = gameObject.GetComponent<RawImage>();
+        preview = transform.Find("Preview")?.GetComponent<RawImage>();
         if (preview == null)
-            preview = gameObject.AddComponent<RawImage>();
+        {
+            GameObject previewObject = new GameObject("Preview");
+            previewObject.transform.SetParent(transform, false);
+            RectTransform rect = previewObject.AddComponent<RectTransform>();
+            rect.anchorMin = new Vector2(0.05f, 0.05f);
+            rect.anchorMax = new Vector2(0.95f, 0.95f);
+            rect.offsetMin = Vector2.zero;
+            rect.offsetMax = Vector2.zero;
+            preview = previewObject.AddComponent<RawImage>();
+        }
+
         preview.raycastTarget = false;
         preview.color = Color.white;
 
@@ -69,6 +78,12 @@ public class RubikCubeLoader : MonoBehaviour
             canvasGroup.alpha = visible ? 1f : 0f;
         if (cubeCamera != null)
             cubeCamera.enabled = visible;
+    }
+
+    public void SetThemeColors(Color frame, Color backdrop, Color halo)
+    {
+        // Retained for callers that theme older loader presentations. The minimal
+        // loader deliberately renders only the neutral-grey cube.
     }
 
     public void ResetScrambled()

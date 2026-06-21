@@ -89,39 +89,39 @@ public class ProjectStructureHintOverlay : MonoBehaviour
         {
             nextKey = "movement";
             title = "MOVEMENT";
-            body = "Shift to dash. Ctrl or C to slide. Keep chaining jumps to hold speed.";
+            body = "Shift: dash. Ctrl/C: slide. Jump after sliding to keep your speed.";
         }
         else if (!sawWeaponHint && arenaDirector != null && arenaDirector.floor <= 2)
         {
             nextKey = "weapons";
             title = "WEAPONS";
-            body = "1/2/3 changes slots. Q and E swap variants. Right click uses alt fire.";
+            body = "1/2: switch weapon. Q/E: switch variant. RMB: ability.";
         }
         else if (!sawTerminalHint && CountUnsolvedTerminals() > 0)
         {
             nextKey = "terminal";
             title = $"{sectorLabel} / TERMINALS";
-            body = "Finish terminals, then clear the room to unlock the exit.";
+            body = "Complete the terminals, then clear the enemies.";
         }
         else if (!sawRewardHint && arenaDirector != null && arenaDirector.HasPendingReward())
         {
             nextKey = "reward";
             title = "NEW GUN";
-            body = "Take the drop before leaving. Run weapons do not carry between runs.";
+            body = "Pick up the weapon before leaving.";
         }
         else if (!sawShopHint && arenaDirector != null && arenaDirector.generator != null &&
                  arenaDirector.generator.arenaMode == CybergrindArenaGenerator.ArenaMode.Shop)
         {
             nextKey = "shop";
             title = $"{sectorLabel} / SHOP";
-            body = "Use one station. Weapon adds guns. Mod boosts damage. Move buffs mobility. Heal restores HP.";
+            body = "Buy one item before moving to the next floor.";
         }
         else if (!sawBossHint && arenaDirector != null && arenaDirector.generator != null &&
                  arenaDirector.generator.arenaMode == CybergrindArenaGenerator.ArenaMode.Boss)
         {
             nextKey = "boss";
             title = $"{sectorLabel} / BOSS";
-            body = "Read the pattern, stay moving, and punish the opening.";
+            body = "Keep moving and attack after its move.";
         }
 
         if (nextKey == currentHintKey) return;

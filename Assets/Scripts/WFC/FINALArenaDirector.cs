@@ -1,4 +1,5 @@
 using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
 
 public class CybergrindArenaDirector : MonoBehaviour
@@ -12,6 +13,18 @@ public class CybergrindArenaDirector : MonoBehaviour
     public CybergrindRunState runState;
     public CybergrindTransitionController transitionController;
     [Min(1)] public int bossFloorsToReachCore = 2;
+    [Header("Floor Timer")]
+    [Min(15f)] public float combatBaseDuration = 80f;
+    [Min(15f)] public float bossBaseDuration = 110f;
+    [Min(0f)] public float areaDurationScale = 0.03f;
+    [Min(0f)] public float terminalDurationBonus = 18f;
+    [Min(0f)] public float enemyDurationBonus = 5.5f;
+    [Min(0f)] public float traversalDurationBonus = 8f;
+    [Min(15f)] public float minimumFloorDuration = 55f;
+    [Min(15f)] public float maximumCombatDuration = 180f;
+    [Min(15f)] public float maximumBossDuration = 240f;
+    [Min(1f)] public float urgentThreshold = 30f;
+    [Min(1f)] public float criticalThreshold = 10f;
     private bool exitHighlighted;
     private CybergrindWeaponReward currentReward;
     private bool shopInteractionThisFloor;
@@ -19,9 +32,26 @@ public class CybergrindArenaDirector : MonoBehaviour
     private bool bossRewardRevealQueued;
     private bool coreAccessActive;
     private ArenaCoreBeacon currentCoreBeacon;
+    private float encounterStartTime;
+    private const float PriorityHighlightDelay = 30f;
+    private Coroutine floorTimerArmRoutine;
+    private float floorTimerDuration;
+    private float floorTimerRemaining;
+    private bool floorTimerActive;
+    private bool floorTimerExpired;
+    private BossEncounterHUD cachedBossHud;
+    private Gun cachedGun;
+    private MaterialPropertyBlock rewardPulseBlock;
+    private static Material sharedRewardPulseMaterial;
     public bool RunComplete { get; private set; }
     public bool IsBossRewardRevealActive => bossRewardRevealActive;
     public bool IsCoreAccessActive => coreAccessActive;
+    public bool IsFloorTimerVisible => floorTimerActive && IsTimedFloorActive();
+    public float FloorTimerDuration => floorTimerDuration;
+    public float FloorTimerRemaining => floorTimerRemaining;
+    public float FloorTimerNormalized => CybergrindRules.GetTimerNormalized(floorTimerRemaining, floorTimerDuration);
+    public bool IsFloorTimerUrgent => floorTimerRemaining > criticalThreshold && floorTimerRemaining <= urgentThreshold;
+    public bool IsFloorTimerCritical => floorTimerRemaining <= criticalThreshold;
     public int combatFloorsPerTheme => combatFloorsBeforeShop + combatFloorsAfterShop;
     public int CycleLength => combatFloorsBeforeShop + combatFloorsAfterShop + 2;
     public int CyclePosition => (floor - 1) % CycleLength;
@@ -57,13 +87,30 @@ public class CybergrindArenaDirector : MonoBehaviour
 
         ApplyFloorMode();
         PrepareFloorSeed();
+        QueueFloorTimerArm();
+    }
+
+    private BossEncounterHUD GetBossHud()
+    {
+        if (cachedBossHud == null)
+            cachedBossHud = FindAnyObjectByType<BossEncounterHUD>();
+        return cachedBossHud;
+    }
+
+    private Gun GetCachedGun()
+    {
+        if (cachedGun == null)
+            cachedGun = FindAnyObjectByType<Gun>();
+        return cachedGun;
     }
 
     private void Update()
     {
         if (generator == null) return;
-        if (transitionController != null && transitionController.IsTransitioning) return;
         if (RunComplete) return;
+
+        TickFloorTimer();
+        if (transitionController != null && transitionController.IsTransitioning) return;
 
         bool terminalsSolved = AreAllTerminalsSolved();
         bool enemiesCleared = AreAllEnemiesCleared();
@@ -94,6 +141,8 @@ public class CybergrindArenaDirector : MonoBehaviour
         }
         if (coreAccessActive) return;
         if (!IsPlayerAtExit()) return;
+
+        StopFloorTimer();
 
         if (transitionController != null)
         {
@@ -145,20 +194,155 @@ public class CybergrindArenaDirector : MonoBehaviour
         if (enemies == null || enemies.Length == 0)
             return;
 
-        int aliveCount = 0;
+        List<BasicEnemyAI> aliveEnemies = new List<BasicEnemyAI>();
         for (int i = 0; i < enemies.Length; i++)
         {
             if (enemies[i] == null || enemies[i].IsCombatResolved) continue;
-            aliveCount++;
+            aliveEnemies.Add(enemies[i]);
         }
 
-        bool highlightFinalTargets = aliveCount > 0 && aliveCount <= 2;
         for (int i = 0; i < enemies.Length; i++)
         {
             BasicEnemyAI enemy = enemies[i];
             if (enemy == null) continue;
-            enemy.SetPriorityTarget(highlightFinalTargets && !enemy.IsCombatResolved);
+            enemy.SetPriorityTarget(false);
         }
+
+        if (aliveEnemies.Count == 1)
+        {
+            aliveEnemies[0].SetPriorityTarget(true);
+            return;
+        }
+
+        if (Time.time - encounterStartTime < PriorityHighlightDelay)
+            return;
+
+        for (int i = 0; i < aliveEnemies.Count; i++)
+        {
+            if (aliveEnemies[i] != null)
+                aliveEnemies[i].SetPriorityTarget(true);
+        }
+    }
+
+    private BasicEnemyAI SelectPriorityEnemy(List<BasicEnemyAI> aliveEnemies)
+    {
+        if (aliveEnemies == null || aliveEnemies.Count == 0)
+            return null;
+
+        if (aliveEnemies.Count <= 2)
+            return null;
+
+        Vector3 playerPosition = player != null ? player.position : Vector3.zero;
+        PlayerController playerController = GetPlayerController();
+        bool mobilityCommitted = playerController != null &&
+                                 (playerController.IsGrappling ||
+                                  playerController.IsGrappleHookInFlight ||
+                                  !playerController.isGrounded ||
+                                  playerController.DebugIsSliding ||
+                                  playerController.DebugIsSlamming ||
+                                  playerController.PlanarSpeed > 18f);
+        BasicEnemyAI bestEnemy = null;
+        float bestScore = float.MinValue;
+        for (int i = 0; i < aliveEnemies.Count; i++)
+        {
+            BasicEnemyAI enemy = aliveEnemies[i];
+            if (enemy == null)
+                continue;
+
+            float total = ComputePriorityScore(enemy, playerController, playerPosition, mobilityCommitted);
+            if (total > bestScore)
+            {
+                bestScore = total;
+                bestEnemy = enemy;
+            }
+        }
+
+        return bestEnemy;
+    }
+
+    private float ComputePriorityScore(BasicEnemyAI enemy, PlayerController playerController, Vector3 playerPosition, bool mobilityCommitted)
+    {
+        if (enemy == null)
+            return float.MinValue;
+
+        float distance = player != null ? Vector3.Distance(enemy.transform.position, playerPosition) : 12f;
+        float roleScore = enemy.CurrentCombatRole switch
+        {
+            BasicEnemyAI.CombatRole.Boss => 52f,
+            BasicEnemyAI.CombatRole.Harrier => 44f,
+            BasicEnemyAI.CombatRole.Diver => 38f,
+            BasicEnemyAI.CombatRole.Bulwark => 34f,
+            _ => 30f
+        };
+        float distanceScore = Mathf.Clamp(24f - distance, -8f, 16f);
+        float verticalDelta = player != null ? Mathf.Abs(enemy.transform.position.y - playerPosition.y) : 0f;
+        float verticalityScore = GetPriorityVerticalityScore(enemy, distance, verticalDelta, mobilityCommitted);
+        float stateScore = GetPriorityStateScore(enemy, playerController, distance, verticalDelta, mobilityCommitted);
+        float livePressureScore = enemy.CurrentPressureScore * 10.5f;
+        float telegraphScore = enemy.IsActivelyTelegraphing
+            ? enemy.CurrentCombatRole == BasicEnemyAI.CombatRole.Boss ? 6f : 10f
+            : 0f;
+        return roleScore + distanceScore + verticalityScore + stateScore + livePressureScore + telegraphScore;
+    }
+
+    private float GetPriorityVerticalityScore(BasicEnemyAI enemy, float distance, float verticalDelta, bool mobilityCommitted)
+    {
+        if (enemy == null)
+            return 0f;
+
+        return enemy.CurrentCombatRole switch
+        {
+            BasicEnemyAI.CombatRole.Harrier => Mathf.Clamp(verticalDelta * 1.35f, 0f, 12f),
+            BasicEnemyAI.CombatRole.Boss => Mathf.Clamp(verticalDelta * 0.85f, 0f, 7f),
+            BasicEnemyAI.CombatRole.Suppressor => verticalDelta <= 4.5f
+                ? Mathf.Clamp(verticalDelta * 0.45f, 0f, 2.2f)
+                : -Mathf.Lerp(0.6f, 3f, Mathf.InverseLerp(4.5f, 8f, Mathf.Clamp(verticalDelta, 4.5f, 8f))),
+            BasicEnemyAI.CombatRole.Diver => mobilityCommitted
+                ? Mathf.Clamp(2.6f - verticalDelta * 0.18f, -1.5f, 2.6f)
+                : Mathf.Clamp(1.6f - verticalDelta * 0.3f, -2.8f, 1.6f),
+            BasicEnemyAI.CombatRole.Bulwark => distance <= 9f
+                ? Mathf.Clamp(2f - verticalDelta * 0.28f, -2.4f, 2f)
+                : Mathf.Clamp(1f - verticalDelta * 0.38f, -3.4f, 1f),
+            _ => 0f
+        };
+    }
+
+    private float GetPriorityStateScore(BasicEnemyAI enemy, PlayerController playerController, float distance, float verticalDelta, bool mobilityCommitted)
+    {
+        if (enemy == null)
+            return 0f;
+
+        float score = 0f;
+        switch (enemy.CurrentCombatRole)
+        {
+            case BasicEnemyAI.CombatRole.Harrier:
+                if (mobilityCommitted) score += 12f;
+                if (verticalDelta >= 4f) score += 8f;
+                if (distance >= 10f && distance <= 24f) score += 4f;
+                break;
+            case BasicEnemyAI.CombatRole.Diver:
+                if (mobilityCommitted) score += 9f;
+                if (distance <= 10f) score += 8f;
+                if (playerController != null && playerController.PlanarSpeed > 16f) score += 4f;
+                break;
+            case BasicEnemyAI.CombatRole.Bulwark:
+                if (playerController != null && playerController.isGrounded && playerController.PlanarSpeed < 14f) score += 8f;
+                if (distance <= 11f) score += 6f;
+                if (verticalDelta <= 2f) score += 3f;
+                break;
+            case BasicEnemyAI.CombatRole.Suppressor:
+                if (mobilityCommitted) score += 7f;
+                if (distance >= 8f && distance <= 20f) score += 5f;
+                if (verticalDelta <= 3f) score += 2f;
+                break;
+            case BasicEnemyAI.CombatRole.Boss:
+                if (mobilityCommitted) score += 5f;
+                if (distance <= 14f) score += 4f;
+                if (verticalDelta <= 5f) score += 3f;
+                break;
+        }
+
+        return score;
     }
 
     private bool IsPlayerAtExit()
@@ -199,11 +383,6 @@ public class CybergrindArenaDirector : MonoBehaviour
             runState.RegisterBossDefeated(CurrentThemeIndex);
             Debug.Log("[ArenaDirector] Boss floor cleared.");
 
-            if (runState.bossesClearedThisRun >= bossFloorsToReachCore)
-            {
-                RunComplete = true;
-                return;
-            }
         }
 
         if (runState == null) runState = CybergrindRunState.GetOrCreate();
@@ -218,6 +397,8 @@ public class CybergrindArenaDirector : MonoBehaviour
         currentCoreBeacon = null;
         ApplyFloorMode();
         PrepareFloorSeed();
+        encounterStartTime = Time.time;
+        ResetFloorTimerState();
         bool previousClearSetting = generator.clearBeforeGenerate;
         generator.clearBeforeGenerate = transitionController == null;
         if (transitionController != null)
@@ -225,6 +406,7 @@ public class CybergrindArenaDirector : MonoBehaviour
         else
             generator.GenerateArena();
         generator.clearBeforeGenerate = previousClearSetting;
+        QueueFloorTimerArm();
     }
 
     [ContextMenu("Force Advance Floor")]
@@ -252,6 +434,8 @@ public class CybergrindArenaDirector : MonoBehaviour
 
         ApplyFloorMode();
         PrepareFloorSeed();
+        encounterStartTime = Time.time;
+        ResetFloorTimerState();
 
         if (generator == null) return;
         generator.ClearArena();
@@ -259,6 +443,13 @@ public class CybergrindArenaDirector : MonoBehaviour
             generator.BeginGenerateArenaAsync();
         else
             generator.GenerateArena();
+        QueueFloorTimerArm();
+    }
+
+    private void OnDisable()
+    {
+        CancelFloorTimerArm();
+        ResetFloorTimerState();
     }
 
     private void ApplyFloorMode()
@@ -267,6 +458,160 @@ public class CybergrindArenaDirector : MonoBehaviour
 
         generator.arenaMode = GetArenaModeForFloor(floor);
         generator.themeIndex = CurrentThemeIndex;
+        generator.enemyHealthMultiplier = CybergrindRules.GetEnemyHealthMultiplier(floor);
+        generator.enemyCountBonus = CybergrindRules.GetEnemyCountBonus(floor);
+        encounterStartTime = Time.time;
+    }
+
+    private void TickFloorTimer()
+    {
+        if (!floorTimerActive || floorTimerExpired)
+            return;
+
+        if (ShouldPauseFloorTimer())
+            return;
+
+        floorTimerRemaining = CybergrindRules.TickTimer(floorTimerRemaining, Time.unscaledDeltaTime);
+        if (floorTimerRemaining > 0f)
+            return;
+
+        floorTimerRemaining = 0f;
+        floorTimerExpired = true;
+        floorTimerActive = false;
+        TriggerFloorTimeoutDeath();
+    }
+
+    private bool ShouldPauseFloorTimer()
+    {
+        if (!IsTimedFloorActive())
+            return true;
+
+        if (PersistentLoadingScreen.IsActive)
+            return true;
+
+        if (generator == null || generator.IsGenerating || generator.CurrentArenaRoot == null)
+            return true;
+
+        if (transitionController != null && transitionController.IsTransitioning)
+            return true;
+
+        if (Time.timeScale <= 0.0001f)
+            return true;
+
+        PlayerController playerController = GetPlayerController();
+        if (playerController == null || playerController.isDead)
+            return true;
+
+        return false;
+    }
+
+    private bool IsTimedFloorActive()
+    {
+        return enabled &&
+               generator != null &&
+               (generator.arenaMode == CybergrindArenaGenerator.ArenaMode.Combat ||
+                generator.arenaMode == CybergrindArenaGenerator.ArenaMode.Boss) &&
+               !RunComplete;
+    }
+
+    private void QueueFloorTimerArm()
+    {
+        CancelFloorTimerArm();
+        if (!IsTimedFloorActive())
+            return;
+
+        floorTimerArmRoutine = StartCoroutine(ArmFloorTimerWhenReady());
+    }
+
+    private IEnumerator ArmFloorTimerWhenReady()
+    {
+        while (enabled && generator != null &&
+               (PersistentLoadingScreen.IsActive ||
+                generator.IsGenerating ||
+                generator.CurrentArenaRoot == null ||
+                (transitionController != null && transitionController.IsTransitioning)))
+        {
+            yield return null;
+        }
+
+        floorTimerArmRoutine = null;
+        if (!enabled || !IsTimedFloorActive() || generator == null || generator.CurrentArenaRoot == null)
+            yield break;
+
+        floorTimerDuration = CalculateFloorTimerDuration();
+        floorTimerRemaining = floorTimerDuration;
+        floorTimerExpired = false;
+        floorTimerActive = floorTimerDuration > 0.01f;
+    }
+
+    private void CancelFloorTimerArm()
+    {
+        if (floorTimerArmRoutine == null)
+            return;
+
+        StopCoroutine(floorTimerArmRoutine);
+        floorTimerArmRoutine = null;
+    }
+
+    private void ResetFloorTimerState()
+    {
+        CancelFloorTimerArm();
+        floorTimerDuration = 0f;
+        floorTimerRemaining = 0f;
+        floorTimerActive = false;
+        floorTimerExpired = false;
+    }
+
+    private void StopFloorTimer()
+    {
+        floorTimerActive = false;
+        floorTimerExpired = false;
+    }
+
+    private float CalculateFloorTimerDuration()
+    {
+        if (generator == null)
+            return 0f;
+
+        float baseDuration = generator.arenaMode == CybergrindArenaGenerator.ArenaMode.Boss
+            ? bossBaseDuration
+            : combatBaseDuration;
+        float maxDuration = generator.arenaMode == CybergrindArenaGenerator.ArenaMode.Boss
+            ? maximumBossDuration
+            : maximumCombatDuration;
+        float arenaArea = Mathf.Max(1f, generator.width * generator.length) * Mathf.Max(0.5f, generator.tileSize);
+        Terminal[] terminals = GetCurrentArenaTerminals();
+        BasicEnemyAI[] enemies = GetCurrentArenaEnemies();
+        int puzzleTerminalCount = 0;
+        for (int i = 0; i < terminals.Length; i++)
+        {
+            Terminal terminal = terminals[i];
+            if (terminal != null && terminal.name.StartsWith("PuzzleTerminal"))
+                puzzleTerminalCount++;
+        }
+
+        int enemyCount = 0;
+        for (int i = 0; i < enemies.Length; i++)
+        {
+            if (enemies[i] != null)
+                enemyCount++;
+        }
+
+        float duration = baseDuration;
+        duration += arenaArea * areaDurationScale;
+        duration += puzzleTerminalCount * terminalDurationBonus;
+        duration += enemyCount * enemyDurationBonus;
+        duration += Mathf.Max(0f, generator.verticalTraversalBias) * traversalDurationBonus;
+        return Mathf.Clamp(duration, minimumFloorDuration, maxDuration);
+    }
+
+    private void TriggerFloorTimeoutDeath()
+    {
+        PlayerController playerController = GetPlayerController();
+        if (playerController == null || playerController.isDead)
+            return;
+
+        playerController.TriggerGameOverDeath();
     }
 
     public CybergrindArenaGenerator.ArenaMode GetArenaModeForFloor(int targetFloor)
@@ -297,7 +642,7 @@ public class CybergrindArenaDirector : MonoBehaviour
         if (generator != null && generator.CurrentArenaRoot != null)
             return generator.CurrentArenaRoot.GetComponentsInChildren<Terminal>(true);
 
-        return FindObjectsByType<Terminal>();
+        return Object.FindObjectsByType<Terminal>();
     }
 
     private BasicEnemyAI[] GetCurrentArenaEnemies()
@@ -305,12 +650,217 @@ public class CybergrindArenaDirector : MonoBehaviour
         if (generator != null && generator.CurrentArenaRoot != null)
             return generator.CurrentArenaRoot.GetComponentsInChildren<BasicEnemyAI>(true);
 
-        return FindObjectsByType<BasicEnemyAI>();
+        return Object.FindObjectsByType<BasicEnemyAI>();
+    }
+
+    public string DebugSummarizeEncounterPressure()
+    {
+        BasicEnemyAI[] enemies = GetCurrentArenaEnemies();
+        if (enemies == null || enemies.Length == 0)
+            return "Encounter: no active enemies.";
+
+        List<BasicEnemyAI> aliveEnemies = new List<BasicEnemyAI>();
+        for (int i = 0; i < enemies.Length; i++)
+        {
+            if (enemies[i] == null || enemies[i].IsCombatResolved)
+                continue;
+            aliveEnemies.Add(enemies[i]);
+        }
+
+        if (aliveEnemies.Count == 0)
+            return "Encounter: all enemies cleared.";
+
+        int suppressors = 0;
+        int divers = 0;
+        int bulwarks = 0;
+        int harriers = 0;
+        int bosses = 0;
+        int telegraphing = 0;
+        float totalPressure = 0f;
+        BasicEnemyAI peakEnemy = null;
+        float peakPressure = float.MinValue;
+        for (int i = 0; i < aliveEnemies.Count; i++)
+        {
+            BasicEnemyAI enemy = aliveEnemies[i];
+            switch (enemy.CurrentCombatRole)
+            {
+                case BasicEnemyAI.CombatRole.Suppressor: suppressors++; break;
+                case BasicEnemyAI.CombatRole.Diver: divers++; break;
+                case BasicEnemyAI.CombatRole.Bulwark: bulwarks++; break;
+                case BasicEnemyAI.CombatRole.Harrier: harriers++; break;
+                case BasicEnemyAI.CombatRole.Boss: bosses++; break;
+            }
+
+            float pressure = enemy.CurrentPressureScore;
+            totalPressure += pressure;
+            if (enemy.IsActivelyTelegraphing)
+                telegraphing++;
+            if (pressure > peakPressure)
+            {
+                peakPressure = pressure;
+                peakEnemy = enemy;
+            }
+        }
+
+        BasicEnemyAI priorityEnemy = SelectPriorityEnemy(aliveEnemies);
+        PlayerController playerController = GetPlayerController();
+        float playerCommitment = GetPlayerCommitmentForDebug(playerController);
+        float pressureLimit = BasicEnemyAI.GetPressureLimitForCommitment(playerCommitment, false);
+        float bossPressureLimit = BasicEnemyAI.GetPressureLimitForCommitment(playerCommitment, true);
+        bool mobilityCommitted = playerController != null &&
+                                 (playerController.IsGrappling ||
+                                  playerController.IsGrappleHookInFlight ||
+                                  !playerController.isGrounded ||
+                                  playerController.DebugIsSliding ||
+                                  playerController.DebugIsSlamming ||
+                                  playerController.PlanarSpeed > 18f);
+        string peakLabel = peakEnemy != null
+            ? $"{peakEnemy.displayName} {peakEnemy.PriorityLabel} {peakPressure:0.00} [{peakEnemy.PressureDebugSummary}]"
+            : "none";
+        string priorityLabel = priorityEnemy != null
+            ? $"{priorityEnemy.displayName} {priorityEnemy.PriorityLabel} [{priorityEnemy.PressureDebugSummary}]"
+            : aliveEnemies.Count <= 2 ? "final-target mode" : "none";
+        List<string> rankedThreats = new List<string>(3);
+        List<BasicEnemyAI> ranked = new List<BasicEnemyAI>(aliveEnemies);
+        ranked.Sort((a, b) => ComputePriorityScore(b, playerController, player != null ? player.position : Vector3.zero, mobilityCommitted)
+            .CompareTo(ComputePriorityScore(a, playerController, player != null ? player.position : Vector3.zero, mobilityCommitted)));
+        int threatCount = Mathf.Min(3, ranked.Count);
+        for (int i = 0; i < threatCount; i++)
+        {
+            BasicEnemyAI enemy = ranked[i];
+            float threatScore = ComputePriorityScore(enemy, playerController, player != null ? player.position : Vector3.zero, mobilityCommitted);
+            rankedThreats.Add($"{enemy.displayName}:{enemy.PriorityLabel}:{threatScore:0.0}[{enemy.CommitGateDebugSummary}]");
+        }
+
+        return $"Encounter: alive={aliveEnemies.Count}, roles[S={suppressors}, D={divers}, B={bulwarks}, H={harriers}, Boss={bosses}], telegraphs={telegraphing}, totalPressure={totalPressure:0.00}, playerCommit={playerCommitment:0.00}, limit={pressureLimit:0.00}, bossLimit={bossPressureLimit:0.00}, peak={peakLabel}, priority={priorityLabel}, top=[{string.Join(" | ", rankedThreats)}], {BasicEnemyAI.SharedPressureDebugSummary}.";
+    }
+
+    public string DebugAuditEncounterPressure()
+    {
+        BasicEnemyAI[] enemies = GetCurrentArenaEnemies();
+        if (enemies == null || enemies.Length == 0)
+            return "Encounter audit: no active enemies.";
+
+        List<BasicEnemyAI> aliveEnemies = new List<BasicEnemyAI>();
+        for (int i = 0; i < enemies.Length; i++)
+        {
+            if (enemies[i] == null || enemies[i].IsCombatResolved)
+                continue;
+            aliveEnemies.Add(enemies[i]);
+        }
+
+        if (aliveEnemies.Count == 0)
+            return "Encounter audit: all enemies cleared.";
+
+        PlayerController playerController = GetPlayerController();
+        float playerCommitment = GetPlayerCommitmentForDebug(playerController);
+        float pressureLimit = BasicEnemyAI.GetPressureLimitForCommitment(playerCommitment, false);
+        float bossPressureLimit = BasicEnemyAI.GetPressureLimitForCommitment(playerCommitment, true);
+        bool hasBoss = false;
+        int telegraphs = 0;
+        int suppressors = 0;
+        int divers = 0;
+        int bulwarks = 0;
+        int harriers = 0;
+        int closeTelegraphs = 0;
+        int diverTelegraphs = 0;
+        int bossTelegraphs = 0;
+        float totalPressure = 0f;
+        float highestPressure = 0f;
+        BasicEnemyAI peakEnemy = null;
+        List<string> issues = new List<string>();
+
+        for (int i = 0; i < aliveEnemies.Count; i++)
+        {
+            BasicEnemyAI enemy = aliveEnemies[i];
+            float pressure = enemy.CurrentPressureScore;
+            totalPressure += pressure;
+            if (pressure > highestPressure)
+            {
+                highestPressure = pressure;
+                peakEnemy = enemy;
+            }
+
+            if (enemy.IsActivelyTelegraphing)
+            {
+                telegraphs++;
+                if (player != null && Vector3.Distance(enemy.transform.position, player.position) <= 6.5f)
+                    closeTelegraphs++;
+                if (enemy.CurrentCombatRole == BasicEnemyAI.CombatRole.Diver)
+                    diverTelegraphs++;
+                if (enemy.CurrentCombatRole == BasicEnemyAI.CombatRole.Boss)
+                    bossTelegraphs++;
+            }
+
+            switch (enemy.CurrentCombatRole)
+            {
+                case BasicEnemyAI.CombatRole.Suppressor: suppressors++; break;
+                case BasicEnemyAI.CombatRole.Diver: divers++; break;
+                case BasicEnemyAI.CombatRole.Bulwark: bulwarks++; break;
+                case BasicEnemyAI.CombatRole.Harrier: harriers++; break;
+                case BasicEnemyAI.CombatRole.Boss: hasBoss = true; break;
+            }
+        }
+
+        float activeLimit = hasBoss ? bossPressureLimit : pressureLimit;
+        if (totalPressure > activeLimit * 1.28f)
+            issues.Add($"pressure over budget ({totalPressure:0.00}>{activeLimit:0.00})");
+        if (telegraphs >= Mathf.Max(3, aliveEnemies.Count - 1))
+            issues.Add($"too many simultaneous telegraphs ({telegraphs})");
+        if (closeTelegraphs >= 2 && playerCommitment < 0.38f)
+            issues.Add($"close-range telegraph stack ({closeTelegraphs})");
+        if (divers >= 3 && playerCommitment < 0.22f)
+            issues.Add($"diver stack while player is not committed ({divers})");
+        if (diverTelegraphs >= 2 && playerCommitment < 0.28f)
+            issues.Add($"multiple diver telegraphs while player is not committed ({diverTelegraphs})");
+        if (bossTelegraphs >= 1 && telegraphs >= 3 && playerCommitment < 0.5f)
+            issues.Add($"boss pressure overlaps too many supporting telegraphs ({telegraphs})");
+        if (harriers >= 2 && bulwarks >= 2)
+            issues.Add($"heavy vertical+ground crossfire overlap (H={harriers}, B={bulwarks})");
+        if (suppressors >= 3 && playerCommitment > 0.55f)
+            issues.Add($"suppressor stack can overpunish movement commits ({suppressors})");
+        if (peakEnemy != null && peakEnemy.CurrentPressureScore > activeLimit * 0.82f && aliveEnemies.Count > 2)
+            issues.Add($"single enemy dominates live pressure ({peakEnemy.displayName}:{peakEnemy.CurrentPressureScore:0.00})");
+
+        string summary = DebugSummarizeEncounterPressure();
+        if (issues.Count == 0)
+            return $"[Encounter Audit] PASS. {summary}";
+
+        return $"[Encounter Audit] WARN. {summary} Issues: {string.Join("; ", issues)}.";
+    }
+
+    [ContextMenu("Debug/Log Encounter Pressure")]
+    private void DebugLogEncounterPressure()
+    {
+        Debug.Log(DebugSummarizeEncounterPressure());
+    }
+
+    [ContextMenu("Debug/Run Encounter Audit")]
+    private void DebugRunEncounterAudit()
+    {
+        string audit = DebugAuditEncounterPressure();
+        if (audit.Contains("WARN"))
+            Debug.LogWarning(audit);
+        else
+            Debug.Log(audit);
+    }
+
+    private float GetPlayerCommitmentForDebug(PlayerController playerController)
+    {
+        if (playerController == null)
+            return 0f;
+
+        float score = 0f;
+        if (!playerController.isGrounded) score += 0.28f;
+        if (playerController.IsGrappling || playerController.IsGrappleHookInFlight) score += 0.42f;
+        if (playerController.DebugIsSliding || playerController.DebugIsSlamming) score += 0.22f;
+        score += Mathf.InverseLerp(12f, 28f, playerController.PlanarSpeed) * 0.35f;
+        return Mathf.Clamp01(score);
     }
 
     private IEnumerator BossRewardRevealSequence()
     {
-        BossEncounterHUD hud = FindAnyObjectByType<BossEncounterHUD>();
+        BossEncounterHUD hud = GetBossHud();
         yield return new WaitForSecondsRealtime(0.35f);
 
         bool finalBoss = IsFinalBossFloor();
@@ -403,19 +953,21 @@ public class CybergrindArenaDirector : MonoBehaviour
         }
 
         Renderer renderer = ring.GetComponent<Renderer>();
-        Material mat = null;
         if (renderer != null)
         {
-            Shader shader = Shader.Find("Universal Render Pipeline/Unlit") ?? Shader.Find("Sprites/Default");
-            mat = new Material(shader);
-            mat.color = color;
-            renderer.material = mat;
+            if (sharedRewardPulseMaterial == null)
+            {
+                Shader shader = Shader.Find("Universal Render Pipeline/Unlit") ?? Shader.Find("Sprites/Default");
+                sharedRewardPulseMaterial = new Material(shader) { name = "SharedRewardPulse" };
+            }
+            renderer.sharedMaterial = sharedRewardPulseMaterial;
+            ApplyRewardPulseColor(renderer, color);
         }
 
-        StartCoroutine(AnimateRewardPulse(ring.transform, mat, color, lifetime));
+        StartCoroutine(AnimateRewardPulse(ring.transform, renderer, color, lifetime));
     }
 
-    private IEnumerator AnimateRewardPulse(Transform ring, Material mat, Color color, float lifetime)
+    private IEnumerator AnimateRewardPulse(Transform ring, Renderer renderer, Color color, float lifetime)
     {
         if (ring == null) yield break;
 
@@ -428,8 +980,8 @@ public class CybergrindArenaDirector : MonoBehaviour
             elapsed += Time.deltaTime;
             float t = Mathf.Clamp01(elapsed / Mathf.Max(0.01f, lifetime));
             ring.localScale = Vector3.Lerp(startScale, endScale, Mathf.SmoothStep(0f, 1f, t));
-            if (mat != null)
-                mat.color = new Color(color.r, color.g, color.b, Mathf.Lerp(color.a, 0f, t));
+            if (renderer != null)
+                ApplyRewardPulseColor(renderer, new Color(color.r, color.g, color.b, Mathf.Lerp(color.a, 0f, t)));
             yield return null;
         }
 
@@ -440,42 +992,29 @@ public class CybergrindArenaDirector : MonoBehaviour
         }
     }
 
+    private void ApplyRewardPulseColor(Renderer renderer, Color color)
+    {
+        if (renderer == null)
+            return;
+
+        if (rewardPulseBlock == null)
+            rewardPulseBlock = new MaterialPropertyBlock();
+
+        renderer.GetPropertyBlock(rewardPulseBlock);
+        rewardPulseBlock.SetColor("_BaseColor", color);
+        rewardPulseBlock.SetColor("_Color", color);
+        renderer.SetPropertyBlock(rewardPulseBlock);
+    }
+
     private int GetFloorRewardPresetIndex()
     {
         if (runState == null) runState = CybergrindRunState.GetOrCreate();
 
-        if (generator != null && generator.arenaMode == CybergrindArenaGenerator.ArenaMode.Boss)
-            return runState.heavyUnlockedThisRun
-                ? Mathf.Clamp(6 + Mathf.Abs((CurrentThemeIndex + floor) % 3), 6, Mathf.Max(6, runState.maxTrackedWeaponPresets - 1))
-                : 6;
+        if (!runState.shotgunUnlockedThisRun)
+            return 2;
 
-        int position = CyclePosition;
-        if (position == 0)
-        {
-            if (!runState.shotgunUnlockedThisRun)
-                return 3;
-            return 1 + Mathf.Abs(CurrentThemeIndex % 2);
-        }
-
-        if (position == 1)
-            return runState.shotgunUnlockedThisRun
-                ? Mathf.Clamp(3 + Mathf.Abs((CurrentThemeIndex + floor) % 3), 3, 5)
-                : 3;
-
-        if (position == combatFloorsBeforeShop + 1)
-            return runState.heavyUnlockedThisRun
-                ? Mathf.Clamp(6 + Mathf.Abs((CurrentThemeIndex + floor + 1) % 3), 6, 8)
-                : 6;
-
-        if (position == combatFloorsBeforeShop + 2)
-        {
-            if (runState.heavyUnlockedThisRun)
-                return Mathf.Clamp(6 + Mathf.Abs((CurrentThemeIndex + floor + 2) % 3), 6, 8);
-            if (runState.shotgunUnlockedThisRun)
-                return Mathf.Clamp(3 + Mathf.Abs((CurrentThemeIndex + floor + 1) % 3), 3, 5);
-        }
-
-        return runState.GetFirstUnlockedPreset();
+        int[] rewardCycle = { 1, 2, 3 };
+        return rewardCycle[Mathf.Abs(floor + CurrentThemeIndex) % rewardCycle.Length];
     }
 
     public int PreviewCurrentFloorRewardPresetIndex()
@@ -490,13 +1029,7 @@ public class CybergrindArenaDirector : MonoBehaviour
 
     public bool IsFinalBossFloor()
     {
-        if (generator == null || generator.arenaMode != CybergrindArenaGenerator.ArenaMode.Boss)
-            return false;
-
-        if (runState == null)
-            runState = CybergrindRunState.GetOrCreate();
-
-        return runState.bossesClearedThisRun + 1 >= bossFloorsToReachCore;
+        return false;
     }
 
     public bool HasShopInteractionThisFloor()
@@ -518,7 +1051,7 @@ public class CybergrindArenaDirector : MonoBehaviour
         if (playerController != null)
             playerController.ToggleUIMode(false);
 
-        BossEncounterHUD hud = FindAnyObjectByType<BossEncounterHUD>();
+        BossEncounterHUD hud = GetBossHud();
         if (hud != null)
         {
             hud.ShowSystemBanner(
@@ -537,28 +1070,7 @@ public class CybergrindArenaDirector : MonoBehaviour
 
     public void NotifyCoreReached()
     {
-        if (!coreAccessActive || RunComplete)
-            return;
-
-        if (runState == null)
-            runState = CybergrindRunState.GetOrCreate();
-
-        runState.RegisterFloorCleared();
-        Debug.Log("[ArenaDirector] Core reached.");
-
-        BossEncounterHUD hud = FindAnyObjectByType<BossEncounterHUD>();
-        if (hud != null)
-        {
-            hud.ShowSystemBanner(
-                "CORE OPEN",
-                "Run complete.",
-                new Color(0.08f, 0.14f, 0.16f, 0.96f),
-                3.4f);
-        }
-
-        coreAccessActive = false;
-        currentCoreBeacon = null;
-        RunComplete = true;
+        // Infinite runs never expose a completion beacon.
     }
 
     public void NotifyShopInteraction()
@@ -583,18 +1095,14 @@ public class CybergrindArenaDirector : MonoBehaviour
         if (playerController != null)
             playerController.ResetRunModifiers();
 
-        Gun gun = FindAnyObjectByType<Gun>();
+        Gun gun = GetCachedGun();
         if (gun != null)
             gun.ResetRunModifiers();
     }
 
     private bool ShouldOpenCoreAccess()
     {
-        return IsFinalBossFloor() &&
-               currentReward != null &&
-               currentReward.IsClaimed &&
-               !coreAccessActive &&
-               !RunComplete;
+        return false;
     }
 
     private void ActivateCoreAccess()
@@ -617,7 +1125,7 @@ public class CybergrindArenaDirector : MonoBehaviour
 
         BuildCoreBeaconModel(beacon.transform);
 
-        BossEncounterHUD hud = FindAnyObjectByType<BossEncounterHUD>();
+        BossEncounterHUD hud = GetBossHud();
         if (hud != null)
         {
             hud.ShowSystemBanner(

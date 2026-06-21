@@ -266,7 +266,7 @@ public class Terminal : Interactable
 
     private Vector3 FindExitWorldPosition()
     {
-        foreach (GameObject obj in FindObjectsByType<GameObject>())
+        foreach (GameObject obj in Object.FindObjectsByType<GameObject>())
         {
             if (obj.name.StartsWith("Exit_"))
                 return obj.transform.position;

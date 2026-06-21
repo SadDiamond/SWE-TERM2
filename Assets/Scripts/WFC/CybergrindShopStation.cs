@@ -29,6 +29,7 @@ public class CybergrindShopStation : Interactable
     public bool IsSpent => spent;
 
     private Gun cachedGun;
+    private CybergrindArenaDirector cachedDirector;
     private bool spent;
 
     protected override void Start()
@@ -71,6 +72,8 @@ public class CybergrindShopStation : Interactable
     {
         if (spent)
             return $"{GetServiceTitle()} - USED";
+        if (IsFloorPurchaseLocked())
+            return $"{GetServiceTitle()} - LOCKED";
 
         string title = cost <= 0
             ? $"{GetServiceTitle()} - FREE"
@@ -89,6 +92,8 @@ public class CybergrindShopStation : Interactable
     {
         if (spent)
             return "Already used.";
+        if (IsFloorPurchaseLocked())
+            return "One purchase already made this floor.";
 
         Gun gun = GetGun(player);
         return service switch
@@ -106,6 +111,14 @@ public class CybergrindShopStation : Interactable
         if (spent)
         {
             promptMessage = "Used";
+            return;
+        }
+        if (IsFloorPurchaseLocked())
+        {
+            promptMessage = "Purchase already used this floor";
+            if (presentation != null)
+                presentation.FlashDenied();
+            player.ShowTransientStatus(promptMessage, 1.25f);
             return;
         }
 
@@ -190,7 +203,7 @@ public class CybergrindShopStation : Interactable
             ApplySpentVisual();
         }
 
-        CybergrindArenaDirector director = FindAnyObjectByType<CybergrindArenaDirector>();
+        CybergrindArenaDirector director = GetDirector();
         if (director != null)
             director.NotifyShopInteraction();
 
@@ -223,6 +236,11 @@ public class CybergrindShopStation : Interactable
         if (spent)
         {
             promptMessage = "Used";
+            return;
+        }
+        if (IsFloorPurchaseLocked())
+        {
+            promptMessage = "Purchase already used this floor";
             return;
         }
 
@@ -264,6 +282,19 @@ public class CybergrindShopStation : Interactable
         return cachedGun;
     }
 
+    public bool IsFloorPurchaseLocked()
+    {
+        CybergrindArenaDirector director = GetDirector();
+        return CybergrindRules.IsShopPurchaseLocked(director != null && director.HasShopInteractionThisFloor());
+    }
+
+    private CybergrindArenaDirector GetDirector()
+    {
+        if (cachedDirector == null)
+            cachedDirector = FindAnyObjectByType<CybergrindArenaDirector>();
+        return cachedDirector;
+    }
+
     private void RejectPurchase(PlayerController player)
     {
         int missing = Mathf.Max(1, cost - (player != null ? player.currency : 0));
@@ -294,10 +325,10 @@ public class CybergrindShopStation : Interactable
     {
         string weaponName = gun != null ? gun.GetPresetDisplayName(presetIndex) : $"Weapon {presetIndex + 1}";
         bool unlocked = CybergrindRunState.GetOrCreate().IsWeaponUnlocked(presetIndex);
-        string descriptor = gun != null ? gun.GetPresetGuideText(presetIndex) : "Switch to a different weapon for this run.";
+        string descriptor = gun != null ? gun.GetPresetGuideText(presetIndex) : "Switch weapons.";
         return unlocked
-            ? $"{weaponName}. Equips it now. {descriptor}"
-            : $"{weaponName}. Adds it for this run and equips it.";
+            ? $"Equip {weaponName}. {descriptor}"
+            : $"Unlock {weaponName}. {descriptor}";
     }
 
     private string BuildOverclockDetail(Gun gun)
@@ -308,7 +339,8 @@ public class CybergrindShopStation : Interactable
         string gunName = gun != null ? gun.GetActiveDisplayName() : "your current weapon";
         string modLine = gun != null
             ? gun.GetModPreviewLine(gun.GetActiveFamily(), passiveMod, altFireMod)
-            : "Adds one passive mod and one special mod.";
-        return $"{gunName}. {modLine}. +{fireRatePercent}% rate  +{damagePercent}% damage  +{altPercent}% special recharge. Restores a little HP.";
+            : "Adds two mods.";
+        int restoredHealth = Mathf.Max(12, healAmount / 3);
+        return $"Upgrade {gunName}. {modLine}. +{fireRatePercent}% fire rate, +{damagePercent}% damage, -{altPercent}% ability cooldown. Heals {restoredHealth} HP.";
     }
 }

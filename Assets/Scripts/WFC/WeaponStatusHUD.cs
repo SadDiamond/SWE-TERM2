@@ -24,6 +24,7 @@ public class WeaponStatusHUD : MonoBehaviour
     private string lastVariantDisplay = string.Empty;
     private string lastModifierStatus = string.Empty;
     private bool hasPrimedState;
+    private float referenceRefreshTimer;
 
     private void Start()
     {
@@ -50,6 +51,7 @@ public class WeaponStatusHUD : MonoBehaviour
     private void Update()
     {
         UpdateMomentState(Time.deltaTime);
+        UpdateCachedReferences();
 
         refreshTimer -= Time.deltaTime;
         if (refreshTimer > 0f) return;
@@ -60,8 +62,6 @@ public class WeaponStatusHUD : MonoBehaviour
 
     private void RefreshState()
     {
-        if (gun == null)
-            gun = FindAnyObjectByType<Gun>();
         if (gun == null) return;
 
         if (familyText != null)
@@ -96,6 +96,17 @@ public class WeaponStatusHUD : MonoBehaviour
         lastVariantDisplay = currentVariantDisplay;
         lastModifierStatus = modifierStatus;
         hasPrimedState = true;
+    }
+
+    private void UpdateCachedReferences(bool force = false)
+    {
+        referenceRefreshTimer -= Time.deltaTime;
+        if (!force && referenceRefreshTimer > 0f)
+            return;
+
+        referenceRefreshTimer = 1f;
+        if (gun == null)
+            gun = FindAnyObjectByType<Gun>();
     }
 
     private void BuildUI()

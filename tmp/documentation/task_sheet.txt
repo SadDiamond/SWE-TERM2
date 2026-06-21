@@ -1,0 +1,484 @@
+FORT STREET HIGH SCHOOL
+
+
+
+Software Engineering (Preliminary) – Year 11 
+
+ASSESSMENT NOTIFICATION
+
+
+
+TASK NUMBER: 2 
+
+TASK TYPE: Project 2 - 40%
+
+FOCUS AREA: The Object-Oriented Paradigm
+
+DUE DATE:
+
+Term 2, Week 9 (submission of code and documentation)
+
+Term 2, Week 10 (individual presentations)
+
+TASK DESCRIPTION:
+
+Students use Python (or another suitable class oriented programming language), and an object-oriented programming approach, to create a computer game based inspired by a text-based role-playing adventure game originally written in an imperative or procedural language. They do this by modifying, improving, and making a unique game from a guided solution that is based loosely on the famous vintage classic Hunt the Wumpus. Student are required to modify the code so that they make an original scenario, characters, and engaging gameplay. 
+
+Students may seek to implement a GUI and discuss other suitable modifications with their teacher. 
+
+Alternatively, students may choose an individual project, in collaboration with their teacher, that explores OOP concepts through design of a desktop application or similar system (library management system, finance management system/tracker, hotel booking system etc.)
+
+To accomplish this goal of creating an original game, they must
+
+•	modify/create the classes, objects, attributes, and methods of the guided solution
+
+•	provide documentation including a journal and modelling diagrams
+
+•	present your solution to the class including a question and answer (Q&A) segment.
+
+OUTCOMES ASSESSED:
+
+SE-11-01		describes methods used to plan, develop and engineer software solutions
+
+SE-11-02		explains how structural elements are used to develop programming code
+
+SE-11-06		applies tools and resources to design, develop, manage and evaluate software
+
+SE-11-08		applies language structures to refine code
+
+SE-11-09		manages and documents the development of a software project
+
+MARKING CRITERIA:
+
+The details are in the appendix.
+
+FEEDBACK PROVIDED:
+
+Feedback will be provided after submission: 
+
+written annotations on Google Classroom and detailed feedback
+
+highlights on marking guidelines
+
+RESOURCES
+
+https://www.atariarchives.org/bcc1/showpage.php?page=247
+
+https://forum.makecode.com/t/presenting-hunt-the-wumpus/279
+
+Assessment requirements
+
+Steps
+
+What I need to do
+
+Identifying and defining
+
+Investigate why object-oriented programming languages are suited to the development of computer games.
+
+(20 marks)
+
+
+
+This section would change if student chooses a desktop application to be oriented towards their app. Dot points 5 – 6 are still applicable.
+
+Design the characters and the environment for your game.
+
+Define these characters as objects.
+
+Identify common characteristics (attributes) that may be inherited from a parent class.
+
+Identify how characters (objects) will interact with each other and their environments through methods.
+
+Research and read The Genesis of Wumpus. Student document elements in this game that could be translated into OOP paradigm.
+
+Student investigates how procedural languages were used and compare 1 example to the OOP paradigm.
+
+Establish a set of quality success criterion for your project.
+
+Research and planning
+
+Document using project management tools.
+
+
+
+Plan the game you will create.
+
+
+
+(20 marks)
+
+Apply appropriate project management system tools to design the project by creating:
+
+data flow diagrams
+
+a structure chart
+
+a data dictionary
+
+class diagrams.
+
+Producing and implementing
+
+Develop your game
+
+
+
+(20 marks)
+
+In Python:
+
+Create the environment (set the scene).
+
+Create the classes and objects.
+
+Create the attributes and methods to move and interact.
+
+Add the characters and their behaviours.
+
+Allow for interaction with between the characters and the  environment.
+
+Add items and other gameplay elements.
+
+Add a GUI (optional for students seeking to extend themselves)
+
+Testing and evaluating
+
+Review and improve your game
+
+
+
+(20 marks)
+
+Describe and document the application of methodologies to test and evaluate the code including:
+
+—	unit, subsystem, and system testing
+
+—	black, white, and grey box testing
+
+—	quality assurance and user testing.
+
+Analyse and evaluate your solution against the quality success criteria.
+
+Refine code for efficiency and optimisation. Document how these were achieved in your final product.
+
+Project Journal and Individual Presentation
+
+
+
+(20 marks)
+
+Document and submit a Journal of progress and pitfalls in the project. A scaffold will be provided for this document to all students.
+
+Present their project and documentation to the class, including a video of gameplay, allowing for questions to be asked. Students will be given a score on their presentation as part of this assessment.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Journal of progress and pitfalls
+
+Use the following pages as a diary to document the development of your project. Make note of skills and knowledge gained, challenges faced and successes demonstrating iterative design and evaluation. This Journal should reflect the majority of lessons once the project has been commenced.
+
+Date
+
+Description
+
+__/__/__
+
+
+
+__/__/__
+
+
+
+__/__/__
+
+
+
+__/__/__
+
+
+
+__/__/__
+
+
+
+__/__/__
+
+
+
+__/__/__
+
+
+
+__/__/__
+
+
+
+__/__/__
+
+
+
+
+
+Rubric for Presentation
+
+
+
+Name of Presenter:
+
+
+
+ 
+
+Category 
+
+ 
+
+Scoring Criteria 
+
+ 
+
+ 
+
+ 
+
+ 
+
+Organization 
+
+ 
+
+The content of the presentation is comprehensive and appropriate for the audience. 
+
+Poor                                Excellent 
+
+                                           1       2       3       4       5 
+
+Information is presented in a logical sequence. 
+
+Poor                                Excellent 
+
+                                    1       2       3       4       5 
+
+Presentation appropriately cites requisite number of references. 
+
+
+
+Poor                                Excellent 
+
+                                    1       2       3       4       5 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+Content 
+
+ 
+
+Introduction is attention-getting, lays out the problem well, and establishes a framework for the rest of the presentation. 
+
+Poor                                Excellent 
+
+                                    1       2       3       4       5 
+
+Technical terms are well-defined in language appropriate for the target audience. 
+
+Poor                                Excellent 
+
+                                    1       2       3       4       5 
+
+Presentation contains appropriate information to the topic area. 
+
+Poor                                Excellent 
+
+                                    1       2       3       4       5 
+
+Material included is relevant to the overall research area. 
+
+Poor                                Excellent 
+
+                                    1       2       3       4       5 
+
+Appropriate amount of material is prepared, and points made reflect well their relative importance. 
+
+Poor                                Excellent 
+
+                                    1       2       3       4       5 
+
+There is an obvious conclusion summarizing the presentation. 
+
+Poor                                Excellent 
+
+                                    1       2       3       4       5 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+Presentation 
+
+ 
+
+Speaker maintains good eye contact with the audience and is appropriately animated (e.g., gestures, movement, etc.). 
+
+Poor                                Excellent 
+
+                                    1       2       3       4       5 
+
+Speaker uses a clear, audible voice. 
+
+Poor                                Excellent 
+
+                                    1       2       3       4       5 
+
+Delivery is poised, controlled, and smooth. 
+
+Poor                                Excellent 
+
+                                    1       2       3       4       5 
+
+Good language skills and pronunciation are used. 
+
+Poor                                Excellent 
+
+                                    1       2       3       4       5 
+
+Visual aids are well prepared, informative, effective, and not distracting. 
+
+
+
+Poor                                Excellent 
+
+                                    1       2       3       4       5 
+
+Length of presentation is within the assigned time limits (10-12 minutes). 
+
+Poor                                Excellent 
+
+                                    1       2       3       4       5 
+
+Information was well communicated. 
+
+Poor                                Excellent 
+
+                                    1       2       3       4       5 
+
+Total       / 80
+
+Marking guidelines
+
+Grade
+
+Marking guideline descriptors
+
+A 
+
+
+
+(85 - 100 marks)
+
+Demonstrates an extensive understanding of the steps used by programmers when designing software.
+
+Develops highly effective algorithms to demonstrate the logic required for a software solution.
+
+Develops highly effective computing solutions using the Python programming language.
+
+Demonstrates outstanding ICT capabilities and ability to research solutions to real world problems.
+
+B
+
+
+
+(65 - 84 marks)
+
+Demonstrates a thorough understanding of the steps used by programmers when designing software.
+
+Develops effective algorithms to demonstrate the logic required for a software solution.
+
+Develops effective computing solutions using the Python programming language.
+
+Demonstrates excellent ICT capabilities and ability to research solutions to real world problems.
+
+C
+
+
+
+(50 - 64 marks) 
+
+Demonstrates a sound understanding of the steps used by programmers when designing software.
+
+Develops sound algorithms to demonstrate the logic required for a software solution.
+
+Develops sound computing solutions using the Python programming language.
+
+Demonstrates sound ICT capabilities and ability to research solutions to real world problems.
+
+D
+
+
+
+(26 - 49 marks)
+
+Demonstrates a basic understanding of the steps used by programmers when designing software.
+
+Develops basic algorithms to demonstrate the logic required for a software solution.
+
+Develops basic computing solutions using the Python programming language.
+
+Demonstrates basic ICT capabilities and ability to research solutions to real world problems.
+
+E
+
+
+
+(0 - 25 marks)
+
+Identifies the requirements for the documentation and production of a software solution.
+
+Demonstrates limited ICT capabilities and ability to research solutions to real world problems.
+
+
+

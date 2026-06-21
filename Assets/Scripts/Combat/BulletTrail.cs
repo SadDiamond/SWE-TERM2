@@ -8,6 +8,7 @@ public class BulletTrail : MonoBehaviour
     public float startWidth = 0.055f;
 
     private TrailRenderer trail;
+    private static Material sharedTrailMaterial;
 
     void Awake()
     {
@@ -42,25 +43,18 @@ public class BulletTrail : MonoBehaviour
         trail.numCapVertices = 2;
         trail.alignment = LineAlignment.View;
 
-        if (trail.sharedMaterial == null)
+        if (sharedTrailMaterial == null)
         {
             Shader shader = Shader.Find("Universal Render Pipeline/Unlit");
             if (shader == null) shader = Shader.Find("Sprites/Default");
-            trail.sharedMaterial = new Material(shader);
+            sharedTrailMaterial = new Material(shader);
+            if (sharedTrailMaterial.HasProperty("_EmissionColor"))
+                sharedTrailMaterial.EnableKeyword("_EMISSION");
         }
+        trail.sharedMaterial = sharedTrailMaterial;
 
-        Material material = trail.sharedMaterial;
+        Material material = sharedTrailMaterial;
         if (material == null) return;
-
-        if (material.HasProperty("_BaseColor"))
-            material.SetColor("_BaseColor", startColor);
-        if (material.HasProperty("_Color"))
-            material.SetColor("_Color", startColor);
-        if (material.HasProperty("_EmissionColor"))
-        {
-            material.EnableKeyword("_EMISSION");
-            material.SetColor("_EmissionColor", startColor * 1.8f);
-        }
 
         trail.startColor = startColor;
         trail.endColor = endColor;

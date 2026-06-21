@@ -1,10 +1,13 @@
 using UnityEngine;
 
-public class Target : MonoBehaviour, IDamageable
+public class Target : MonoBehaviour, IDamageable, IGrappleMassTarget
 {
     [Header("Stats")]
     public float maxHealth = 50f;
     public float currentHealth { get; private set; }
+    public GrappleMassClass grappleMassClass = GrappleMassClass.Heavy;
+    [Min(0f)] public float grapplePullResponsiveness = 22f;
+    [Min(0f)] public float grapplePullStopDistance = 1.7f;
 
     [Header("Effects")]
     public Color damageColor = Color.red;
@@ -14,6 +17,7 @@ public class Target : MonoBehaviour, IDamageable
     private float flashTimer;
     private float flashDuration = 0.1f;
     private Vector3 originalScale;
+    public GrappleMassClass GrappleMassClass => grappleMassClass;
 
     void Start()
     {
@@ -84,5 +88,22 @@ public class Target : MonoBehaviour, IDamageable
             yield return null;
         }
         transform.localScale = originalScale;
+    }
+
+    public bool ApplyGrapplePull(Vector3 pullTargetPoint, Vector3 pullDirection, float pullSpeed, float deltaTime)
+    {
+        if (grappleMassClass != GrappleMassClass.Light)
+            return false;
+
+        Vector3 currentPosition = transform.position;
+        Vector3 toTarget = pullTargetPoint - currentPosition;
+        float distance = toTarget.magnitude;
+        if (distance <= grapplePullStopDistance)
+            return true;
+
+        Vector3 desiredDirection = toTarget / Mathf.Max(0.001f, distance);
+        float moveSpeed = Mathf.Max(0f, pullSpeed) * Mathf.Max(0.2f, grapplePullResponsiveness / 22f);
+        transform.position = currentPosition + desiredDirection * Mathf.Min(distance - grapplePullStopDistance, moveSpeed * deltaTime);
+        return true;
     }
 }

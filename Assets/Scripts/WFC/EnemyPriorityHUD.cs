@@ -127,7 +127,7 @@ public class EnemyPriorityHUD : MonoBehaviour
 
         widget.rect.anchoredPosition = pos;
         widget.diamond.color = behind ? new Color(1f, 0.78f, 0.28f, 0.98f) : new Color(1f, 0.9f, 0.44f, 0.98f);
-        widget.label.text = "LAST";
+        widget.label.text = enemy.PriorityLabel;
         widget.root.SetActive(true);
     }
 

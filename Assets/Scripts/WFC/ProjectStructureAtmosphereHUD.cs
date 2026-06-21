@@ -13,6 +13,10 @@ public class ProjectStructureAtmosphereHUD : MonoBehaviour
     private float refreshTimer;
     private Image vignetteOverlay;
     private Image modeTintOverlay;
+    private Image speedBandOverlay;
+    private Image topFrameOverlay;
+    private Image bottomFrameOverlay;
+    private Image[] cornerBrackets;
 
     private void Start()
     {
@@ -40,6 +44,20 @@ public class ProjectStructureAtmosphereHUD : MonoBehaviour
             vignetteOverlay.enabled = false;
         if (modeTintOverlay != null)
             modeTintOverlay.enabled = false;
+        if (speedBandOverlay != null)
+            speedBandOverlay.enabled = false;
+        if (topFrameOverlay != null)
+            topFrameOverlay.enabled = false;
+        if (bottomFrameOverlay != null)
+            bottomFrameOverlay.enabled = false;
+        if (cornerBrackets != null)
+        {
+            for (int i = 0; i < cornerBrackets.Length; i++)
+            {
+                if (cornerBrackets[i] != null)
+                    cornerBrackets[i].enabled = false;
+            }
+        }
     }
 
     private void EnsureOverlay()
@@ -49,6 +67,10 @@ public class ProjectStructureAtmosphereHUD : MonoBehaviour
 
         vignetteOverlay = EnsureImage(canvas.transform, "ProjectStructureVignette", 0);
         modeTintOverlay = EnsureImage(canvas.transform, "ProjectStructureModeTint", 1);
+        speedBandOverlay = EnsureImage(canvas.transform, "ProjectStructureSpeedBand", 2);
+        topFrameOverlay = EnsureImage(canvas.transform, "ProjectStructureTopFrame", 3);
+        bottomFrameOverlay = EnsureImage(canvas.transform, "ProjectStructureBottomFrame", 4);
+        EnsureCornerBrackets(canvas.transform);
         Transform oldScanlines = canvas.transform.Find("ProjectStructureScanlines");
         if (oldScanlines != null)
             Destroy(oldScanlines.gameObject);
@@ -86,6 +108,20 @@ public class ProjectStructureAtmosphereHUD : MonoBehaviour
         if (vignetteOverlay == null || modeTintOverlay == null)
             return;
 
+        vignetteOverlay.enabled = true;
+        modeTintOverlay.enabled = true;
+        if (speedBandOverlay != null) speedBandOverlay.enabled = true;
+        if (topFrameOverlay != null) topFrameOverlay.enabled = true;
+        if (bottomFrameOverlay != null) bottomFrameOverlay.enabled = true;
+        if (cornerBrackets != null)
+        {
+            for (int i = 0; i < cornerBrackets.Length; i++)
+            {
+                if (cornerBrackets[i] != null)
+                    cornerBrackets[i].enabled = true;
+            }
+        }
+
         float health01 = 1f;
         float speed01 = 0f;
         bool isBoss = false;
@@ -122,7 +158,95 @@ public class ProjectStructureAtmosphereHUD : MonoBehaviour
                 ? Color.Lerp(new Color(0.03f, 0.12f, 0.1f, 0.05f), new Color(sectorTint.r, sectorTint.g, sectorTint.b, 0.05f), 0.5f)
                 : new Color(sectorTint.r, sectorTint.g, sectorTint.b, 0.03f + speed01 * 0.04f);
         modeTintOverlay.color = tint;
+        ConfigureFrameOverlay(sectorTint, speed01, lowHealth, pulse, isBoss, isShop);
+    }
 
+    private void ConfigureFrameOverlay(Color sectorTint, float speed01, float lowHealth, float pulse, bool isBoss, bool isShop)
+    {
+        if (speedBandOverlay != null)
+        {
+            speedBandOverlay.color = new Color(sectorTint.r, sectorTint.g, sectorTint.b, 0.035f + speed01 * 0.1f + (isBoss ? 0.03f : 0f));
+            RectTransform rect = speedBandOverlay.rectTransform;
+            rect.anchorMin = new Vector2(0f, 0.86f);
+            rect.anchorMax = new Vector2(1f, 1f);
+            rect.offsetMin = Vector2.zero;
+            rect.offsetMax = Vector2.zero;
+        }
+
+        float frameAlpha = 0.08f + lowHealth * 0.1f + (isShop ? 0.03f : 0f) + (isBoss ? pulse * 0.08f : speed01 * 0.05f);
+        Color frameColor = Color.Lerp(new Color(0.06f, 0.07f, 0.08f, frameAlpha), new Color(sectorTint.r, sectorTint.g, sectorTint.b, frameAlpha), 0.68f);
+        if (topFrameOverlay != null)
+        {
+            topFrameOverlay.color = frameColor;
+            RectTransform top = topFrameOverlay.rectTransform;
+            top.anchorMin = new Vector2(0f, 1f);
+            top.anchorMax = new Vector2(1f, 1f);
+            top.pivot = new Vector2(0.5f, 1f);
+            top.sizeDelta = new Vector2(0f, 16f + speed01 * 14f);
+            top.anchoredPosition = Vector2.zero;
+        }
+
+        if (bottomFrameOverlay != null)
+        {
+            bottomFrameOverlay.color = new Color(frameColor.r, frameColor.g, frameColor.b, frameAlpha * 0.82f);
+            RectTransform bottom = bottomFrameOverlay.rectTransform;
+            bottom.anchorMin = new Vector2(0f, 0f);
+            bottom.anchorMax = new Vector2(1f, 0f);
+            bottom.pivot = new Vector2(0.5f, 0f);
+            bottom.sizeDelta = new Vector2(0f, 10f + speed01 * 8f);
+            bottom.anchoredPosition = Vector2.zero;
+        }
+
+        if (cornerBrackets == null)
+            return;
+
+        float bracketAlpha = 0.06f + speed01 * 0.1f + lowHealth * 0.08f + (isBoss ? pulse * 0.1f : 0f);
+        for (int i = 0; i < cornerBrackets.Length; i++)
+        {
+            Image bracket = cornerBrackets[i];
+            if (bracket == null)
+                continue;
+
+            bracket.color = new Color(sectorTint.r, sectorTint.g, sectorTint.b, bracketAlpha);
+            RectTransform rect = bracket.rectTransform;
+            float offset = 32f + speed01 * 12f + (i < 2 ? pulse * 4f : -pulse * 4f);
+            float signedX = (i == 0 || i == 2) ? offset : -offset;
+            float signedY = (i < 2) ? -offset : offset;
+            rect.sizeDelta = new Vector2(84f, 6f);
+            rect.anchoredPosition = new Vector2(signedX, signedY);
+            rect.localRotation = Quaternion.Euler(0f, 0f, i switch
+            {
+                0 => 45f,
+                1 => 135f,
+                2 => -45f,
+                _ => -135f
+            });
+        }
+    }
+
+    private void EnsureCornerBrackets(Transform parent)
+    {
+        if (cornerBrackets != null && cornerBrackets.Length == 4)
+            return;
+
+        cornerBrackets = new Image[4];
+        Vector2[] anchors =
+        {
+            new Vector2(0.5f, 0.5f),
+            new Vector2(0.5f, 0.5f),
+            new Vector2(0.5f, 0.5f),
+            new Vector2(0.5f, 0.5f)
+        };
+
+        for (int i = 0; i < cornerBrackets.Length; i++)
+        {
+            Image image = EnsureImage(parent, $"ProjectStructureCornerBracket_{i}", 5 + i);
+            RectTransform rect = image.rectTransform;
+            rect.anchorMin = anchors[i];
+            rect.anchorMax = anchors[i];
+            rect.pivot = new Vector2(0.5f, 0.5f);
+            cornerBrackets[i] = image;
+        }
     }
 
     private Color ResolveSectorTint(int themeIndex)

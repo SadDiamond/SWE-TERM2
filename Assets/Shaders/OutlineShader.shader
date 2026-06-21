@@ -14,7 +14,9 @@ Shader "Custom/InvertedHullOutline"
         {
             Name "OutlinePass"
             Cull Front // This is the "inverted hull" part - render the inside of the mesh
-            ZWrite On
+            ZWrite Off
+            ZTest Always
+            Blend SrcAlpha OneMinusSrcAlpha
             
             HLSLPROGRAM
             #pragma vertex vert
@@ -63,7 +65,9 @@ Shader "Custom/InvertedHullOutline"
         {
             Name "OutlinePass"
             Cull Front
-            ZWrite On
+            ZWrite Off
+            ZTest Always
+            Blend SrcAlpha OneMinusSrcAlpha
             
             CGPROGRAM
             #pragma vertex vert

@@ -1856,7 +1856,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 9d3353f4d058747b88c73be3252cb4ca, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::ProjectStructurePresentation
-  placeholderTitle: PROJECT STRUCTURE
+  placeholderTitle: Term 2 SWE project
   arenaDirector: {fileID: 0}
   arenaGenerator: {fileID: 0}
   player: {fileID: 0}

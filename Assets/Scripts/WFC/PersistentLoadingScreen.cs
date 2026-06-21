@@ -5,17 +5,20 @@ using UnityEngine.UI;
 
 public class PersistentLoadingScreen : MonoBehaviour
 {
+    private const float ArenaReadyTimeoutSeconds = 60f;
     private static PersistentLoadingScreen instance;
+    private static CybergrindArenaGenerator cachedGenerator;
 
     private Canvas canvas;
     private GameObject overlayRoot;
+    private Image overlayImage;
     private RubikCubeLoader cubeLoader;
     private Coroutine activeRoutine;
     private bool loadInProgress;
 
     public static bool IsActive => instance != null && instance.loadInProgress;
 
-    public static void LoadArenaFromMenu(bool sandbox, bool heroArena)
+    public static void LoadArenaFromMenu()
     {
         if (instance == null)
         {
@@ -28,7 +31,7 @@ public class PersistentLoadingScreen : MonoBehaviour
         if (instance.activeRoutine != null)
             instance.StopCoroutine(instance.activeRoutine);
 
-        instance.activeRoutine = instance.StartCoroutine(instance.LoadArenaRoutine(sandbox, heroArena));
+        instance.activeRoutine = instance.StartCoroutine(instance.LoadArenaRoutine());
     }
 
     private void Build()
@@ -54,7 +57,7 @@ public class PersistentLoadingScreen : MonoBehaviour
         overlayRect.anchorMax = Vector2.one;
         overlayRect.offsetMin = Vector2.zero;
         overlayRect.offsetMax = Vector2.zero;
-        Image overlayImage = overlayRoot.AddComponent<Image>();
+        overlayImage = overlayRoot.AddComponent<Image>();
         overlayImage.color = Color.black;
 
         GameObject cubeObject = new GameObject("RubikCubePreview");
@@ -71,20 +74,28 @@ public class PersistentLoadingScreen : MonoBehaviour
         overlayRoot.SetActive(false);
     }
 
-    private IEnumerator LoadArenaRoutine(bool sandbox, bool heroArena)
+    private IEnumerator LoadArenaRoutine()
     {
         loadInProgress = true;
+        cachedGenerator = null;
         overlayRoot.SetActive(true);
         cubeLoader.SetVisible(true);
-        StartMenuController.SetLaunchFlags(true, sandbox, heroArena);
+        StartMenuController.SetLaunchFlag(true);
 
         Coroutine cubeRoutine = StartCoroutine(cubeLoader.PlayLoopingSolveAndSpin());
         AsyncOperation sceneLoad = SceneManager.LoadSceneAsync("Arena");
         while (!sceneLoad.isDone)
             yield return null;
 
-        while (!IsArenaLoadReady(sandbox, heroArena))
+        float readyDeadline = Time.realtimeSinceStartup + ArenaReadyTimeoutSeconds;
+        while (!IsArenaLoadReady() && Time.realtimeSinceStartup < readyDeadline)
             yield return null;
+
+        if (!IsArenaLoadReady())
+        {
+            Debug.LogError($"[Loading] Arena did not become ready within {ArenaReadyTimeoutSeconds:0} seconds. " +
+                           "Releasing the loading overlay so the failure can be inspected.");
+        }
 
         yield return new WaitForEndOfFrame();
         yield return new WaitForEndOfFrame();
@@ -98,15 +109,12 @@ public class PersistentLoadingScreen : MonoBehaviour
         activeRoutine = null;
     }
 
-    private static bool IsArenaLoadReady(bool sandbox, bool heroArena)
+    private static bool IsArenaLoadReady()
     {
-        if (heroArena)
-            return GameObject.Find("_HeroArena") != null;
-
-        if (sandbox)
-            return GameObject.Find("_SandboxArena") != null;
-
-        CybergrindArenaGenerator generator = FindAnyObjectByType<CybergrindArenaGenerator>();
+        if (cachedGenerator == null)
+            cachedGenerator = FindAnyObjectByType<CybergrindArenaGenerator>();
+        CybergrindArenaGenerator generator = cachedGenerator;
         return generator != null && !generator.IsGenerating && generator.CurrentArenaRoot != null;
     }
+
 }

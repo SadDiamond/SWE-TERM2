@@ -1,0 +1,28 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Report preview</title>
+  <style>
+    body { margin: 0; background: #30343a; }
+    #status { position: fixed; top: 8px; right: 12px; z-index: 10; background: white; padding: 6px 10px; font: 12px Arial; }
+    @media print { #status { display: none; } body { background: white; } }
+  </style>
+</head>
+<body>
+  <div id="status">Rendering...</div>
+  <div id="report"></div>
+  <script src="./tools/node_modules/jszip/dist/jszip.min.js"></script>
+  <script src="./tools/node_modules/docx-preview/dist/docx-preview.min.js"></script>
+  <script>
+    fetch('../../output/documents/Gordon_Zhao_Assessment_2_OOP_Report_Revised.docx')
+      .then(response => response.arrayBuffer())
+      .then(data => docx.renderAsync(data, document.getElementById('report'), null, {
+        className: 'docx', inWrapper: true, breakPages: true, ignoreLastRenderedPageBreak: false,
+        renderHeaders: true, renderFooters: true, renderFootnotes: true
+      }))
+      .then(() => { document.getElementById('status').textContent = 'Ready'; document.title = 'READY'; })
+      .catch(error => { document.getElementById('status').textContent = error.message; document.title = 'ERROR'; });
+  </script>
+</body>
+</html>

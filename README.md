@@ -1,84 +1,105 @@
-# SWE-TERM2
+# Term 2 SWE project
 
-**Project Overview:**
-A shooter/puzzle game using movement mechanics (slide-dashing, slamming).
+## Project overview
 
-## Week 3 (B Week) - Focus: Preliminary Planning and Research
+This is a fast first-person arena roguelite made in Unity with C#. The player moves through procedurally generated floors, clears enemies and terminals, buys one upgrade in each shop, and keeps going until they die.
 
-4-5-2026 - 6-5-2026
-- Did the beginning of the documentation (defining the core loop for a fast-paced arena shooter), also started doing some designs on the overall structure of the game and procedural map generation.
-8-5-2026
-- Made the foundational base player controller and set up a basic playground for testing physics.
+The final project focuses on:
 
-9-5-2026
-- Debugged and fixed Player raycasting (added center-camera Raycasts) to ensure precise crosshair aiming.
-- Created basic hitscan tests and dummy target scripts.
+- momentum movement: slide jumps, dashes, wall running, slams and grappling;
+- four weapons with separate primary fire, abilities and upgrades;
+- light, heavy, flying and boss enemies;
+- runtime arena generation with combat, shop and boss floors;
+- an infinite run with enemy count and health scaling;
+- a compact HUD, start menu, settings, loading transitions and death screen.
 
-10-5-2026
-- Implemented core OOP structures for the combat system (`Gun` parent, `Projectile` class).
-- Setup basic target dummies and `IDamageable` interfaces to test weapon damage outputs.
+The main scene is `Assets/Scenes/Arena.unity`. The active systems are under `Assets/Scripts`, especially `PlayerController.cs`, `Combat/Gun.cs`, `AI/BasicEnemyAI.cs` and the `WFC` folder.
 
-## Week 4 (A Week) - Focus: Identification of Classes, Objects, System Diagramming
+## OOP structure
 
-11-5-2026
-- Began cleanup pass on existing scripts now that the core combat loop is working. Stripped Debug.Log statements to keep console clean during playtesting.
-- Reviewed the current combat hierarchy (`IDamageable` -> `BasicEnemyAI` / `Target`) in preparation for the class diagram.
+The project uses Unity components as objects with separate responsibilities. `PlayerController` handles movement and grappling, `Gun` handles weapons, `BasicEnemyAI` handles enemy states, and `CybergrindArenaDirector` controls floor progression. Shared behaviour is represented through abstract classes and interfaces:
 
-13-5-2026
-- Refactored `PlayerController`: Overhauled the physics to use a separated momentum vector. This was necessary to correctly implement velocity-based mechanics like slide-dashing.
-- Hooked up slide and dash logic, ensuring dashed momentum carries over into standard physics.
+- `Interactable` is the parent of terminals, shop stations and weapon rewards.
+- `Terminal` is the parent of the current puzzle terminal.
+- `PostProcessor` is the parent of generation repair and decoration passes.
+- `IDamageable` lets guns damage players, enemies and targets through one method.
+- `IGrappleMassTarget` lets the grapple treat light and heavy targets differently.
 
-14-5-2026
-- Upgraded the advanced movement system: Added double jumping, mid-air slams, and speed caps.
-- Added dynamic camera FX (FOV warping based on speed, camera dipping for slides) to enhance the feeling of speed.
+## Reconstructed development history
 
-15-5-2026
+This history is based on dated Git commits and the files changed in each commit.
 
-## Week 5 (B Week) - Focus: Programming, Asset Creation/Identification and Journaling
+### 22 April - 10 May: setup and interaction foundation
 
-18-5-2026
-- Removed hitscan combat in favor of physical projectiles utilizing `Rigidbody.linearVelocity`.
-- Hooked up weapon sway, recoil, impact sparks, and trails to dramatically improve game feel.
+- Created the Unity project and imported the base URP setup.
+- Added `PlayerController` and the first `Interactable` system.
+- Built early doors, keycards, terminals and switches to test inheritance and object interaction.
 
-20-5-2026
-- Identified and fixed a bug where fast-moving players would shoot themselves. Made entities immune to their own projectiles using an `owner` ID reference framework.
+### 25 - 26 May: combat and movement prototype
 
-22-5-2026
-- Interfaced a functional `JumpPad` hazard to launch the player in 3D space, expanding vertical mobility in arenas.
+- Built the first playable scene and movement test space.
+- Added `Gun`, `Projectile`, `BulletTrail`, `Target` and `IDamageable`.
+- Added `BasicEnemyAI` and the first enemy combat loop.
+- Added the jump pad and continued changing player movement.
 
-## Week 6 (A Week) - Focus: Programming, Asset Creation/Identification and Journaling
+### 26 - 28 May: procedural arena generation
 
-25-5-2026
-- Implemented NavMesh-driven Enemy AI (`BasicEnemyAI`) capable of effectively chasing the player and firing physical projectiles.
+- Added the 3D WFC tile system and macro generators.
+- Added post-processors for path repair, terrain, structures and room population.
+- Created the Arena scene and the current arena generator/director structure.
+- Added runtime terminals, pickups and floor progression.
+- Removed Unity's generated `Library` folder from version control.
 
-26-5-2026
-- Implemented the core Wave Function Collapse (`WFCGenerator`) script to synthesize dynamic, modular arenas.
-- Heavily upgraded the WFC generator: Inserted tile weight mapping to control room density and implemented `spawnRotation`.
-- Added automatic generation of solid perimeter bounds and outer safety floors to the WFC output so the player is safely locked in the arena.
+### 7 - 12 June: progression and combat expansion
 
-27-5-2026
-28-5-2026
-29-5-2026
+- Expanded enemy behaviour, weapon behaviour and projectile handling.
+- Added run state, shops, weapon rewards, boss UI and floor transitions.
+- Reworked interactables and terminals around the current arena loop.
+- Added debugging tools and a written game-intent file to separate active systems from old prototypes.
 
-## Week 7 (B Week) - Focus: Programming, Asset Creation/Identification and Journaling
+### 17 - 19 June: presentation and gameplay polish
 
-1-6-2026
-3-6-2026
-5-6-2026
+- Added the start menu, settings, run HUD, shop preview and weapon status UI.
+- Added weapon abilities, runtime weapon models and clearer combat feedback.
+- Reworked loading and arena transitions.
+- Added the grapple projectile and integrated grappling into player movement.
+- Continued fixes to enemy AI, arena generation, movement feel and weapon feedback.
 
-## Week 8 (A Week) - Focus: Programming, Journaling and Testing and Evaluating
+### Final refinement
 
-8-6-2026
-10-6-2026
-11-6-2026
-12-6-2026
+- Reduced the weapon roster to four supported weapons.
+- Changed the run to continue infinitely with scaling enemy health and count.
+- Limited shops to one purchase per floor.
+- Removed unused menu modes and old HUD elements.
+- Simplified player-facing descriptions and renamed the game to `Term 2 SWE project`.
 
-## Week 9 (B Week) - Focus: Final Documentation, Creating Presentations and Testing and Evaluating
+## Controls
 
-15-6-2026
-17-6-2026
-19-6-2026 - Assessment Submission Due
+| Input | Action |
+|---|---|
+| WASD | Move |
+| Mouse | Look |
+| Space | Jump |
+| Shift | Dash |
+| Ctrl / C | Slide or slam |
+| LMB | Fire |
+| RMB | Weapon ability |
+| 1 / 2 | Switch weapon family |
+| Q / E | Switch weapon variant or interact where shown |
+| F | Grapple |
+| F3 | Open debug mode |
 
-## Week 10 (A Week)
+## Tools
 
-22-6-2026 - 25-6-2026 - Presentations
+- Unity 6000.4.3f1
+- C#
+- Universal Render Pipeline
+- Unity Input System
+- Unity AI Navigation
+- Git and GitHub Desktop
+
+## Automated tests
+
+Deterministic run rules are tested in `Assets/Tests/Editor/CybergrindRulesTests.cs`. The suite covers enemy scaling, weapon damage multipliers, the one-purchase shop lock and floor-timer calculations.
+
+Run it in Unity through **Window > General > Test Runner > EditMode > Run All**.

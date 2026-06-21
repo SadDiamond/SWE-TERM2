@@ -1,4 +1,3 @@
-using System;
 using TMPro;
 using UnityEngine;
 using UnityEngine.SceneManagement;
@@ -6,7 +5,7 @@ using UnityEngine.UI;
 
 public class ProjectStructurePresentation : MonoBehaviour
 {
-    public string placeholderTitle = "PROJECT STRUCTURE";
+    public string placeholderTitle = "Term 2 SWE project";
     public CybergrindArenaDirector arenaDirector;
     public CybergrindArenaGenerator arenaGenerator;
     public PlayerController player;
@@ -22,8 +21,19 @@ public class ProjectStructurePresentation : MonoBehaviour
     private TMP_Text detailText;
     private TMP_Text footerText;
     private Image panelImage;
+    private Image frameImage;
+    private Image accentBarImage;
+    private Image topRuleImage;
+    private Image lowerRuleImage;
+    private Image sideMassLeftImage;
+    private Image sideMassRightImage;
+    private Image conduitTopImage;
+    private Image conduitBottomImage;
     private bool endingSequenceStarted;
     private bool failureSequenceStarted;
+    private static CybergrindArenaDirector cachedArenaDirector;
+    private static CybergrindArenaGenerator cachedArenaGenerator;
+    private static PlayerController cachedPlayer;
 
     public bool IsTitleVisible => !runStarted;
     public bool IsEndingVisible => endingShown || endingSequenceStarted;
@@ -31,36 +41,21 @@ public class ProjectStructurePresentation : MonoBehaviour
 
     private void Start()
     {
-        if (arenaDirector == null) arenaDirector = FindAnyObjectByType<CybergrindArenaDirector>();
-        if (arenaGenerator == null) arenaGenerator = FindAnyObjectByType<CybergrindArenaGenerator>();
-        if (player == null) player = FindAnyObjectByType<PlayerController>();
+        if (arenaDirector == null) arenaDirector = GetArenaDirector();
+        if (arenaGenerator == null) arenaGenerator = GetArenaGenerator();
+        if (player == null) player = GetPlayerController();
         EnsureRuntimePresentation();
         BuildOverlay();
-        bool launchSandbox = StartMenuController.ConsumeSandboxLaunch();
-        bool launchHeroArena = StartMenuController.ConsumeHeroArenaLaunch();
         if (StartMenuController.ConsumeArenaLaunch())
-        {
-            if (launchHeroArena)
-            {
-                EnterFreeMode();
-                gameObject.AddComponent<HeroArenaController>();
-            }
-            else if (launchSandbox)
-            {
-                EnterFreeMode();
-                gameObject.AddComponent<WeaponSandboxController>();
-            }
-            else
-            {
-                StartRun();
-            }
-        }
+            StartRun();
         else
             ShowTitleScreen();
     }
 
     private void Update()
     {
+        UpdateOverlayAmbient();
+
         if (!runStarted)
         {
             if (UnityEngine.InputSystem.Keyboard.current != null &&
@@ -132,11 +127,16 @@ public class ProjectStructurePresentation : MonoBehaviour
         frameRect.anchorMin = frameRect.anchorMax = new Vector2(0.12f, 0.5f);
         frameRect.pivot = new Vector2(0f, 0.5f);
         frameRect.sizeDelta = new Vector2(760f, 340f);
-        Image frameImage = frame.AddComponent<Image>();
+        frameImage = frame.AddComponent<Image>();
         frameImage.color = new Color(0.015f, 0.03f, 0.04f, 0.9f);
 
-        CreateOverlayPanel(frame.transform, "FrameAccentBar", new Vector2(0f, 0.5f), new Vector2(4f, 292f), new Color(0.2f, 0.9f, 1f, 0.9f));
-        CreateOverlayPanel(frame.transform, "FrameTopRule", new Vector2(0.5f, 1f), new Vector2(700f, 2f), new Color(0.42f, 0.9f, 1f, 0.36f));
+        accentBarImage = CreateOverlayPanel(frame.transform, "FrameAccentBar", new Vector2(0f, 0.5f), new Vector2(4f, 292f), new Color(0.2f, 0.9f, 1f, 0.9f));
+        topRuleImage = CreateOverlayPanel(frame.transform, "FrameTopRule", new Vector2(0.5f, 1f), new Vector2(700f, 2f), new Color(0.42f, 0.9f, 1f, 0.36f));
+        lowerRuleImage = CreateOverlayPanel(frame.transform, "FrameLowerRule", new Vector2(0.5f, 0f), new Vector2(620f, 2f), new Color(0.42f, 0.9f, 1f, 0.22f));
+        sideMassLeftImage = CreateOverlayPanel(frame.transform, "FrameSideMassLeft", new Vector2(0.94f, 0.52f), new Vector2(34f, 288f), new Color(0.018f, 0.03f, 0.042f, 0.9f));
+        sideMassRightImage = CreateOverlayPanel(frame.transform, "FrameSideMassRight", new Vector2(0.985f, 0.42f), new Vector2(14f, 214f), new Color(0.03f, 0.022f, 0.018f, 0.92f));
+        conduitTopImage = CreateOverlayPanel(frame.transform, "FrameConduitTop", new Vector2(0.76f, 0.86f), new Vector2(132f, 4f), new Color(0.42f, 0.9f, 1f, 0.18f));
+        conduitBottomImage = CreateOverlayPanel(frame.transform, "FrameConduitBottom", new Vector2(0.66f, 0.16f), new Vector2(96f, 4f), new Color(0.42f, 0.9f, 1f, 0.14f));
 
         overlayText = CreateText(frame.transform, "OverlayTitle", 56, TextAlignmentOptions.Left, new Vector2(0.08f, 0.72f), new Vector2(640f, 120f));
         rankText = CreateText(frame.transform, "OverlayRank", 12, TextAlignmentOptions.Left, new Vector2(0.08f, 0.86f), new Vector2(320f, 26f));
@@ -197,6 +197,7 @@ public class ProjectStructurePresentation : MonoBehaviour
     private void ShowTitleScreen()
     {
         if (panelRoot == null) return;
+        ApplyOverlayTypography(false, false);
         runStarted = false;
         endingShown = false;
         failureShown = false;
@@ -206,17 +207,18 @@ public class ProjectStructurePresentation : MonoBehaviour
         ProjectStructureUIRoot.BringToFront(panelRoot.transform);
         if (panelImage != null)
             panelImage.color = ResolveOverlayPanelColor();
+        ApplyOverlayTheme(OverlayMood.Title);
         overlayText.text = placeholderTitle;
         overlayText.color = ResolveOverlayAccent();
         CybergrindRunState runState = CybergrindRunState.GetOrCreate();
         if (rankText != null)
-            rankText.text = "RUN PROTOCOL";
+            rankText.text = "NEW RUN";
         subtitleText.text =
             BuildTitleIntro();
         if (detailText != null)
             detailText.text = BuildTitleDetail(runState);
         if (footerText != null)
-            footerText.text = "ENTER start   ESC settings";
+            footerText.text = "ENTER START   ESC SETTINGS";
 
         Time.timeScale = 0f;
         if (player != null) player.ToggleUIMode(true);
@@ -277,10 +279,12 @@ public class ProjectStructurePresentation : MonoBehaviour
         endingShown = true;
         failureShown = false;
         if (panelRoot == null) return;
+        ApplyOverlayTypography(false, true);
         panelRoot.SetActive(true);
         ProjectStructureUIRoot.BringToFront(panelRoot.transform);
         if (panelImage != null)
             panelImage.color = new Color(0.01f, 0.02f, 0.03f, 0.94f);
+        ApplyOverlayTheme(OverlayMood.Ending);
         overlayText.text = "CORE REACHED";
         overlayText.color = new Color(0.88f, 0.96f, 1f);
         CybergrindRunState runState = CybergrindRunState.GetOrCreate();
@@ -334,33 +338,56 @@ public class ProjectStructurePresentation : MonoBehaviour
     {
         failureShown = true;
         if (panelRoot == null) return;
+        ApplyOverlayTypography(true, false);
 
         panelRoot.SetActive(true);
         ProjectStructureUIRoot.BringToFront(panelRoot.transform);
         if (panelImage != null)
-            panelImage.color = new Color(0.03f, 0.01f, 0.015f, 0.94f);
+            panelImage.color = new Color(0.02f, 0.005f, 0.008f, 0.965f);
+        ApplyOverlayTheme(OverlayMood.Failure);
 
-        overlayText.text = "RUN OVER";
-        overlayText.color = new Color(1f, 0.78f, 0.72f);
+        overlayText.text = "YOU DIED";
+        overlayText.color = new Color(1f, 0.5f, 0.44f);
         CybergrindRunState runState = CybergrindRunState.GetOrCreate();
         if (rankText != null)
-            rankText.text = "RUN LOST";
-        subtitleText.text =
-            "You died before reaching the core.";
+        {
+            rankText.text = "RUN FAILED";
+            rankText.color = new Color(1f, 0.76f, 0.72f, 0.96f);
+        }
+        subtitleText.text = "Try again.";
         if (detailText != null && runState != null)
         {
+            float duration = runState.GetRunDurationSeconds();
             detailText.text =
-                $"Floor  {Mathf.Max(1, arenaDirector != null ? arenaDirector.floor : 1):00}\n" +
-                $"Kills  {runState.enemiesDefeatedThisRun}    Terminals  {runState.terminalsSolvedThisRun}\n" +
-                $"Shop  {runState.shopInteractionsThisRun}    Damage  {Mathf.RoundToInt(runState.damageTakenThisRun)}";
+                $"FLOOR  {Mathf.Max(1, arenaDirector != null ? arenaDirector.floor : 1):00}    TIME  {FormatTime(duration)}\n" +
+                $"KILLS  {runState.enemiesDefeatedThisRun:00}    TERMINALS  {runState.terminalsSolvedThisRun:00}\n" +
+                $"SHOPS  {runState.shopInteractionsThisRun:00}    DAMAGE  {Mathf.RoundToInt(runState.damageTakenThisRun):000}";
+            detailText.color = new Color(1f, 0.86f, 0.84f, 0.94f);
         }
         if (footerText != null)
-            footerText.text = "ENTER restart   ESC title";
+        {
+            footerText.text = "ENTER RESTART   ESC TITLE";
+            footerText.color = new Color(1f, 0.72f, 0.68f, 0.94f);
+        }
 
         Time.timeScale = 0f;
         if (player != null) player.ToggleUIMode(true);
         Cursor.lockState = CursorLockMode.None;
         Cursor.visible = true;
+    }
+
+    private void ApplyOverlayTypography(bool failureStyle, bool endingStyle)
+    {
+        if (overlayText != null)
+            overlayText.fontSize = failureStyle ? 82f : 56f;
+        if (rankText != null)
+            rankText.fontSize = 12f;
+        if (subtitleText != null)
+            subtitleText.fontSize = failureStyle ? 22f : 17f;
+        if (detailText != null)
+            detailText.fontSize = failureStyle ? 17f : 12f;
+        if (footerText != null)
+            footerText.fontSize = endingStyle ? 11f : 11f;
     }
 
     private string FormatTime(float seconds)
@@ -385,48 +412,136 @@ public class ProjectStructurePresentation : MonoBehaviour
 
     private string BuildTitleIntro()
     {
-        return
-            "Clear rooms, tune the run, and descend to the core.";
+        return "Clear each floor and keep moving.";
     }
 
     private string BuildTitleDetail(CybergrindRunState runState)
     {
-        int bossTargets = arenaDirector != null ? Mathf.Max(1, arenaDirector.bossFloorsToReachCore) : 3;
-        return
-            $"Each run starts clean. Beat {bossTargets} boss floor{(bossTargets == 1 ? string.Empty : "s")} to reach the core.\n" +
-            "Shift dash   Ctrl slide   Space jump";
+        return "SHIFT DASH   CTRL SLIDE   SPACE JUMP";
     }
 
     private Color ResolveOverlayAccent()
     {
         int themeIndex = arenaDirector != null ? arenaDirector.CurrentThemeIndex : 0;
-        switch (Math.Abs(themeIndex) % 4)
-        {
-            case 1:
-                return new Color(0.76f, 0.86f, 1f);
-            case 2:
-                return new Color(1f, 0.82f, 0.56f);
-            case 3:
-                return new Color(0.78f, 1f, 0.82f);
-            default:
-                return new Color(0.84f, 0.96f, 1f);
-        };
+        return ProjectStructureThemePalette.ResolveOverlayAccent(themeIndex);
     }
 
     private Color ResolveOverlayPanelColor()
     {
         int themeIndex = arenaDirector != null ? arenaDirector.CurrentThemeIndex : 0;
-        switch (Math.Abs(themeIndex) % 4)
+        return ProjectStructureThemePalette.ResolveOverlayPanel(themeIndex);
+    }
+
+    private void ApplyOverlayTheme(OverlayMood mood)
+    {
+        Color accent = ResolveOverlayAccent();
+        Color panel = ResolveOverlayPanelColor();
+        Color frameColor;
+        Color barColor;
+        Color ruleColor;
+
+        switch (mood)
         {
-            case 1:
-                return new Color(0.01f, 0.025f, 0.05f, 0.94f);
-            case 2:
-                return new Color(0.04f, 0.02f, 0.015f, 0.94f);
-            case 3:
-                return new Color(0.015f, 0.035f, 0.02f, 0.94f);
+            case OverlayMood.Failure:
+                frameColor = new Color(0.08f, 0.02f, 0.025f, 0.92f);
+                barColor = new Color(1f, 0.42f, 0.34f, 0.95f);
+                ruleColor = new Color(1f, 0.52f, 0.44f, 0.32f);
+                break;
+            case OverlayMood.Ending:
+                frameColor = new Color(0.012f, 0.026f, 0.04f, 0.92f);
+                barColor = new Color(accent.r, accent.g, accent.b, 0.95f);
+                ruleColor = new Color(accent.r, accent.g, accent.b, 0.34f);
+                break;
             default:
-                return new Color(0.01f, 0.02f, 0.03f, 0.92f); 
-        };
+                frameColor = new Color(panel.r * 0.8f, panel.g * 1.1f, panel.b * 1.15f, 0.92f);
+                barColor = new Color(accent.r, accent.g, accent.b, 0.92f);
+                ruleColor = new Color(accent.r, accent.g, accent.b, 0.28f);
+                break;
+        }
+
+        if (frameImage != null)
+            frameImage.color = frameColor;
+        if (accentBarImage != null)
+            accentBarImage.color = barColor;
+        if (topRuleImage != null)
+            topRuleImage.color = ruleColor;
+        if (lowerRuleImage != null)
+            lowerRuleImage.color = new Color(ruleColor.r, ruleColor.g, ruleColor.b, ruleColor.a * 0.72f);
+        if (sideMassLeftImage != null)
+            sideMassLeftImage.color = new Color(panel.r * 0.95f, panel.g * 1.04f, panel.b * 1.08f, 0.92f);
+        if (sideMassRightImage != null)
+            sideMassRightImage.color = new Color(panel.r * 1.1f, panel.g * 0.88f, panel.b * 0.84f, 0.92f);
+        if (conduitTopImage != null)
+            conduitTopImage.color = new Color(accent.r, accent.g, accent.b, 0.22f);
+        if (conduitBottomImage != null)
+            conduitBottomImage.color = new Color(accent.r, accent.g, accent.b, 0.18f);
+    }
+
+    private void UpdateOverlayAmbient()
+    {
+        if (panelRoot == null || !panelRoot.activeSelf)
+            return;
+
+        float pulseA = 0.5f + 0.5f * Mathf.Sin(Time.unscaledTime * 1.35f);
+        float pulseB = 0.5f + 0.5f * Mathf.Sin(Time.unscaledTime * 0.9f + 1.1f);
+
+        if (accentBarImage != null)
+        {
+            Color c = accentBarImage.color;
+            c.a = Mathf.Clamp01(0.78f + pulseA * 0.18f);
+            accentBarImage.color = c;
+        }
+
+        if (topRuleImage != null)
+        {
+            Color c = topRuleImage.color;
+            c.a = Mathf.Clamp01(0.16f + pulseB * 0.22f);
+            topRuleImage.color = c;
+        }
+
+        if (lowerRuleImage != null)
+        {
+            Color c = lowerRuleImage.color;
+            c.a = Mathf.Clamp01(0.12f + pulseA * 0.14f);
+            lowerRuleImage.color = c;
+        }
+
+        if (frameImage != null)
+        {
+            Color c = frameImage.color;
+            c.a = Mathf.Clamp01(0.88f + pulseB * 0.05f);
+            frameImage.color = c;
+        }
+
+        if (sideMassLeftImage != null)
+        {
+            Color c = sideMassLeftImage.color;
+            c.a = Mathf.Clamp01(0.84f + pulseA * 0.08f);
+            sideMassLeftImage.color = c;
+        }
+
+        if (sideMassRightImage != null)
+        {
+            Color c = sideMassRightImage.color;
+            c.a = Mathf.Clamp01(0.82f + pulseB * 0.1f);
+            sideMassRightImage.color = c;
+        }
+
+        if (conduitTopImage != null)
+        {
+            Color c = conduitTopImage.color;
+            c.a = Mathf.Clamp01(0.08f + pulseA * 0.2f);
+            conduitTopImage.color = c;
+            conduitTopImage.rectTransform.anchoredPosition = new Vector2(0f, pulseB * 4f);
+        }
+
+        if (conduitBottomImage != null)
+        {
+            Color c = conduitBottomImage.color;
+            c.a = Mathf.Clamp01(0.06f + pulseB * 0.18f);
+            conduitBottomImage.color = c;
+            conduitBottomImage.rectTransform.anchoredPosition = new Vector2(0f, -pulseA * 4f);
+        }
     }
 
     private System.Collections.IEnumerator EndingSequenceRoutine()
@@ -492,17 +607,10 @@ public class ProjectStructurePresentation : MonoBehaviour
 
         yield return PlayEndingBeat(
             "YOU DIED",
-            "The structure kept moving without you.",
-            "Run ended.",
-            new Color(0.03f, 0.01f, 0.015f, 0.88f),
-            0.82f);
-
-        yield return PlayEndingBeat(
-            "SIGNAL LOST",
-            "The path sealed over behind you.",
-            "Restart when ready.",
-            new Color(0.04f, 0.015f, 0.02f, 0.92f),
-            0.78f);
+            "Momentum cut.",
+            "Reset the run.",
+            new Color(0.045f, 0.008f, 0.012f, 0.94f),
+            0.44f);
 
         ShowFailure();
     }
@@ -511,6 +619,7 @@ public class ProjectStructurePresentation : MonoBehaviour
     {
         if (panelImage != null)
             panelImage.color = panelColor;
+        ApplyOverlayTheme(title == "YOU DIED" ? OverlayMood.Failure : OverlayMood.Ending);
 
         overlayText.text = title;
         overlayText.color = ResolveOverlayAccent();
@@ -633,7 +742,7 @@ public class ProjectStructurePresentation : MonoBehaviour
         Canvas hudCanvas = ProjectStructureUIRoot.GetOrCreateCanvas();
         RemoveLegacyScreenOverlays(hudCanvas);
 
-        ProjectStructureAtmosphereHUD atmosphere = FindAnyObjectByType<ProjectStructureAtmosphereHUD>();
+        ProjectStructureAtmosphereHUD atmosphere = UnityEngine.Object.FindAnyObjectByType<ProjectStructureAtmosphereHUD>();
         if (atmosphere != null)
         {
             if (Application.isPlaying)
@@ -642,59 +751,61 @@ public class ProjectStructurePresentation : MonoBehaviour
                 DestroyImmediate(atmosphere.gameObject);
         }
 
-        if (FindAnyObjectByType<ProjectStructureAudioDirector>() == null)
-        {
-            GameObject go = new GameObject("ProjectStructureAudioDirector");
-            go.AddComponent<ProjectStructureAudioDirector>();
-        }
+        EnsureSingletonComponent<ProjectStructureAudioDirector>("ProjectStructureAudioDirector");
+        EnsureFullscreenHud<RunStatusHUD>(hudCanvas, "RunStatusHUD");
+        EnsureSingletonComponent<BossEncounterHUD>("BossEncounterHUD");
+        EnsureSingletonComponent<EnemyPriorityHUD>("EnemyPriorityHUD");
+        EnsureSingletonComponent<ProjectStructureHintOverlay>("ProjectStructureHintOverlay");
+        EnsureSingletonComponent<ProjectStructureSettingsMenu>("ProjectStructureSettingsMenu");
+        EnsureSingletonComponent<ShopPreviewHUD>("ShopPreviewHUD");
+        EnsureSingletonComponent<WeaponStatusHUD>("WeaponStatusHUD");
+    }
 
-        if (FindAnyObjectByType<RunStatusHUD>() == null && hudCanvas != null)
-        {
-            GameObject go = new GameObject("RunStatusHUD");
-            go.transform.SetParent(hudCanvas.transform, false);
-            RectTransform rect = go.AddComponent<RectTransform>();
-            rect.anchorMin = Vector2.zero;
-            rect.anchorMax = Vector2.one;
-            rect.offsetMin = Vector2.zero;
-            rect.offsetMax = Vector2.zero;
-            go.AddComponent<RunStatusHUD>();
-        }
+    private static T EnsureSingletonComponent<T>(string objectName) where T : Component
+    {
+        T existing = UnityEngine.Object.FindAnyObjectByType<T>();
+        if (existing != null)
+            return existing;
 
-        if (FindAnyObjectByType<BossEncounterHUD>() == null)
-        {
-            GameObject go = new GameObject("BossEncounterHUD");
-            go.AddComponent<BossEncounterHUD>();
-        }
+        GameObject go = new GameObject(objectName);
+        return go.AddComponent<T>();
+    }
 
-        if (FindAnyObjectByType<EnemyPriorityHUD>() == null)
-        {
-            GameObject go = new GameObject("EnemyPriorityHUD");
-            go.AddComponent<EnemyPriorityHUD>();
-        }
+    private static T EnsureFullscreenHud<T>(Canvas hudCanvas, string objectName) where T : Component
+    {
+        T existing = UnityEngine.Object.FindAnyObjectByType<T>();
+        if (existing != null || hudCanvas == null)
+            return existing;
 
-        if (FindAnyObjectByType<ProjectStructureHintOverlay>() == null)
-        {
-            GameObject go = new GameObject("ProjectStructureHintOverlay");
-            go.AddComponent<ProjectStructureHintOverlay>();
-        }
+        GameObject go = new GameObject(objectName);
+        go.transform.SetParent(hudCanvas.transform, false);
+        RectTransform rect = go.AddComponent<RectTransform>();
+        rect.anchorMin = Vector2.zero;
+        rect.anchorMax = Vector2.one;
+        rect.offsetMin = Vector2.zero;
+        rect.offsetMax = Vector2.zero;
+        return go.AddComponent<T>();
+    }
 
-        if (FindAnyObjectByType<ProjectStructureSettingsMenu>() == null)
-        {
-            GameObject go = new GameObject("ProjectStructureSettingsMenu");
-            go.AddComponent<ProjectStructureSettingsMenu>();
-        }
+    private static CybergrindArenaDirector GetArenaDirector()
+    {
+        if (cachedArenaDirector == null)
+            cachedArenaDirector = UnityEngine.Object.FindAnyObjectByType<CybergrindArenaDirector>();
+        return cachedArenaDirector;
+    }
 
-        if (FindAnyObjectByType<ShopPreviewHUD>() == null)
-        {
-            GameObject go = new GameObject("ShopPreviewHUD");
-            go.AddComponent<ShopPreviewHUD>();
-        }
+    private static CybergrindArenaGenerator GetArenaGenerator()
+    {
+        if (cachedArenaGenerator == null)
+            cachedArenaGenerator = UnityEngine.Object.FindAnyObjectByType<CybergrindArenaGenerator>();
+        return cachedArenaGenerator;
+    }
 
-        if (FindAnyObjectByType<WeaponStatusHUD>() == null)
-        {
-            GameObject go = new GameObject("WeaponStatusHUD");
-            go.AddComponent<WeaponStatusHUD>();
-        }
+    private static PlayerController GetPlayerController()
+    {
+        if (cachedPlayer == null)
+            cachedPlayer = UnityEngine.Object.FindAnyObjectByType<PlayerController>();
+        return cachedPlayer;
     }
 
     private void RemoveLegacyScreenOverlays(Canvas hudCanvas)
@@ -724,5 +835,12 @@ public class ProjectStructurePresentation : MonoBehaviour
         public string epitaph;
         public string highlightLine;
         public int score;
+    }
+
+    private enum OverlayMood
+    {
+        Title,
+        Ending,
+        Failure
     }
 }

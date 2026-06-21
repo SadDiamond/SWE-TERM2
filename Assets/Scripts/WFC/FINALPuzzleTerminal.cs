@@ -27,11 +27,6 @@ public class CybergrindPuzzleTerminal : Terminal
     [Min(0.1f)] public float holdDuration = 1.35f;
     [Min(0.1f)] public float pulseSpeed = 2.5f;
     [Min(0.05f)] public float calibrationDelay = 0.75f;
-    [Header("Pressure")]
-    public bool enablePressureTimer = true;
-    [Min(4f)] public float pressureDuration = 14f;
-    [Range(1, 4)] public int pressureEnemyCount = 2;
-
     [Header("UI")]
     public CybergrindTerminalUI terminalUI;
 
@@ -41,7 +36,6 @@ public class CybergrindPuzzleTerminal : Terminal
     private float lastPrimaryPressTimer;
     private float holdTimer;
     private float pulseTimer;
-    private float pressureTimer;
     private int progressStep;
     private int calibrationValue;
     private int calibrationTarget;
@@ -66,7 +60,6 @@ public class CybergrindPuzzleTerminal : Terminal
         puzzleTimer += dt;
         lastPrimaryPressTimer += dt;
         pulseTimer += dt;
-        UpdatePressureTimer(dt);
 
         if (challengeMode == ChallengeMode.Hold)
         {
@@ -84,23 +77,6 @@ public class CybergrindPuzzleTerminal : Terminal
 
         if (terminalUI != null)
             terminalUI.RefreshFromTerminal(this);
-    }
-
-    private void UpdatePressureTimer(float dt)
-    {
-        if (!enablePressureTimer || pressureDuration <= 0.01f)
-            return;
-
-        pressureTimer += dt;
-        if (pressureTimer < pressureDuration)
-            return;
-
-        pressureTimer = 0f;
-        CybergrindArenaGenerator generator = FindAnyObjectByType<CybergrindArenaGenerator>();
-        int spawned = generator != null ? generator.SpawnPressureEnemiesNear(transform.position, pressureEnemyCount) : 0;
-
-        if (terminalUI != null)
-            terminalUI.SetTransientMessage(spawned > 0 ? $"+{spawned} enemies" : "Pressure rising");
     }
 
     public override void TriggerPuzzle(PlayerController player)
@@ -414,7 +390,6 @@ public class CybergrindPuzzleTerminal : Terminal
     {
         if (isSolved) return "Exit progress updated.";
 
-        string pressure = GetPressureLine();
         string detail;
         switch (challengeMode)
         {
@@ -453,24 +428,12 @@ public class CybergrindPuzzleTerminal : Terminal
                 break;
         }
 
-        return string.IsNullOrEmpty(pressure) ? detail : $"{detail} {pressure}";
-    }
-
-    private string GetPressureLine()
-    {
-        if (!puzzleOpen || !enablePressureTimer || pressureDuration <= 0.01f)
-            return string.Empty;
-
-        float remaining = Mathf.Max(0f, pressureDuration - pressureTimer);
-        return $"Reinforcements in {remaining:0}s.";
+        return detail;
     }
 
     public float GetPressure01()
     {
-        if (!puzzleOpen || !enablePressureTimer || pressureDuration <= 0.01f)
-            return 0f;
-
-        return Mathf.Clamp01(pressureTimer / pressureDuration);
+        return 0f;
     }
 
     public string GetPrimaryActionLabel()
@@ -573,7 +536,6 @@ public class CybergrindPuzzleTerminal : Terminal
         lastPrimaryPressTimer = 999f;
         holdTimer = 0f;
         pulseTimer = 0f;
-        pressureTimer = 0f;
         progressStep = 0;
         calibrationValue = rng.Next(0, 10);
         calibrationTarget = rng.Next(0, 10);
@@ -617,7 +579,7 @@ public class CybergrindPuzzleTerminal : Terminal
 
     private bool CanOpenThisTerminal()
     {
-        CybergrindPuzzleTerminal[] terminals = FindObjectsByType<CybergrindPuzzleTerminal>();
+        CybergrindPuzzleTerminal[] terminals = Object.FindObjectsByType<CybergrindPuzzleTerminal>();
         for (int i = 0; i < terminals.Length; i++)
         {
             CybergrindPuzzleTerminal terminal = terminals[i];
@@ -631,7 +593,7 @@ public class CybergrindPuzzleTerminal : Terminal
 
     private void UpdateBlockedPrompt()
     {
-        CybergrindPuzzleTerminal[] terminals = FindObjectsByType<CybergrindPuzzleTerminal>();
+        CybergrindPuzzleTerminal[] terminals = Object.FindObjectsByType<CybergrindPuzzleTerminal>();
         for (int i = 0; i < terminals.Length; i++)
         {
             CybergrindPuzzleTerminal terminal = terminals[i];
@@ -708,7 +670,6 @@ public class CybergrindPuzzleTerminal : Terminal
     {
         if (isSolved) return;
 
-        pressureTimer = 0f;
         CybergrindRunState.GetOrCreate().RegisterTerminalSolved();
         SolvePuzzle(activePlayer);
         if (terminalUI != null)

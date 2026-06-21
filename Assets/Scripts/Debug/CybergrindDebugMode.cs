@@ -46,10 +46,12 @@ public class CybergrindDebugMode : MonoBehaviour
         }
 
         instance = this;
+        debugEnabled = false;
+        invulnerable = false;
+        freezeTime = false;
         RefreshReferences(true);
         BuildOverlay();
-        RefreshOverlay();
-        SetOverlayVisible(debugEnabled && showOverlay);
+        SetOverlayVisible(false);
     }
 
     private void Update()
@@ -99,6 +101,9 @@ public class CybergrindDebugMode : MonoBehaviour
 
         if (Keyboard.current.f2Key.wasPressedThisFrame)
             CompleteCurrentTerminals();
+
+        if (Keyboard.current.backquoteKey.wasPressedThisFrame)
+            LogActiveRuntimeAudits();
 
         if (Keyboard.current.f4Key.wasPressedThisFrame)
             invulnerable = !invulnerable;
@@ -173,7 +178,7 @@ public class CybergrindDebugMode : MonoBehaviour
         Transform root = generator != null ? generator.CurrentArenaRoot : null;
         BasicEnemyAI[] enemies = root != null
             ? root.GetComponentsInChildren<BasicEnemyAI>(true)
-            : FindObjectsByType<BasicEnemyAI>();
+            : Object.FindObjectsByType<BasicEnemyAI>();
 
         for (int i = 0; i < enemies.Length; i++)
         {
@@ -210,7 +215,7 @@ public class CybergrindDebugMode : MonoBehaviour
         Transform root = generator != null ? generator.CurrentArenaRoot : null;
         Terminal[] terminals = root != null
             ? root.GetComponentsInChildren<Terminal>(true)
-            : FindObjectsByType<Terminal>();
+            : Object.FindObjectsByType<Terminal>();
 
         if (runState == null)
             runState = CybergrindRunState.GetOrCreate();
@@ -350,7 +355,7 @@ public class CybergrindDebugMode : MonoBehaviour
 
         builder.Clear();
         builder.AppendLine($"F3 toggle  F12 panel  F11 freeze: {OnOff(freezeTime)}");
-        builder.AppendLine($"F1 preview transition: {OnOff(transitionPreviewRunning)}  F2 solve terminals");
+        builder.AppendLine($"F1 preview transition: {OnOff(transitionPreviewRunning)}  F2 solve terminals  ` log audits");
         builder.AppendLine($"F4 god: {OnOff(invulnerable)}  F5 +{coinsPerGrant} coins  F8 clear enemies");
         builder.AppendLine("F6 next floor  F7 rebuild arena  F9 reset run  F10 spawn");
         builder.AppendLine();
@@ -377,6 +382,7 @@ public class CybergrindDebugMode : MonoBehaviour
         {
             builder.AppendLine($"Run     floor {director.floor:00}  cycle {director.CyclePosition + 1}/{director.CycleLength}  theme {director.CurrentThemeLabel}");
             builder.AppendLine($"State   reward {YesNo(director.HasPendingReward())}  shop {YesNo(director.HasShopInteractionThisFloor())}  core {YesNo(director.IsCoreAccessActive)}");
+            AppendEncounterDiagnostics();
         }
         else
         {
@@ -416,7 +422,7 @@ public class CybergrindDebugMode : MonoBehaviour
         Transform root = generator != null ? generator.CurrentArenaRoot : null;
         BasicEnemyAI[] enemies = root != null
             ? root.GetComponentsInChildren<BasicEnemyAI>(true)
-            : FindObjectsByType<BasicEnemyAI>();
+            : Object.FindObjectsByType<BasicEnemyAI>();
 
         int count = 0;
         for (int i = 0; i < enemies.Length; i++)
@@ -432,7 +438,7 @@ public class CybergrindDebugMode : MonoBehaviour
         Transform root = generator != null ? generator.CurrentArenaRoot : null;
         Terminal[] terminals = root != null
             ? root.GetComponentsInChildren<Terminal>(true)
-            : FindObjectsByType<Terminal>();
+            : Object.FindObjectsByType<Terminal>();
 
         int count = 0;
         for (int i = 0; i < terminals.Length; i++)
@@ -441,6 +447,57 @@ public class CybergrindDebugMode : MonoBehaviour
                 count++;
         }
         return count;
+    }
+
+    private void AppendEncounterDiagnostics()
+    {
+        if (director == null)
+            return;
+
+        string pressureSummary = director.DebugSummarizeEncounterPressure();
+        string encounterAudit = director.DebugAuditEncounterPressure();
+        string auditState = encounterAudit.Contains("WARN") ? "WARN" : encounterAudit.Contains("PASS") ? "PASS" : "INFO";
+        builder.AppendLine($"Threat   audit {auditState}");
+        builder.AppendLine("Threat   " + CompactDebugLine(pressureSummary, 180));
+        builder.AppendLine("Audit    " + CompactDebugLine(encounterAudit, 180));
+    }
+
+    private void LogActiveRuntimeAudits()
+    {
+        if (director != null)
+        {
+            string encounterAudit = director.DebugAuditEncounterPressure();
+            if (encounterAudit.Contains("WARN"))
+                Debug.LogWarning(encounterAudit);
+            else
+                Debug.Log(encounterAudit);
+        }
+
+        if (generator != null)
+        {
+            string arenaAudit = generator.DebugAuditFastMovementLayout();
+            if (arenaAudit.Contains("WARN"))
+                Debug.LogWarning(arenaAudit);
+            else
+                Debug.Log(arenaAudit);
+        }
+
+        RefreshOverlay();
+    }
+
+    private string CompactDebugLine(string text, int maxLength)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return "n/a";
+
+        string compact = text.Replace('\n', ' ').Replace('\r', ' ').Trim();
+        while (compact.Contains("  "))
+            compact = compact.Replace("  ", " ");
+
+        if (compact.Length <= maxLength)
+            return compact;
+
+        return compact.Substring(0, Mathf.Max(0, maxLength - 3)) + "...";
     }
 
     private string FormatVector(Vector3 value)

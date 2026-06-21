@@ -62,19 +62,15 @@ public class Gun : MonoBehaviour
     public WeaponPreset[] presets =
     {
         new WeaponPreset { displayName = "Vesper", family = WeaponFamily.Pistol, archetype = WeaponArchetype.Marksman, accentColor = new Color(0.05f, 0.72f, 1f), fireRate = 0.2f, bulletSpeed = 90f, damage = 23f, pelletCount = 1, spreadDegrees = 0.02f, recoilForce = 3.2f, modelScale = 0.78f },
-        new WeaponPreset { displayName = "Redline", family = WeaponFamily.Pistol, archetype = WeaponArchetype.Rail, accentColor = new Color(1f, 0.16f, 0.08f), fireRate = 0.72f, bulletSpeed = 130f, damage = 76f, pelletCount = 1, spreadDegrees = 0f, recoilForce = 9.2f, modelScale = 0.84f },
         new WeaponPreset { displayName = "Trident", family = WeaponFamily.Pistol, archetype = WeaponArchetype.Splitter, accentColor = new Color(0.18f, 0.95f, 0.38f), fireRate = 0.19f, bulletSpeed = 74f, damage = 10f, pelletCount = 3, spreadDegrees = 1.8f, recoilForce = 3.8f, modelScale = 0.76f },
         new WeaponPreset { displayName = "Kiln", family = WeaponFamily.Shotgun, archetype = WeaponArchetype.CoreEject, accentColor = new Color(1f, 0.55f, 0.06f), fireRate = 0.76f, bulletSpeed = 58f, damage = 8.5f, pelletCount = 10, spreadDegrees = 5f, recoilForce = 9f, modelScale = 0.78f },
-        new WeaponPreset { displayName = "Lodestar", family = WeaponFamily.Shotgun, archetype = WeaponArchetype.Magnet, accentColor = new Color(0.92f, 0.16f, 0.82f), fireRate = 0.42f, bulletSpeed = 68f, damage = 6.2f, pelletCount = 6, spreadDegrees = 3.2f, recoilForce = 6f, modelScale = 0.74f },
-        new WeaponPreset { displayName = "Breach", family = WeaponFamily.Shotgun, archetype = WeaponArchetype.Slab, accentColor = new Color(0.64f, 0.48f, 1f), fireRate = 1.02f, bulletSpeed = 115f, damage = 98f, pelletCount = 1, spreadDegrees = 0f, recoilForce = 12f, modelScale = 0.82f },
-        new WeaponPreset { displayName = "Cinder", family = WeaponFamily.Heavy, archetype = WeaponArchetype.Mortar, accentColor = new Color(1f, 0.34f, 0.12f), fireRate = 1.08f, bulletSpeed = 72f, damage = 52f, pelletCount = 1, spreadDegrees = 0.25f, recoilForce = 10f, modelScale = 0.94f },
-        new WeaponPreset { displayName = "Pile Driver", family = WeaponFamily.Heavy, archetype = WeaponArchetype.Driver, accentColor = new Color(0.45f, 0.94f, 1f), fireRate = 0.88f, bulletSpeed = 140f, damage = 70f, pelletCount = 1, spreadDegrees = 0f, recoilForce = 11f, modelScale = 0.9f },
-        new WeaponPreset { displayName = "Tempest", family = WeaponFamily.Heavy, archetype = WeaponArchetype.Arc, accentColor = new Color(0.95f, 0.86f, 0.22f), fireRate = 0.56f, bulletSpeed = 82f, damage = 34f, pelletCount = 2, spreadDegrees = 1.2f, recoilForce = 8.8f, modelScale = 0.92f }
+        new WeaponPreset { displayName = "Lodestar", family = WeaponFamily.Shotgun, archetype = WeaponArchetype.Magnet, accentColor = new Color(0.92f, 0.16f, 0.82f), fireRate = 0.42f, bulletSpeed = 68f, damage = 6.2f, pelletCount = 6, spreadDegrees = 3.2f, recoilForce = 6f, modelScale = 0.74f }
     };
 
-    [Range(0, 8)] public int activePresetIndex = 0;
+    [Range(0, 3)] public int activePresetIndex = 0;
     public bool removeLegacyChildMeshes = true;
     public bool restrictToUnlockedWeapons = true;
+    [Range(0.5f, 1f)] public float baseDamageMultiplier = 0.88f;
 
     [Header("Legacy Runtime References")]
     public float fireRate = 0.15f;
@@ -93,6 +89,7 @@ public class Gun : MonoBehaviour
 
     [Header("Sway Settings")]
     public float swaySmooth = 8f;
+    public float swayInputSmooth = 22f;
     public float swayMultiplier = 2f;
     public float maxSwayAmount = 5f;
     public float bobFrequency = 10.5f;
@@ -109,6 +106,7 @@ public class Gun : MonoBehaviour
     [Header("Recoil Settings")]
     public float recoilForce = 5f;
     public float recoilRecoverySpeed = 10f;
+    public float weaponPositionSmooth = 18f;
 
     private const string GeneratedModelName = "_GeneratedLowPolyWeapon";
     private PlayerController player;
@@ -116,6 +114,11 @@ public class Gun : MonoBehaviour
     private Quaternion initialLocalRotation;
     private Vector3 initialLocalPosition;
     private Vector3 currentRecoilPosition;
+    private Vector3 currentViewPosition;
+    private Quaternion currentViewRotation;
+    private Vector2 smoothedSwayInput;
+    private CharacterController cachedPlayerController;
+    private Camera cachedPlayerCamera;
     private Material bodyMaterial;
     private Material accentMaterial;
     private WeaponFamily activeFamily = WeaponFamily.Pistol;
@@ -166,14 +169,18 @@ public class Gun : MonoBehaviour
 
     private void Start()
     {
+        NormalizeSupportedPresets();
         ProjectStructureBindings.EnsureLoaded();
         player = GetComponentInParent<PlayerController>();
-        if (gunBarrel == null && Camera.main != null)
-            gunBarrel = Camera.main.transform;
+        cachedPlayerController = player != null ? player.GetComponent<CharacterController>() : null;
+        cachedPlayerCamera = ResolvePlayerCamera();
 
         initialLocalRotation = transform.localRotation;
         initialLocalPosition = transform.localPosition;
         currentRecoilPosition = initialLocalPosition;
+        currentViewPosition = initialLocalPosition;
+        currentViewRotation = initialLocalRotation;
+        smoothedSwayInput = Vector2.zero;
 
         if (restrictToUnlockedWeapons && !IsPresetUnlocked(activePresetIndex))
             activePresetIndex = CybergrindRunState.GetOrCreate().GetFirstUnlockedPreset();
@@ -184,7 +191,6 @@ public class Gun : MonoBehaviour
     private void Update()
     {
         HandleWeaponSwitching();
-        HandleSwayAndRecoil();
         if (taggedTargetTimer > 0f)
             taggedTargetTimer -= Time.deltaTime;
         else
@@ -232,6 +238,7 @@ public class Gun : MonoBehaviour
 
     private void LateUpdate()
     {
+        HandleSwayAndRecoil(Time.deltaTime);
         if (!queuedPrimaryFire) return;
         queuedPrimaryFire = false;
         if (player != null && player.isUIActive) return;
@@ -264,7 +271,7 @@ public class Gun : MonoBehaviour
 
         BuildInstalledModModel(root, preset);
 
-        if (gunBarrel == null)
+        if (gunBarrel == null || IsViewCameraTransform(gunBarrel))
         {
             GameObject barrel = new GameObject("GeneratedBarrel");
             barrel.transform.SetParent(root, false);
@@ -330,7 +337,6 @@ public class Gun : MonoBehaviour
     {
         if (ProjectStructureBindings.WasPressedThisFrame(ProjectStructureAction.WeaponSlot1)) SetFamily(WeaponFamily.Pistol);
         if (ProjectStructureBindings.WasPressedThisFrame(ProjectStructureAction.WeaponSlot2)) SetFamily(WeaponFamily.Shotgun);
-        if (ProjectStructureBindings.WasPressedThisFrame(ProjectStructureAction.WeaponSlot3)) SetFamily(WeaponFamily.Heavy);
 
         bool lookingAtInteractable = IsLookingAtInteractable();
         if (ProjectStructureBindings.WasPressedThisFrame(ProjectStructureAction.VariantPrev))
@@ -355,7 +361,7 @@ public class Gun : MonoBehaviour
     private int GetPresetIndex(WeaponFamily family, int variant)
     {
         int familyOffset = GetFamilyOffset(family);
-        return Mathf.Clamp(familyOffset + Mod(variant, 3), 0, presets.Length - 1);
+        return Mathf.Clamp(familyOffset + Mod(variant, 2), 0, presets.Length - 1);
     }
 
     private int GetFamilyOffset(WeaponFamily family)
@@ -363,8 +369,8 @@ public class Gun : MonoBehaviour
         return family switch
         {
             WeaponFamily.Pistol => 0,
-            WeaponFamily.Shotgun => 3,
-            WeaponFamily.Heavy => 6,
+            WeaponFamily.Shotgun => 2,
+            WeaponFamily.Heavy => 0,
             _ => 0
         };
     }
@@ -385,13 +391,13 @@ public class Gun : MonoBehaviour
         switch (family)
         {
             case WeaponFamily.Pistol:
-                pistolVariant = Mod(variant, 3);
+                pistolVariant = Mod(variant, 2);
                 break;
             case WeaponFamily.Shotgun:
-                shotgunVariant = Mod(variant, 3);
+                shotgunVariant = Mod(variant, 2);
                 break;
             case WeaponFamily.Heavy:
-                heavyVariant = Mod(variant, 3);
+                heavyVariant = 0;
                 break;
         }
     }
@@ -419,7 +425,7 @@ public class Gun : MonoBehaviour
         if (presets == null || index < 0 || index >= presets.Length) return "New weapon equipped.";
 
         WeaponPreset preset = presets[index];
-        return $"{GetPrimaryDescriptor(preset.archetype)} Right click {GetAltDescriptor(preset.archetype)}";
+        return $"LMB: {GetPrimaryDescriptor(preset.archetype)} RMB: {GetAltDescriptor(preset.archetype)}";
     }
 
     public string GetActiveDisplayName()
@@ -454,7 +460,7 @@ public class Gun : MonoBehaviour
     {
         WeaponPreset preset = ActivePreset;
         if (preset == null) return "No weapon ready.";
-        return $"{GetPrimaryDescriptor(preset.archetype)} Right click {GetAltDescriptor(preset.archetype)}";
+        return $"LMB: {GetPrimaryDescriptor(preset.archetype)} RMB: {GetAltDescriptor(preset.archetype)}";
     }
 
     public string GetRunModifierStatus()
@@ -471,7 +477,7 @@ public class Gun : MonoBehaviour
         string modText = passive != PassiveMod.None || alt != AltFireMod.None
             ? $"  mods {FormatPassiveMod(passive)} / {FormatAltMod(alt)}"
             : string.Empty;
-        return $"Mods: rate +{Mathf.Max(0, fireRatePercent)}%  damage +{Mathf.Max(0, damagePercent)}%  special +{Mathf.Max(0, altPercent)}%{modText}";
+        return $"Mods: fire rate +{Mathf.Max(0, fireRatePercent)}%  damage +{Mathf.Max(0, damagePercent)}%  ability cooldown -{Mathf.Max(0, altPercent)}%{modText}";
     }
 
     public string GetActiveStatsLine()
@@ -496,7 +502,7 @@ public class Gun : MonoBehaviour
         if (!restrictToUnlockedWeapons || presets == null || presets.Length == 0) return desiredIndex;
 
         int familyStart = GetFamilyOffset(family);
-        int familyCount = Mathf.Min(3, presets.Length - familyStart);
+        int familyCount = family == WeaponFamily.Heavy ? 0 : Mathf.Min(2, presets.Length - familyStart);
         if (familyCount <= 0)
             return CybergrindRunState.GetOrCreate().GetFirstUnlockedPreset();
 
@@ -530,6 +536,8 @@ public class Gun : MonoBehaviour
         WeaponPreset preset = ActivePreset;
         if (preset == null) return;
 
+        ResetTransientAbilityStateForSwitch();
+
         activeFamily = preset.family;
         SetVariantForFamily(preset.family, activePresetIndex - GetFamilyOffset(preset.family));
 
@@ -544,14 +552,33 @@ public class Gun : MonoBehaviour
         RebuildModel();
     }
 
-    private void HandleSwayAndRecoil()
+    private void ResetTransientAbilityStateForSwitch()
     {
-        currentRecoilPosition = Vector3.Lerp(currentRecoilPosition, initialLocalPosition, Time.deltaTime * recoilRecoverySpeed);
+        nextAltFireTime = 0f;
+        redlineChargeStart = -1f;
+        firstTetherPoint = null;
+
+        if (redlineChargeFx != null)
+        {
+            Destroy(redlineChargeFx.gameObject);
+            redlineChargeFx = null;
+        }
+    }
+
+    private void HandleSwayAndRecoil(float deltaTime)
+    {
+        float presentationDeltaTime = Mathf.Max(0f, Time.unscaledDeltaTime);
+        float presentationTime = Time.unscaledTime;
+        float positionBlend = 1f - Mathf.Exp(-Mathf.Max(0.01f, weaponPositionSmooth) * presentationDeltaTime);
+        float rotationBlend = 1f - Mathf.Exp(-Mathf.Max(0.01f, swaySmooth) * presentationDeltaTime);
+        float inputBlend = 1f - Mathf.Exp(-Mathf.Max(0.01f, swayInputSmooth) * presentationDeltaTime);
+
+        currentRecoilPosition = Vector3.Lerp(currentRecoilPosition, initialLocalPosition, 1f - Mathf.Exp(-Mathf.Max(0.01f, recoilRecoverySpeed) * presentationDeltaTime));
         Vector3 bobOffset = Vector3.zero;
         Quaternion bobRotation = Quaternion.identity;
         if (player != null)
         {
-            CharacterController controller = player.GetComponent<CharacterController>();
+            CharacterController controller = GetCachedPlayerController();
             if (controller != null)
             {
                 Vector3 planarVelocity = new Vector3(controller.velocity.x, 0f, controller.velocity.z);
@@ -561,7 +588,7 @@ public class Gun : MonoBehaviour
                     float bobAmount = Mathf.Clamp01(speed / Mathf.Max(1f, bobSpeedReference));
                     if (player.isGrounded && !player.DebugIsSliding)
                     {
-                        float bobTime = Time.time * bobFrequency;
+                        float bobTime = presentationTime * bobFrequency;
                         bobOffset = new Vector3(
                             Mathf.Sin(bobTime * 0.5f) * bobAmplitudeX * bobAmount,
                             Mathf.Abs(Mathf.Sin(bobTime)) * -bobAmplitudeY * bobAmount,
@@ -573,7 +600,7 @@ public class Gun : MonoBehaviour
                     }
                     else
                     {
-                        float airTime = Time.time * airBobFrequency;
+                        float airTime = presentationTime * airBobFrequency;
                         bobOffset = new Vector3(
                             Mathf.Sin(airTime * 0.65f) * bobAmplitudeX * 0.25f * bobAmount,
                             Mathf.Sin(airTime) * airBobAmplitudeY * bobAmount,
@@ -587,16 +614,27 @@ public class Gun : MonoBehaviour
             }
         }
 
-        transform.localPosition = currentRecoilPosition + bobOffset;
+        Vector3 targetPosition = currentRecoilPosition + bobOffset;
+        currentViewPosition = Vector3.Lerp(currentViewPosition, targetPosition, positionBlend);
+        transform.localPosition = currentViewPosition;
 
-        if (Mouse.current == null || (player != null && player.isUIActive)) return;
+        Vector2 mouseDelta = Vector2.zero;
+        if (Mouse.current != null && (player == null || !player.isUIActive))
+            mouseDelta = Mouse.current.delta.ReadValue();
+        smoothedSwayInput = Vector2.Lerp(smoothedSwayInput, mouseDelta, inputBlend);
 
-        Vector2 mouseDelta = Mouse.current.delta.ReadValue();
-        float swayY = Mathf.Clamp(mouseDelta.x * swayMultiplier, -maxSwayAmount, maxSwayAmount);
-        float swayX = Mathf.Clamp(-mouseDelta.y * swayMultiplier, -maxSwayAmount, maxSwayAmount);
+        if (player != null && player.isUIActive)
+            smoothedSwayInput = Vector2.Lerp(smoothedSwayInput, Vector2.zero, inputBlend);
+
+        if (Mouse.current == null)
+            smoothedSwayInput = Vector2.Lerp(smoothedSwayInput, Vector2.zero, inputBlend);
+
+        float swayY = Mathf.Clamp(smoothedSwayInput.x * swayMultiplier, -maxSwayAmount, maxSwayAmount);
+        float swayX = Mathf.Clamp(-smoothedSwayInput.y * swayMultiplier, -maxSwayAmount, maxSwayAmount);
 
         Quaternion targetRotation = bobRotation * Quaternion.Euler(swayX, swayY, 0f) * initialLocalRotation;
-        transform.localRotation = Quaternion.Slerp(transform.localRotation, targetRotation, swaySmooth * Time.deltaTime);
+        currentViewRotation = Quaternion.Slerp(currentViewRotation, targetRotation, rotationBlend);
+        transform.localRotation = currentViewRotation;
     }
 
     private void ShootPrimary()
@@ -613,9 +651,7 @@ public class Gun : MonoBehaviour
         SpawnMuzzleBurst(GetBarrelWorldPosition(transform.position), preset);
         if (audioSource != null && shootSound != null) audioSource.PlayOneShot(shootSound);
 
-        Camera mainCam = player != null && player.cameraTransform != null
-            ? player.cameraTransform.GetComponent<Camera>()
-            : null;
+        Camera mainCam = GetActiveCamera();
         if (mainCam == null) mainCam = Camera.main;
         Vector3 cameraPos = mainCam != null ? mainCam.transform.position : transform.position;
         Vector3 cameraForward = GetFireForward(mainCam, preset);
@@ -1123,7 +1159,7 @@ public class Gun : MonoBehaviour
         }
         if (ability.kind != WeaponAbilityObject.Kind.Core) return;
 
-        WeaponPreset kiln = presets != null && presets.Length > 3 ? presets[3] : ActivePreset;
+        WeaponPreset kiln = presets != null && presets.Length > 2 ? presets[2] : ActivePreset;
         float damage = kiln != null ? GetEffectiveDamage(kiln.damage) * 2f : 40f;
         Vector3 point = ability.transform.position;
         ApplySplashDamage(point, 5.5f, damage, null);
@@ -1311,7 +1347,7 @@ public class Gun : MonoBehaviour
         tempestPulseTimer -= Time.deltaTime;
         if (tempestPulseTimer > 0f || player == null) return;
         tempestPulseTimer = 0.28f;
-        CharacterController controller = player.GetComponent<CharacterController>();
+        CharacterController controller = GetCachedPlayerController();
         if (controller == null || controller.velocity.magnitude < 9f) return;
         SpawnRadialAbilityBurst(player.transform.position + Vector3.up * 0.8f, 2.2f, preset.accentColor, 6);
         player.NotifyHeavyWeaponImpact(0.028f);
@@ -1742,14 +1778,67 @@ public class Gun : MonoBehaviour
 
     private float GetEffectiveDamage(float baseDamage)
     {
-        float multiplier = runDamageMultiplier;
+        float passiveMultiplier = 1f;
+        float abilityMultiplier = 1f;
         PassiveMod passive = GetPassiveMod(activeFamily);
         AltFireMod alt = GetAltMod(activeFamily);
         if (passive == PassiveMod.SharpenedRounds)
-            multiplier *= 1.16f;
+            passiveMultiplier = 1.16f;
         if (alt == AltFireMod.Overload)
-            multiplier *= 1.08f;
-        return baseDamage * multiplier;
+            abilityMultiplier = 1.08f;
+        return CybergrindRules.CalculateWeaponDamage(
+            baseDamage,
+            baseDamageMultiplier,
+            runDamageMultiplier,
+            passiveMultiplier,
+            abilityMultiplier);
+    }
+
+    private void NormalizeSupportedPresets()
+    {
+        WeaponArchetype previousArchetype = presets != null && activePresetIndex >= 0 && activePresetIndex < presets.Length && presets[activePresetIndex] != null
+            ? presets[activePresetIndex].archetype
+            : WeaponArchetype.Marksman;
+        WeaponArchetype[] supported =
+        {
+            WeaponArchetype.Marksman,
+            WeaponArchetype.Splitter,
+            WeaponArchetype.CoreEject,
+            WeaponArchetype.Magnet
+        };
+        WeaponPreset[] defaults =
+        {
+            new WeaponPreset { displayName = "Vesper", family = WeaponFamily.Pistol, archetype = WeaponArchetype.Marksman, accentColor = new Color(0.05f, 0.72f, 1f), fireRate = 0.2f, bulletSpeed = 90f, damage = 23f, pelletCount = 1, spreadDegrees = 0.02f, recoilForce = 3.2f, modelScale = 0.78f },
+            new WeaponPreset { displayName = "Trident", family = WeaponFamily.Pistol, archetype = WeaponArchetype.Splitter, accentColor = new Color(0.18f, 0.95f, 0.38f), fireRate = 0.19f, bulletSpeed = 74f, damage = 10f, pelletCount = 3, spreadDegrees = 1.8f, recoilForce = 3.8f, modelScale = 0.76f },
+            new WeaponPreset { displayName = "Kiln", family = WeaponFamily.Shotgun, archetype = WeaponArchetype.CoreEject, accentColor = new Color(1f, 0.55f, 0.06f), fireRate = 0.76f, bulletSpeed = 58f, damage = 8.5f, pelletCount = 10, spreadDegrees = 5f, recoilForce = 9f, modelScale = 0.78f },
+            new WeaponPreset { displayName = "Lodestar", family = WeaponFamily.Shotgun, archetype = WeaponArchetype.Magnet, accentColor = new Color(0.92f, 0.16f, 0.82f), fireRate = 0.42f, bulletSpeed = 68f, damage = 6.2f, pelletCount = 6, spreadDegrees = 3.2f, recoilForce = 6f, modelScale = 0.74f }
+        };
+
+        WeaponPreset[] normalized = new WeaponPreset[supported.Length];
+        for (int i = 0; i < supported.Length; i++)
+        {
+            normalized[i] = defaults[i];
+            if (presets == null) continue;
+            for (int j = 0; j < presets.Length; j++)
+            {
+                if (presets[j] != null && presets[j].archetype == supported[i])
+                {
+                    normalized[i] = presets[j];
+                    break;
+                }
+            }
+        }
+
+        presets = normalized;
+        activePresetIndex = 0;
+        for (int i = 0; i < supported.Length; i++)
+        {
+            if (supported[i] == previousArchetype)
+            {
+                activePresetIndex = i;
+                break;
+            }
+        }
     }
 
     private float GetEffectiveSpread(WeaponPreset preset)
@@ -2033,6 +2122,7 @@ public class Gun : MonoBehaviour
         {
             trailRenderer.enabled = true;
             trailRenderer.Clear();
+            trailRenderer.emitting = true;
         }
         float visualTracerSpeed = Mathf.Max(220f, preset.bulletSpeed * 2.5f);
         StartCoroutine(MoveProceduralTracer(tracer.transform, direction, visualTracerSpeed, Mathf.Max(0.12f, GetTracerTime(preset) + 0.08f)));
@@ -2068,12 +2158,26 @@ public class Gun : MonoBehaviour
 
     private System.Collections.IEnumerator FadeHitScanTrail(Transform streak, float width, float distance, float lifetime)
     {
+        if (streak == null) yield break;
+
+        // Keep every shot at full width long enough to reach the renderer. Previously the
+        // first coroutine step could collapse short-lived trails before their first frame.
+        float holdDuration = Mathf.Clamp(lifetime * 0.45f, 0.012f, 0.025f);
+        float holdElapsed = 0f;
+        while (holdElapsed < holdDuration && streak != null)
+        {
+            holdElapsed += Time.unscaledDeltaTime;
+            yield return null;
+        }
+
+        float fadeDuration = Mathf.Max(0.03f, lifetime);
         float elapsed = 0f;
-        while (elapsed < lifetime && streak != null)
+        while (elapsed < fadeDuration && streak != null)
         {
             elapsed += Time.unscaledDeltaTime;
-            float t = Mathf.Clamp01(elapsed / lifetime);
-            streak.localScale = new Vector3(width * (1f - t), width * (1f - t), distance);
+            float t = Mathf.Clamp01(elapsed / fadeDuration);
+            float widthScale = 1f - Mathf.SmoothStep(0f, 1f, t);
+            streak.localScale = new Vector3(width * widthScale, width * widthScale, distance);
             yield return null;
         }
         if (streak != null) ReleaseFxPrimitive(streak.gameObject);
@@ -2090,7 +2194,23 @@ public class Gun : MonoBehaviour
         }
 
         if (tracer != null)
-            ReleaseFxPrimitive(tracer.gameObject);
+        {
+            TrailRenderer trail = tracer.GetComponent<TrailRenderer>();
+            Renderer core = tracer.GetComponent<Renderer>();
+            if (trail != null)
+            {
+                trail.emitting = false;
+                float linger = Mathf.Max(0.025f, trail.time);
+                if (core != null)
+                    core.enabled = false;
+                yield return new WaitForSecondsRealtime(linger);
+                if (core != null)
+                    core.enabled = true;
+            }
+
+            if (tracer != null)
+                ReleaseFxPrimitive(tracer.gameObject);
+        }
     }
 
     private void SpawnImpactRing(Vector3 position, Vector3 normal, Color color, float radius, float lifetime)
@@ -2162,6 +2282,7 @@ public class Gun : MonoBehaviour
         TrailRenderer trail = fx.GetComponent<TrailRenderer>();
         if (trail != null)
         {
+            trail.emitting = false;
             trail.Clear();
             trail.enabled = false;
         }
@@ -2306,21 +2427,60 @@ public class Gun : MonoBehaviour
     // Returns the world position to use as the visual barrel origin. Falls back to provided fallback if needed.
     private Vector3 GetBarrelWorldPosition(Vector3 fallback)
     {
-        // Prefer an explicitly assigned barrel that is not the camera transform
-        if (gunBarrel != null && gunBarrel != Camera.main?.transform)
+        if (gunBarrel != null && !IsViewCameraTransform(gunBarrel))
             return gunBarrel.position;
 
-        // If a generated barrel exists as a child from RebuildModel, use that
-        Transform genBarrel = transform.Find("GeneratedBarrel");
+        Transform genRoot = transform.Find(GeneratedModelName);
+        Transform genBarrel = genRoot != null ? genRoot.Find("GeneratedBarrel") : null;
         if (genBarrel != null)
+        {
+            gunBarrel = genBarrel;
             return genBarrel.position;
+        }
 
-        // If camera is available, approximate a muzzle point slightly in front of it
-        Camera cam = Camera.main;
+        Camera cam = GetActiveCamera();
         if (cam != null)
             return cam.transform.position + cam.transform.forward * muzzleForwardOffset;
 
         return fallback;
+    }
+
+    private bool IsViewCameraTransform(Transform candidate)
+    {
+        if (candidate == null)
+            return false;
+
+        if (player != null && player.cameraTransform != null && candidate == player.cameraTransform)
+            return true;
+
+        Camera cam = Camera.main;
+        return cam != null && candidate == cam.transform;
+    }
+
+    private Camera GetActiveCamera()
+    {
+        Camera playerCam = ResolvePlayerCamera();
+        return playerCam != null ? playerCam : Camera.main;
+    }
+
+    private CharacterController GetCachedPlayerController()
+    {
+        if (cachedPlayerController == null && player != null)
+            cachedPlayerController = player.GetComponent<CharacterController>();
+        return cachedPlayerController;
+    }
+
+    private Camera ResolvePlayerCamera()
+    {
+        if (player != null && player.cameraTransform != null)
+        {
+            if (cachedPlayerCamera == null || cachedPlayerCamera.transform != player.cameraTransform)
+                cachedPlayerCamera = player.cameraTransform.GetComponent<Camera>();
+            if (cachedPlayerCamera != null)
+                return cachedPlayerCamera;
+        }
+
+        return cachedPlayerCamera;
     }
 
     public void ApplyWeaponOverclock(float fireRateReductionPercent, float damageIncreasePercent, float altCooldownReductionPercent)
@@ -2465,9 +2625,9 @@ public class Gun : MonoBehaviour
     {
         return mod switch
         {
-            AltFireMod.QuickCharge => "quick special",
-            AltFireMod.Overload => "hard special",
-            _ => "no special mod"
+            AltFireMod.QuickCharge => "faster ability",
+            AltFireMod.Overload => "stronger ability",
+            _ => "no ability mod"
         };
     }
 
@@ -2485,16 +2645,16 @@ public class Gun : MonoBehaviour
     {
         return archetype switch
         {
-            WeaponArchetype.Marksman => "Precision sidearm; hits arc into a nearby target.",
-            WeaponArchetype.Rail => "Hand cannon; every shot penetrates an enemy line.",
-            WeaponArchetype.Splitter => "Three-prong repeater for mobile close pressure.",
-            WeaponArchetype.CoreEject => "Room-clearing scattergun with explosive impacts.",
-            WeaponArchetype.Magnet => "Automatic flechette gun that tracks a marked target.",
-            WeaponArchetype.Slab => "One brutal breaching slug with impact splash.",
-            WeaponArchetype.Mortar => "Long-range demolition cannon with large blast damage.",
-            WeaponArchetype.Driver => "Hypervelocity lance built to skewer packed targets.",
-            WeaponArchetype.Arc => "Twin-bolt conductor that chains through crowds.",
-            _ => "Reliable weapon setup."
+            WeaponArchetype.Marksman => "Accurate pistol.",
+            WeaponArchetype.Rail => "Shots pierce enemies.",
+            WeaponArchetype.Splitter => "Fires three shots.",
+            WeaponArchetype.CoreEject => "Close-range shotgun.",
+            WeaponArchetype.Magnet => "Tracks marked enemies.",
+            WeaponArchetype.Slab => "Fires one heavy slug.",
+            WeaponArchetype.Mortar => "Fires explosive shells.",
+            WeaponArchetype.Driver => "Fires a piercing beam.",
+            WeaponArchetype.Arc => "Chains between enemies.",
+            _ => "Standard fire."
         };
     }
 
@@ -2502,16 +2662,16 @@ public class Gun : MonoBehaviour
     {
         return archetype switch
         {
-            WeaponArchetype.Marksman => "for a high-damage precision lance.",
-            WeaponArchetype.Rail => "for a wide overpenetrating beam.",
-            WeaponArchetype.Splitter => "for a nine-round suppression fan.",
-            WeaponArchetype.CoreEject => "to detonate an ejected core at the reticle.",
-            WeaponArchetype.Magnet => "to mark a target for guided primary fire.",
-            WeaponArchetype.Slab => "to discharge a close-range kinetic shockwave.",
-            WeaponArchetype.Mortar => "to airburst a demolition shell at the reticle.",
-            WeaponArchetype.Driver => "for a high-force siege lance.",
-            WeaponArchetype.Arc => "to discharge a six-target storm pulse.",
-            _ => "to fire the alt shot."
+            WeaponArchetype.Marksman => "Throw a coin.",
+            WeaponArchetype.Rail => "Fire a wide beam.",
+            WeaponArchetype.Splitter => "Fire a wide burst.",
+            WeaponArchetype.CoreEject => "Launch an explosive core.",
+            WeaponArchetype.Magnet => "Mark a target.",
+            WeaponArchetype.Slab => "Create a shockwave.",
+            WeaponArchetype.Mortar => "Detonate a shell early.",
+            WeaponArchetype.Driver => "Fire a stronger beam.",
+            WeaponArchetype.Arc => "Shock nearby enemies.",
+            _ => "Use the ability."
         };
     }
 

@@ -7,6 +7,7 @@ public class ShopStationPresentation : MonoBehaviour
     public Renderer[] accentRenderers;
 
     private Vector3 productBasePosition;
+    private Quaternion productBaseRotation = Quaternion.identity;
     private float baseLightIntensity;
     private Color baseLightColor = Color.white;
     private Color[] accentBaseColors;
@@ -17,7 +18,10 @@ public class ShopStationPresentation : MonoBehaviour
     private void Start()
     {
         if (productRoot != null)
+        {
             productBasePosition = productRoot.localPosition;
+            productBaseRotation = productRoot.localRotation;
+        }
         if (displayLight != null)
         {
             baseLightIntensity = displayLight.intensity;
@@ -67,7 +71,8 @@ public class ShopStationPresentation : MonoBehaviour
         {
             float lift = focused ? 0.035f : 0f;
             productRoot.localPosition = Vector3.Lerp(productRoot.localPosition, productBasePosition + Vector3.up * lift, Time.deltaTime * 8f);
-            productRoot.localRotation = Quaternion.Slerp(productRoot.localRotation, Quaternion.Euler(0f, focused ? 6f : 0f, 0f), Time.deltaTime * 4.5f);
+            Quaternion targetRotation = productBaseRotation * Quaternion.Euler(0f, focused ? 4f : 0f, 0f);
+            productRoot.localRotation = Quaternion.Slerp(productRoot.localRotation, targetRotation, Time.deltaTime * 4.5f);
         }
     }
 

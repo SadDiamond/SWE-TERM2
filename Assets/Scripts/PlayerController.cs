@@ -59,6 +59,11 @@ public class PlayerController : MonoBehaviour, IDamageable
     public float slamSpeed = 40f; // How fast you plummet downwards
     public float postSlamSlideLockout = 0.25f;
     public float slamReleaseDelay = 0.12f;
+    [Min(0f)] public float slamJumpWindow = 0.32f;
+    [Min(1f)] public float slamJumpVerticalBoost = 1.3f;
+    [Min(0f)] public float slamJumpChainWindow = 1.35f;
+    [Range(0f, 0.12f)] public float slamJumpChainHeightBonus = 0.04f;
+    [Range(0, 8)] public int maxSlamJumpChain = 5;
     public float slideCameraDrop = 0.42f;
     public float slideGroundGrace = 0.12f;
     public float slideHoldSpeed = 16.2f;
@@ -96,9 +101,10 @@ public class PlayerController : MonoBehaviour, IDamageable
     public float wallRunCameraTilt = 7.5f;
     public float wallTransitionDuration = 0.14f;
     [Range(0f, 1f)] public float wallReleaseCarryPreservation = 0.82f;
+    [Range(0f, 1f)] public float wallRunCarryPreservation = 0.88f;
 
     [Header("Movement (Grapple)")]
-    public float grappleRange = 40f;
+    public float grappleRange = 46f;
     [Min(0.5f)] public float grappleMinRopeLength = 0.9f;
     [Min(0f)] public float grappleRopeSlack = 0.12f;
     [Range(0.5f, 1f)] public float grappleConstraintElasticity = 0.86f;
@@ -114,15 +120,25 @@ public class PlayerController : MonoBehaviour, IDamageable
     public float grappleJumpBoost = 5.2f;
     public float grappleJumpForwardBoost = 2.8f;
     public float grappleJumpCooldown = 0.24f;
-    public float grappleHookSpeed = 64f;
+    public float grappleHookSpeed = 88f;
     public float grappleHookRadius = 0.11f;
     public float grappleCooldown = 0.2f;
     [Min(0f)] public float grappleTargetGraceDuration = 0.1f;
+    public float grappleLatchBoost = 11.5f;
+    public float grappleLatchUpBoost = 1.8f;
+    public float grappleReleaseForwardBoost = 4.2f;
+    public float grappleReleaseUpBoost = 1.2f;
+    public float grappleLatchShake = 0.12f;
+    [Range(0f, 1f)] public float grappleCarryPreservation = 0.92f;
     public LayerMask grappleSurfaceMask = ~0;
     public Color grappleLineColor = new Color(0.08f, 0.09f, 0.11f, 0.96f);
     public Color grappleReticleColor = new Color(0.9f, 0.96f, 1f, 0.92f);
     [Min(0f)] public float grappleAssistWorldRadius = 0.32f;
     public float grappleLedgeProbeHeight = 1.6f;
+    [Range(0f, 1f)] public float grappleLedgePreference = 0.24f;
+    [Range(0f, 1f)] public float grappleVerticalPreference = 0.18f;
+    [Min(0f)] public float grappleReticleFadeSpeed = 8f;
+    [Min(0f)] public float grappleReticleScaleBoost = 0.18f;
 
     [Header("Movement (Grapple Visuals)")]
     public float grappleLaunchVisualDuration = 0.08f;
@@ -131,6 +147,8 @@ public class PlayerController : MonoBehaviour, IDamageable
     public Color grappleViewAccentColor = new Color(0.7f, 0.92f, 1f, 1f);
     public Color grappleAnchorColor = new Color(0.86f, 0.97f, 1f, 0.96f);
     public Color grappleAnchorPulseColor = new Color(0.4f, 0.95f, 1f, 0.8f);
+    public float grappleLineWidthActive = 0.028f;
+    public float grappleLineWidthIdle = 0.02f;
 
     [Header("FX & Polish")]
     public Camera playerCamera;
@@ -152,6 +170,9 @@ public class PlayerController : MonoBehaviour, IDamageable
     private float slideCooldownTimer;
     private float slideGroundGraceTimer;
     private float slideTimer;
+    private float slamJumpTimer;
+    private float slamJumpChainTimer;
+    private int slamJumpChainCount;
     private float slideJumpChainTimer;
     private int slideJumpChain;
     private float groundedHoldTimer;
@@ -172,6 +193,11 @@ public class PlayerController : MonoBehaviour, IDamageable
 
     [Header("Look")]
     public float mouseSensitivity = 100f;
+    [Min(0f)] public float cameraTiltSmoothSpeed = 16f;
+    [Min(0.001f)] public float cameraPositionSmoothTime = 0.045f;
+    [Min(0f)] public float cameraFovSmoothSpeed = 10f;
+    [Min(0f)] public float impactShakeFrequency = 42f;
+    [Min(0f)] public float cameraShakeSmoothSpeed = 18f;
     public Transform cameraTransform;
 
     [Header("Inventory")]
@@ -220,6 +246,9 @@ public class PlayerController : MonoBehaviour, IDamageable
     private readonly Image[] crosshairSegmentImages = new Image[4];
     private Material cachedWorldFxMaterial;
     private Vector2 moveInputRaw;
+    private Vector3 cameraLocalPositionVelocity;
+    private float currentCameraTilt;
+    private Vector3 currentCameraShakeOffset;
     private ParticleSystem runtimeSlideGroundFx;
     private ParticleSystem runtimeSlideAirFx;
     private LineRenderer grappleLine;
@@ -234,6 +263,7 @@ public class PlayerController : MonoBehaviour, IDamageable
     private float grappleActiveTimer;
     private float grappleJumpCooldownTimer;
     private float grappleTargetGraceTimer;
+    private float grappleReticleFade;
     private GrappleState grappleState;
     private GrappleTarget aimedGrappleTarget;
     private GrappleTarget launchedGrappleTarget;
@@ -296,11 +326,14 @@ public class PlayerController : MonoBehaviour, IDamageable
     {
         public bool isValid;
         public bool isAssisted;
+        public bool isLedgeSnap;
+        public bool pullsPlayer;
         public Vector3 point;
         public Vector3 normal;
         public Collider collider;
         public Transform anchorTransform;
         public Vector3 localPoint;
+        public IGrappleMassTarget massTarget;
     }
 
     private struct MovementInputState
@@ -361,6 +394,8 @@ public class PlayerController : MonoBehaviour, IDamageable
         EnsureGrappleViewModel();
         if (playerCamera != null) baseFOV = playerCamera.fieldOfView;
         if (cameraTransform != null) baseCameraLocalPos = cameraTransform.localPosition;
+        currentCameraTilt = 0f;
+        currentCameraShakeOffset = Vector3.zero;
         lastSafePosition = transform.position;
         EnsureVitalsHud();
         EnsureCrosshair();
@@ -546,6 +581,20 @@ public class PlayerController : MonoBehaviour, IDamageable
         if (amount <= 0f) return;
         currentHealth = Mathf.Min(CurrentMaxHealth, currentHealth + amount);
         RefreshVitalsUI();
+    }
+
+    public void TriggerGameOverDeath()
+    {
+        if (isDead)
+            return;
+
+        bool previousRespawnMode = respawnOnDeath;
+        respawnOnDeath = false;
+        damageInvulnerabilityTimer = 0f;
+        currentHealth = 0f;
+        RefreshVitalsUI();
+        HandleDeath();
+        respawnOnDeath = previousRespawnMode;
     }
 
     public void AddCurrency(int amount)
@@ -779,11 +828,11 @@ public class PlayerController : MonoBehaviour, IDamageable
                 grappleTargetGraceTimer = Mathf.Max(0f, grappleTargetGraceTimer - Time.deltaTime);
 
             if (grappleTargetGraceTimer <= 0f)
-                StopGrapple();
+                BeginGrappleReleaseRetract(activeGrappleTarget, true);
             else if (!input.grappleHeld)
                 ReleaseGrapplePreservingMomentum();
         }
-        if (activeGrappleHook != null && !input.grappleHeld)
+        if (activeGrappleHook != null && grappleState == GrappleState.Firing && !input.grappleHeld)
             CancelGrappleHook();
 
         if (input.grapplePressed && !activeGrappleTarget.isValid && activeGrappleHook == null)
@@ -798,10 +847,13 @@ public class PlayerController : MonoBehaviour, IDamageable
             if (dashCharges < MaxDashCharges && dashCooldownTimer <= 0f)
                 dashCooldownTimer = dashCooldown;
             Vector3 dashDir = input.moveDirection.magnitude > 0.1f ? input.moveDirection : transform.forward;
-            float dashSpeed = Mathf.Clamp(dashTargetSpeed + dashForceBonus * 0.25f, CurrentMoveSpeed * 2.05f, CurrentMoveSpeed * 2.25f);
+            float dashSpeed = Mathf.Clamp(
+                Mathf.Max(dashTargetSpeed, CurrentDashForce) + dashForceBonus * 0.15f,
+                CurrentMoveSpeed * 2.1f,
+                CurrentMoveSpeed * 2.55f);
             dashVelocity = dashDir * dashSpeed;
             momentum = dashVelocity;
-            dashTimer = dashDuration;
+            dashTimer = Mathf.Max(dashDuration, 0.2f);
             ExitSlide(false);
             isSlamming = false;
             slideRequiresRelease = input.slideHeld;
@@ -815,27 +867,7 @@ public class PlayerController : MonoBehaviour, IDamageable
         ApplyVerticalVelocity(Time.deltaTime);
         ResolveMovementCollision(input.moveDirection);
 
-        if (playerCamera != null)
-        {
-            float overdrive = GetOverdriveAmount();
-            playerCamera.fieldOfView = Mathf.Lerp(playerCamera.fieldOfView, baseFOV + overdrive * overdriveFovBonus, Time.deltaTime * 8f);
-        }
-        if (cameraTransform != null)
-        {
-            Vector3 cameraTarget = isSliding
-                ? baseCameraLocalPos + Vector3.down * slideCameraDrop
-                : baseCameraLocalPos;
-            float shake = GetOverdriveAmount() * overdriveShakeAmount;
-            if (shake > 0.001f)
-                cameraTarget += new Vector3(Mathf.PerlinNoise(Time.time * 28f, 0f) - 0.5f, Mathf.PerlinNoise(0f, Time.time * 31f) - 0.5f, 0f) * shake * 2f;
-            if (weaponImpactShakeTimer > 0f)
-            {
-                weaponImpactShakeTimer -= Time.unscaledDeltaTime;
-                float impact = weaponImpactShakeAmount * Mathf.Clamp01(weaponImpactShakeTimer / 0.18f);
-                cameraTarget += new Vector3(UnityEngine.Random.Range(-impact, impact), UnityEngine.Random.Range(-impact, impact), 0f);
-            }
-            cameraTransform.localPosition = cameraTarget;
-        }
+        UpdateCameraPresentation(Time.deltaTime);
 
         UpdateSpeedLines();
 
@@ -972,6 +1004,8 @@ public class PlayerController : MonoBehaviour, IDamageable
             isSlamming = false;
             slideRequiresRelease = true;
             slideLockoutTimer = Mathf.Max(slideLockoutTimer, slamReleaseDelay);
+            slamJumpTimer = slamJumpWindow;
+            slamJumpChainTimer = slamJumpChainWindow;
             momentum = Vector3.ClampMagnitude(Vector3.ProjectOnPlane(momentum, Vector3.up), Mathf.Max(CurrentMoveSpeed * 0.95f, slideBaseSpeed * 0.75f));
         }
     }
@@ -995,6 +1029,12 @@ public class PlayerController : MonoBehaviour, IDamageable
             slideJumpChainTimer = Mathf.Max(0f, slideJumpChainTimer - deltaTime);
         else
             slideJumpChain = 0;
+        if (slamJumpTimer > 0f)
+            slamJumpTimer = Mathf.Max(0f, slamJumpTimer - deltaTime);
+        if (slamJumpChainTimer > 0f)
+            slamJumpChainTimer = Mathf.Max(0f, slamJumpChainTimer - deltaTime);
+        else
+            slamJumpChainCount = 0;
         if (isSliding)
             slideGroundGraceTimer = isGrounded ? slideGroundGrace : Mathf.Max(0f, slideGroundGraceTimer - deltaTime);
         if (isWallRunning && wallRunTimer > 0f)
@@ -1074,7 +1114,66 @@ public class PlayerController : MonoBehaviour, IDamageable
 
     private void ReleaseGrapplePreservingMomentum()
     {
-        StopGrapple();
+        BeginGrappleReleaseRetract(activeGrappleTarget, true);
+    }
+
+    private void BeginGrappleReleaseRetract(GrappleTarget target, bool applyCooldown)
+    {
+        if (!target.isValid)
+        {
+            StopGrapple();
+            return;
+        }
+
+        Vector3 anchorPoint = GetGrappleAnchorPoint(target);
+        Vector3 bounceDirection = Vector3.Reflect(-transform.forward, target.normal);
+        if (bounceDirection.sqrMagnitude <= 0.0001f)
+            bounceDirection = target.normal.sqrMagnitude > 0.0001f ? target.normal : -transform.forward;
+
+        if (target.pullsPlayer)
+        {
+            Vector3 releaseDir = cameraTransform != null
+                ? Vector3.ProjectOnPlane(cameraTransform.forward, Vector3.up).normalized
+                : Vector3.ProjectOnPlane(transform.forward, Vector3.up).normalized;
+            if (releaseDir.sqrMagnitude <= 0.0001f)
+                releaseDir = Vector3.ProjectOnPlane(transform.forward, Vector3.up).normalized;
+            momentum += releaseDir * grappleReleaseForwardBoost;
+            velocity.y = Mathf.Max(velocity.y, grappleReleaseUpBoost);
+        }
+
+        activeGrappleTarget = default;
+        activeGrappleRopeLength = 0f;
+        grappleActiveTimer = 0f;
+        grappleJumpCooldownTimer = 0f;
+        grappleTargetGraceTimer = 0f;
+        launchedGrappleTarget = default;
+        if (applyCooldown)
+            grappleCooldownTimer = Mathf.Max(grappleCooldownTimer, grappleCooldown);
+        grappleState = GrappleState.Retracting;
+        grappleVisualPulse = 0.8f;
+
+        EnsureRetractHookVisual(anchorPoint, bounceDirection);
+        if (grappleAnchorVisual != null)
+            grappleAnchorVisual.gameObject.SetActive(false);
+    }
+
+    private void EnsureRetractHookVisual(Vector3 anchorPoint, Vector3 bounceDirection)
+    {
+        if (pooledGrappleHook == null)
+        {
+            GameObject hookObject = new GameObject("GrappleHookProjectile");
+            pooledGrappleHook = hookObject.AddComponent<GrappleHookProjectile>();
+        }
+
+        if (activeGrappleHook == null)
+            activeGrappleHook = pooledGrappleHook;
+
+        activeGrappleHook.transform.SetParent(null, true);
+        activeGrappleHook.gameObject.SetActive(true);
+        activeGrappleHook.Initialize(this, anchorPoint, -bounceDirection, grappleHookSpeed, grappleHookRadius, grappleRange, grappleSurfaceMask, grappleViewBodyColor, grappleViewAccentColor);
+        activeGrappleHook.BeginRetract(anchorPoint, bounceDirection);
+        if (grappleLine != null)
+            grappleLine.enabled = true;
     }
 
     private bool IsGrappleTargetStillValid(GrappleTarget target)
@@ -1082,25 +1181,46 @@ public class PlayerController : MonoBehaviour, IDamageable
         if (!target.isValid)
             return false;
 
-        Vector3 origin = cameraTransform != null ? cameraTransform.position : transform.position + Vector3.up * 1.2f;
+        Vector3 origin = transform.position + Vector3.up * 0.9f;
         Vector3 anchorPoint = GetGrappleAnchorPoint(target);
-        if (Vector3.Distance(origin, anchorPoint) > grappleRange)
+        Vector3 toTarget = anchorPoint - origin;
+        float distance = toTarget.magnitude;
+        if (distance > grappleRange + 1.5f)
             return false;
 
         if (target.collider == null)
             return false;
 
-        Vector3 toTarget = anchorPoint - origin;
-        if (Physics.Raycast(origin, toTarget.normalized, out RaycastHit hit, toTarget.magnitude + 0.2f, grappleSurfaceMask, QueryTriggerInteraction.Ignore))
-            return hit.collider == target.collider || (target.anchorTransform != null && hit.collider.transform.IsChildOf(target.anchorTransform));
+        if (distance <= Mathf.Max(grappleAutoReleaseDistance + 1.2f, grappleMinRopeLength + 0.9f))
+            return true;
 
-        return false;
+        if (Physics.Raycast(origin, toTarget.normalized, out RaycastHit hit, distance + 0.2f, grappleSurfaceMask, QueryTriggerInteraction.Ignore))
+        {
+            if (hit.collider == target.collider)
+                return true;
+
+            if (target.anchorTransform != null && hit.collider.transform.IsChildOf(target.anchorTransform))
+                return true;
+
+            if (Vector3.Distance(hit.point, anchorPoint) <= 0.55f)
+                return true;
+
+            return false;
+        }
+
+        return true;
     }
 
     private void UpdateGrappleMotion(Vector3 inputDir, float deltaTime)
     {
         if (!activeGrappleTarget.isValid)
             return;
+
+        if (!activeGrappleTarget.pullsPlayer)
+        {
+            UpdateLightTargetGrappleMotion(deltaTime);
+            return;
+        }
 
         Vector3 anchorPoint = GetGrappleAnchorPoint(activeGrappleTarget);
         Vector3 attachmentPoint = transform.position + Vector3.up * 0.9f;
@@ -1125,6 +1245,7 @@ public class PlayerController : MonoBehaviour, IDamageable
             grappleReelSpeed * deltaTime);
         Vector3 pullDir = toAnchor / Mathf.Max(0.001f, distance);
         Vector3 currentVelocity = momentum + Vector3.up * velocity.y;
+        float preservedSpeed = currentVelocity.magnitude;
         if (jumpBufferTimer > 0f && grappleJumpCooldownTimer <= 0f)
         {
             Vector3 jumpDirection = inputDir.sqrMagnitude > 0.0001f ? inputDir.normalized : transform.forward;
@@ -1166,8 +1287,55 @@ public class PlayerController : MonoBehaviour, IDamageable
             }
         }
 
+        float carryFloor = preservedSpeed > grapplePullSpeed
+            ? Mathf.Lerp(grapplePullSpeed, preservedSpeed, grappleCarryPreservation)
+            : 0f;
+        if (carryFloor > 0f && currentVelocity.magnitude < carryFloor)
+            currentVelocity = currentVelocity.sqrMagnitude > 0.0001f
+                ? currentVelocity.normalized * carryFloor
+                : pullDir * carryFloor;
+
         momentum = Vector3.ProjectOnPlane(currentVelocity, Vector3.up);
         velocity.y = currentVelocity.y;
+    }
+
+    private void UpdateLightTargetGrappleMotion(float deltaTime)
+    {
+        Vector3 anchorPoint = GetGrappleAnchorPoint(activeGrappleTarget);
+        Vector3 attachmentPoint = transform.position + Vector3.up * 0.9f;
+        Vector3 toPlayer = attachmentPoint - anchorPoint;
+        float distance = toPlayer.magnitude;
+        if (distance <= 0.001f)
+        {
+            ReleaseGrapplePreservingMomentum();
+            return;
+        }
+
+        grappleActiveTimer += deltaTime;
+        activeGrappleRopeLength = distance;
+        if (distance <= Mathf.Max(1.8f, grappleMinRopeLength + 0.8f))
+        {
+            ReleaseGrapplePreservingMomentum();
+            return;
+        }
+
+        if (activeGrappleTarget.massTarget == null)
+        {
+            ReleaseGrapplePreservingMomentum();
+            return;
+        }
+
+        float pullRamp01 = grapplePullRampDuration <= 0.001f
+            ? 1f
+            : Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(grappleActiveTimer / grapplePullRampDuration));
+        float targetPullSpeed = Mathf.Lerp(grappleInitialPullSpeed, grapplePullSpeed, pullRamp01) * 0.9f;
+        bool applied = activeGrappleTarget.massTarget.ApplyGrapplePull(
+            attachmentPoint,
+            toPlayer / Mathf.Max(0.001f, distance),
+            targetPullSpeed,
+            deltaTime);
+        if (!applied)
+            ReleaseGrapplePreservingMomentum();
     }
 
     private Vector3 ApplyGrappleAirSteer(Vector3 currentVelocity, Vector3 inputDir, float deltaTime)
@@ -1273,14 +1441,25 @@ public class PlayerController : MonoBehaviour, IDamageable
         if (activeGrappleTarget.isValid || jumpBufferTimer <= 0f || (!canGroundJump && !canAirJump))
             return;
 
+        bool slamBoostJump = canGroundJump && slamJumpTimer > 0f;
         velocity.y = Mathf.Sqrt(CurrentJumpHeight * -2f * gravity);
         jumpBufferTimer = 0f;
         coyoteTimer = 0f;
+        if (slamBoostJump)
+            slamJumpTimer = 0f;
         if (canGroundJump)
             jumpsRemaining = Mathf.Max(0, maxJumps - 1);
         else
             jumpsRemaining--;
         isGrounded = false;
+
+        if (slamBoostJump)
+        {
+            float slamChainMultiplier = 1f + Mathf.Min(slamJumpChainCount, maxSlamJumpChain) * slamJumpChainHeightBonus;
+            velocity.y *= slamJumpVerticalBoost * slamChainMultiplier;
+            slamJumpChainCount = Mathf.Min(maxSlamJumpChain, slamJumpChainCount + 1);
+            slamJumpChainTimer = slamJumpChainWindow;
+        }
 
         if (!isSliding)
             return;
@@ -1366,7 +1545,11 @@ public class PlayerController : MonoBehaviour, IDamageable
         isWallSliding = !canRun && velocity.y <= 0f;
         hasWallState = isWallRunning || isWallSliding;
         if (isWallRunning)
+        {
             activeWallDirection = wallDirection;
+            if (!wasWallRunning)
+                jumpsRemaining = Mathf.Max(jumpsRemaining, Mathf.Max(0, maxJumps - 1));
+        }
 
         if (!isWallRunning && !isWallSliding)
         {
@@ -1395,9 +1578,16 @@ public class PlayerController : MonoBehaviour, IDamageable
         activeWallDirection = wallDirection;
         Vector3 alongWall = Vector3.ProjectOnPlane(momentum, activeWallNormal);
         float currentSpeed = alongWall.magnitude;
-        float targetSpeed = Mathf.Max(wallRunTargetSpeed, currentSpeed);
-        float solvedSpeed = Mathf.MoveTowards(currentSpeed, targetSpeed, wallRunAcceleration * deltaTime);
-        Vector3 targetMomentum = wallDirection * solvedSpeed - activeWallNormal * wallRunSidePull;
+        float preservedCarrySpeed = Mathf.Max(currentSpeed * wallRunCarryPreservation, wallRunTargetSpeed);
+        float solvedSpeed = Mathf.MoveTowards(currentSpeed, preservedCarrySpeed, wallRunAcceleration * deltaTime);
+        Vector3 carriedAlongWall = wallDirection * solvedSpeed;
+        Vector3 wallBias = -activeWallNormal * wallRunSidePull;
+        Vector3 targetMomentum = carriedAlongWall + wallBias;
+        if (alongWall.sqrMagnitude > 0.0001f && currentSpeed > wallRunTargetSpeed)
+        {
+            Vector3 preservedExtra = alongWall.normalized * Mathf.Max(0f, currentSpeed - solvedSpeed);
+            targetMomentum += preservedExtra * wallRunCarryPreservation;
+        }
         float blend = Mathf.Clamp01(wallMovementBlend);
         momentum = Vector3.Lerp(momentum, targetMomentum, blend);
         velocity.y = Mathf.Lerp(velocity.y, Mathf.Max(velocity.y, -1.25f), blend);
@@ -1550,8 +1740,8 @@ public class PlayerController : MonoBehaviour, IDamageable
         grappleLine.receiveShadows = false;
         grappleLine.textureMode = LineTextureMode.Tile;
         grappleLine.alignment = LineAlignment.View;
-        grappleLine.startWidth = 0.02f;
-        grappleLine.endWidth = 0.016f;
+        grappleLine.startWidth = grappleLineWidthIdle;
+        grappleLine.endWidth = grappleLineWidthIdle * 0.8f;
         grappleLine.numCapVertices = 2;
         grappleLine.material = GetGrappleLineMaterial();
         grappleLine.startColor = grappleLineColor;
@@ -1705,7 +1895,7 @@ public class PlayerController : MonoBehaviour, IDamageable
             ? 0f
             : Mathf.Clamp01(grappleLaunchVisualTimer / grappleLaunchVisualDuration);
         float extend01 = (activeGrappleTarget.isValid || hookActive) ? 1f : 1f - launch01;
-        grappleVisualPulse = Mathf.MoveTowards(grappleVisualPulse, (activeGrappleTarget.isValid || hookActive) ? 1f : 0f, Time.deltaTime * 7f);
+        grappleVisualPulse = Mathf.MoveTowards(grappleVisualPulse, (activeGrappleTarget.isValid || hookActive) ? 1f : 0f, Time.deltaTime * 5f);
         Vector3 grapplePoint = activeGrappleTarget.isValid
             ? GetGrappleAnchorPoint(activeGrappleTarget)
             : (activeGrappleHook != null ? activeGrappleHook.CurrentPoint : cameraTransform.position + cameraTransform.forward * 3f);
@@ -1714,15 +1904,17 @@ public class PlayerController : MonoBehaviour, IDamageable
         float hookFlightWeight = activeGrappleHook != null && !activeGrappleHook.IsLatched ? 1f : 0f;
         float tensionWeight = activeGrappleTarget.isValid ? 1f : hookFlightWeight * 0.65f;
         float idlePulse = 0.55f + Mathf.Sin(Time.unscaledTime * 8f) * 0.08f;
-        float activePulse = 0.8f + Mathf.Sin(Time.unscaledTime * 20f) * 0.2f;
+        float activePulse = 0.92f + Mathf.Sin(Time.unscaledTime * 24f) * 0.28f;
         float pulse = Mathf.Lerp(idlePulse, activePulse, grappleVisualPulse);
 
+        float latchKick = Mathf.Clamp01(grappleVisualPulse - 1f);
         Vector3 targetPos = new Vector3(-0.15f, -0.16f, 0.39f)
-            + new Vector3(0.042f, 0.006f, 0.048f) * tensionWeight;
+            + new Vector3(0.042f, 0.006f, 0.048f) * tensionWeight
+            + new Vector3(0.024f, -0.008f, -0.036f) * latchKick;
         Quaternion targetRot = Quaternion.Euler(
-            8f - tensionWeight * 10f - localRopeDir.y * 5f,
-            -12f + tensionWeight * 14f + localRopeDir.x * 8f,
-            4f - tensionWeight * 4f);
+            8f - tensionWeight * 10f - localRopeDir.y * 5f + latchKick * 12f,
+            -12f + tensionWeight * 14f + localRopeDir.x * 8f - latchKick * 5f,
+            4f - tensionWeight * 4f + latchKick * 8f);
         grappleViewRoot.localPosition = Vector3.Lerp(grappleViewRoot.localPosition, targetPos, Time.deltaTime * (grappleHandRecoverSpeed * 0.85f));
         grappleViewRoot.localRotation = Quaternion.Slerp(grappleViewRoot.localRotation, targetRot, Time.deltaTime * (grappleHandRecoverSpeed * 0.8f));
 
@@ -1738,11 +1930,16 @@ public class PlayerController : MonoBehaviour, IDamageable
     {
         Vector3 origin = cameraTransform != null ? cameraTransform.position : transform.position + Vector3.up * 1.2f;
         Vector3 anchorPoint = GetGrappleAnchorPoint(target);
-        Vector3 toTarget = (anchorPoint - origin).normalized;
+        Vector3 offset = anchorPoint - origin;
+        Vector3 toTarget = offset.sqrMagnitude > 0.0001f ? offset.normalized : rayDirection.normalized;
         float alignment = Vector3.Dot(rayDirection.normalized, toTarget);
-        float distancePenalty = Vector3.Distance(origin, anchorPoint) / Mathf.Max(1f, grappleRange);
+        float distance = offset.magnitude;
+        float distancePenalty = distance / Mathf.Max(1f, grappleRange);
         float assistBonus = target.isAssisted ? 0.08f : 0f;
-        return alignment + assistBonus - distancePenalty * 0.15f;
+        float ledgeBonus = target.isLedgeSnap ? grappleLedgePreference : 0f;
+        float verticalBonus = Mathf.Clamp01(Mathf.Max(0f, anchorPoint.y - origin.y) / 12f) * grappleVerticalPreference;
+        float wallBonus = Mathf.InverseLerp(0.3f, -0.15f, target.normal.y) * 0.1f;
+        return alignment + assistBonus + ledgeBonus + verticalBonus + wallBonus - distancePenalty * 0.15f;
     }
 
     private bool TryBuildGrappleTarget(RaycastHit hit, out GrappleTarget target)
@@ -1751,6 +1948,7 @@ public class PlayerController : MonoBehaviour, IDamageable
         if (!IsValidGrappleSurface(hit))
             return false;
 
+        IGrappleMassTarget massTarget = hit.collider.GetComponentInParent<IGrappleMassTarget>();
         target.isValid = true;
         target.normal = hit.normal;
         target.point = hit.point + hit.normal * 0.08f;
@@ -1759,11 +1957,14 @@ public class PlayerController : MonoBehaviour, IDamageable
         target.localPoint = target.anchorTransform != null
             ? target.anchorTransform.InverseTransformPoint(target.point)
             : target.point;
+        target.massTarget = massTarget;
+        target.pullsPlayer = massTarget == null || massTarget.GrappleMassClass == GrappleMassClass.Heavy;
 
-        if (TryFindNearbyLedgePoint(hit, out RaycastHit topHit, out Vector3 ledgePoint))
+        if (massTarget == null && TryFindNearbyLedgePoint(hit, out RaycastHit topHit, out Vector3 ledgePoint))
         {
             target.point = ledgePoint;
             target.isAssisted = true;
+            target.isLedgeSnap = true;
             target.collider = topHit.collider;
             target.anchorTransform = topHit.rigidbody != null ? topHit.rigidbody.transform : topHit.collider.transform;
             target.localPoint = target.anchorTransform != null
@@ -1784,13 +1985,18 @@ public class PlayerController : MonoBehaviour, IDamageable
         if (hit.normal.y > 0.78f)
             return false;
 
-        Vector3 probeOrigin = hit.point + Vector3.up * grappleLedgeProbeHeight - hit.normal * 0.55f;
+        Vector3 wallPush = Vector3.ProjectOnPlane(-hit.normal, Vector3.up).normalized;
+        Vector3 viewBias = Vector3.ProjectOnPlane(cameraTransform.forward, Vector3.up).normalized;
+        Vector3 probeOffset = wallPush.sqrMagnitude > 0.0001f ? wallPush : viewBias;
+        if (probeOffset.sqrMagnitude <= 0.0001f)
+            probeOffset = Vector3.forward;
+        Vector3 probeOrigin = hit.point + Vector3.up * grappleLedgeProbeHeight + probeOffset * 0.5f;
         if (!Physics.Raycast(probeOrigin, Vector3.down, out topHit, grappleLedgeProbeHeight * 2.2f, grappleSurfaceMask, QueryTriggerInteraction.Ignore))
             return false;
         if (!IsValidStandingSurface(topHit))
             return false;
 
-        ledgePoint = topHit.point + Vector3.up * 0.18f;
+        ledgePoint = topHit.point + Vector3.up * 0.18f - probeOffset * 0.08f;
         return Vector3.Distance(cameraTransform.position, ledgePoint) <= grappleRange;
     }
 
@@ -1801,11 +2007,11 @@ public class PlayerController : MonoBehaviour, IDamageable
             return false;
         if (hit.normal.y < -0.2f)
             return false;
+        if (hit.normal.y > 0.72f)
+            return false;
         if (hitCollider.transform == transform || hitCollider.transform.IsChildOf(transform))
             return false;
         if (hitCollider.GetComponentInParent<PlayerController>() != null)
-            return false;
-        if (hitCollider.GetComponentInParent<BasicEnemyAI>() != null)
             return false;
         if (hitCollider.GetComponentInParent<Projectile>() != null)
             return false;
@@ -1830,6 +2036,11 @@ public class PlayerController : MonoBehaviour, IDamageable
         }
 
         grappleLine.enabled = true;
+        float linePulse = activeGrappleTarget.isValid
+            ? Mathf.Lerp(grappleLineWidthIdle, grappleLineWidthActive, Mathf.Clamp01(grappleVisualPulse))
+            : grappleLineWidthIdle;
+        grappleLine.startWidth = linePulse;
+        grappleLine.endWidth = linePulse * 0.78f;
         Vector3 start = grappleLauncherMuzzle != null
             ? grappleLauncherMuzzle.position
             : cameraTransform.position + cameraTransform.forward * 0.22f + cameraTransform.right * 0.08f + Vector3.down * 0.06f;
@@ -1854,9 +2065,13 @@ public class PlayerController : MonoBehaviour, IDamageable
             Vector3 coilOrigin = start + ropeDir * Mathf.Min(length * 0.18f, 0.22f + deploy01 * 0.14f);
             if (activeGrappleHook.IsRetracting)
             {
-                float retractJitter = Mathf.Sin(Time.unscaledTime * 42f) * 0.08f;
-                midA = Vector3.Lerp(start, end, 0.28f) + side * retractJitter + upWave * 0.02f;
-                midB = Vector3.Lerp(start, end, 0.62f) - side * retractJitter * 0.65f - upWave * 0.01f;
+                float retract01 = Mathf.Clamp01(Vector3.Distance(end, GetGrappleReturnPoint()) / Mathf.Max(0.15f, length + 0.001f));
+                float loose01 = Mathf.Clamp01(retract01 * 2.1f);
+                float tighten01 = 1f - Mathf.Clamp01(retract01 * 1.35f);
+                float retractJitter = Mathf.Sin(Time.unscaledTime * 42f) * Mathf.Lerp(0.11f, 0.025f, tighten01);
+                float sag = Mathf.Lerp(0.16f, 0.02f, tighten01) * loose01;
+                midA = Vector3.Lerp(start, end, 0.24f) + side * retractJitter + upWave * 0.02f - Vector3.down * sag;
+                midB = Vector3.Lerp(start, end, 0.58f) - side * retractJitter * 0.72f - upWave * 0.01f - Vector3.down * (sag * 1.35f);
             }
             else
             {
@@ -1900,6 +2115,21 @@ public class PlayerController : MonoBehaviour, IDamageable
             UpdateGrappleAnchorVisual(end, ropeDir);
         else if (grappleAnchorVisual != null)
             grappleAnchorVisual.gameObject.SetActive(false);
+
+        if (grappleReticleRect != null)
+        {
+            float targetFade = aimedGrappleTarget.isValid ? 1f : 0f;
+            grappleReticleFade = Mathf.MoveTowards(grappleReticleFade, targetFade, Time.unscaledDeltaTime * Mathf.Max(0.01f, grappleReticleFadeSpeed));
+            grappleReticleRect.localScale = Vector3.one * Mathf.Lerp(1f, 1f + grappleReticleScaleBoost, grappleReticleFade);
+            if (grappleReticleImage != null)
+            {
+                Color reticleColor = grappleReticleColor;
+                reticleColor.a *= grappleReticleFade;
+                if (aimedGrappleTarget.isValid && aimedGrappleTarget.isLedgeSnap)
+                    reticleColor = Color.Lerp(reticleColor, grappleAnchorPulseColor, 0.35f);
+                grappleReticleImage.color = reticleColor;
+            }
+        }
     }
 
     private static Vector3 EvaluateGrappleRopePoint(Vector3 start, Vector3 midA, Vector3 midB, Vector3 end, float t)
@@ -1958,10 +2188,65 @@ public class PlayerController : MonoBehaviour, IDamageable
         if (hook == null || hook != activeGrappleHook)
             return;
 
-        SpawnWorldBurst(hit.point + hit.normal * 0.03f, new Color(1f, 0.74f, 0.32f, 0.9f), 0.06f, 0.05f, 0.22f);
-        SpawnWorldBurst(hit.point + hit.normal * 0.05f, new Color(0.7f, 0.92f, 1f, 0.7f), 0.05f, 0.02f, 0.12f);
+        SpawnWorldBurst(hit.point + hit.normal * 0.03f, new Color(1f, 0.74f, 0.32f, 0.9f), 0.085f, 0.06f, 0.28f);
+        SpawnWorldBurst(hit.point + hit.normal * 0.05f, new Color(0.7f, 0.92f, 1f, 0.7f), 0.07f, 0.03f, 0.16f);
+        SpawnGrappleFailureSparks(hit.point + hit.normal * 0.04f, hit.normal, bounceDirection);
         grappleState = GrappleState.Retracting;
         hook.BeginRetract(hit.point + hit.normal * 0.03f, bounceDirection);
+    }
+
+    private void SpawnGrappleFailureSparks(Vector3 origin, Vector3 surfaceNormal, Vector3 bounceDirection)
+    {
+        if (!gameObject.activeInHierarchy)
+            return;
+
+        GameObject go = new GameObject("GrappleFailureSparks");
+        go.transform.position = origin;
+        go.transform.rotation = Quaternion.LookRotation((surfaceNormal + bounceDirection).sqrMagnitude > 0.0001f ? (surfaceNormal + bounceDirection).normalized : surfaceNormal, Vector3.up);
+
+        ParticleSystem ps = go.AddComponent<ParticleSystem>();
+        var main = ps.main;
+        main.loop = false;
+        main.playOnAwake = false;
+        main.simulationSpace = ParticleSystemSimulationSpace.World;
+        main.duration = 0.28f;
+        main.startLifetime = new ParticleSystem.MinMaxCurve(0.18f, 0.42f);
+        main.startSpeed = new ParticleSystem.MinMaxCurve(7.5f, 15.5f);
+        main.startSize = new ParticleSystem.MinMaxCurve(0.026f, 0.065f);
+        main.startColor = new ParticleSystem.MinMaxGradient(
+            new Color(1f, 0.92f, 0.7f, 0.95f),
+            new Color(1f, 0.56f, 0.18f, 0.85f));
+        main.maxParticles = 64;
+
+        var emission = ps.emission;
+        emission.rateOverTime = 0f;
+        emission.SetBursts(new[]
+        {
+            new ParticleSystem.Burst(0f, 28, 40)
+        });
+
+        var shape = ps.shape;
+        shape.shapeType = ParticleSystemShapeType.Cone;
+        shape.angle = 32f;
+        shape.radius = 0.08f;
+        shape.rotation = new Vector3(-90f, 0f, 0f);
+
+        var velocity = ps.velocityOverLifetime;
+        velocity.enabled = true;
+        velocity.space = ParticleSystemSimulationSpace.World;
+        Vector3 sparkBias = (bounceDirection + surfaceNormal * 0.45f).normalized * 3.6f;
+        velocity.x = new ParticleSystem.MinMaxCurve(sparkBias.x - 2.1f, sparkBias.x + 2.1f);
+        velocity.y = new ParticleSystem.MinMaxCurve(Mathf.Max(1.1f, sparkBias.y), sparkBias.y + 3.2f);
+        velocity.z = new ParticleSystem.MinMaxCurve(sparkBias.z - 2.1f, sparkBias.z + 2.1f);
+
+        ParticleSystemRenderer renderer = ps.GetComponent<ParticleSystemRenderer>();
+        renderer.renderMode = ParticleSystemRenderMode.Stretch;
+        renderer.velocityScale = 0.34f;
+        renderer.lengthScale = 7.4f;
+        renderer.material = CreateSpeedLineMaterial();
+
+        ps.Play();
+        Destroy(go, 1.2f);
     }
 
     public bool NotifyGrappleHookHit(GrappleHookProjectile hook, RaycastHit hit)
@@ -1987,11 +2272,46 @@ public class PlayerController : MonoBehaviour, IDamageable
         grappleActiveTimer = 0f;
         grappleJumpCooldownTimer = 0f;
         grappleTargetGraceTimer = grappleTargetGraceDuration;
+        grappleVisualPulse = 1.35f;
+        grappleLaunchVisualTimer = Mathf.Max(grappleLaunchVisualTimer, grappleLaunchVisualDuration * 0.9f);
         grappleState = GrappleState.Latched;
         if (isSliding)
             ExitSlide(false);
         isSlamming = false;
+        ApplyGrappleLatchImpact(target);
         return true;
+    }
+
+    private void ApplyGrappleLatchImpact(GrappleTarget target)
+    {
+        Vector3 anchorPoint = GetGrappleAnchorPoint(target);
+        Vector3 attachPoint = transform.position + Vector3.up * 0.9f;
+        if (target.pullsPlayer)
+        {
+            Vector3 pullDir = (anchorPoint - attachPoint).normalized;
+            if (pullDir.sqrMagnitude > 0.0001f)
+            {
+                Vector3 currentVelocity = momentum + Vector3.up * velocity.y;
+                float along = Vector3.Dot(currentVelocity, pullDir);
+                float targetAlong = Mathf.Max(grappleInitialPullSpeed + grappleLatchBoost, along + grappleLatchBoost);
+                currentVelocity += pullDir * Mathf.Max(0f, targetAlong - along);
+                currentVelocity.y = Mathf.Max(currentVelocity.y, grappleLatchUpBoost);
+                momentum = Vector3.ProjectOnPlane(currentVelocity, Vector3.up);
+                velocity.y = currentVelocity.y;
+            }
+        }
+        else
+        {
+            Vector3 recoil = (attachPoint - anchorPoint).normalized;
+            if (recoil.sqrMagnitude > 0.0001f)
+                momentum += recoil * 1.2f;
+        }
+
+        weaponImpactShakeAmount = Mathf.Max(weaponImpactShakeAmount, Mathf.Clamp(grappleLatchShake * 1.25f, 0.05f, 0.32f));
+        weaponImpactShakeTimer = Mathf.Max(weaponImpactShakeTimer, 0.24f);
+        crosshairFireTimer = Mathf.Max(crosshairFireTimer, 0.24f);
+        SpawnWorldBurst(anchorPoint + target.normal * 0.03f, new Color(0.84f, 0.97f, 1f, 0.95f), 0.11f, 0.055f, 0.34f);
+        SpawnWorldBurst(attachPoint, new Color(0.62f, 0.92f, 1f, 0.72f), 0.085f, 0.075f, 0.26f);
     }
 
     private bool IsFallbackGrappleHitCompatible(RaycastHit hit, GrappleTarget target)
@@ -2191,6 +2511,9 @@ public class PlayerController : MonoBehaviour, IDamageable
         slideRequiresRelease = false;
         slideGroundGraceTimer = 0f;
         slideTimer = 0f;
+        slamJumpTimer = 0f;
+        slamJumpChainTimer = 0f;
+        slamJumpChainCount = 0;
         if (controller != null)
         {
             controller.height = defaultHeight;
@@ -2220,6 +2543,9 @@ public class PlayerController : MonoBehaviour, IDamageable
         slideRequiresRelease = false;
         slideGroundGraceTimer = 0f;
         slideTimer = 0f;
+        slamJumpTimer = 0f;
+        slamJumpChainTimer = 0f;
+        slamJumpChainCount = 0;
         slideJumpChain = 0;
         slideJumpChainTimer = 0f;
         groundedHoldTimer = 0f;
@@ -2257,13 +2583,18 @@ public class PlayerController : MonoBehaviour, IDamageable
     private void ApplyMovementTuningDefaults()
     {
         moveSpeed = Mathf.Clamp(moveSpeed, 9.5f, 10.8f);
-        dashForce = Mathf.Min(dashForce, 24f);
+        dashForce = Mathf.Clamp(dashForce, 22f, 28f);
         dashCooldown = Mathf.Clamp(dashCooldown, 0.55f, 0.95f);
-        dashDuration = Mathf.Clamp(dashDuration, 0.18f, 0.2f);
-        dashTargetSpeed = Mathf.Clamp(dashTargetSpeed, CurrentMoveSpeed * 2.05f, CurrentMoveSpeed * 2.25f);
-        dashExitSpeed = Mathf.Clamp(dashExitSpeed, CurrentMoveSpeed * 0.62f, CurrentMoveSpeed * 0.82f);
+        dashDuration = Mathf.Clamp(dashDuration, 0.18f, 0.24f);
+        dashTargetSpeed = Mathf.Clamp(dashTargetSpeed, CurrentMoveSpeed * 2.1f, CurrentMoveSpeed * 2.55f);
+        dashExitSpeed = Mathf.Clamp(dashExitSpeed, CurrentMoveSpeed * 0.62f, CurrentMoveSpeed * 0.88f);
         dashNoInputExitMultiplier = Mathf.Clamp(dashNoInputExitMultiplier, 0.2f, 0.72f);
         maxDashCharges = Mathf.Clamp(maxDashCharges, 1, 5);
+        slamJumpWindow = Mathf.Clamp(slamJumpWindow, 0.08f, 0.5f);
+        slamJumpVerticalBoost = Mathf.Clamp(slamJumpVerticalBoost, 1f, 1.6f);
+        slamJumpChainWindow = Mathf.Clamp(slamJumpChainWindow, 0.4f, 2f);
+        slamJumpChainHeightBonus = Mathf.Clamp(slamJumpChainHeightBonus, 0f, 0.12f);
+        maxSlamJumpChain = Mathf.Clamp(maxSlamJumpChain, 0, 8);
         grappleMinRopeLength = Mathf.Clamp(grappleMinRopeLength, 0.65f, 1.25f);
         grappleRopeSlack = Mathf.Clamp(grappleRopeSlack, 0f, 0.35f);
         grappleConstraintElasticity = Mathf.Clamp(grappleConstraintElasticity, 0.5f, 1f);
@@ -2489,6 +2820,7 @@ public class PlayerController : MonoBehaviour, IDamageable
         Vector3 alignedVelocity = wishDir * speedAlongWish;
         Vector3 lateralVelocity = horizontalMomentum - alignedVelocity;
         Vector3 oppositeVelocity = Vector3.zero;
+        float startingSpeed = currentSpeed;
 
         if (speedAlongWish < 0f)
         {
@@ -2508,20 +2840,26 @@ public class PlayerController : MonoBehaviour, IDamageable
             lateralVelocity = Vector3.MoveTowards(lateralVelocity, Vector3.zero, lateralBrake);
         }
 
+        float baseAirTargetSpeed = CurrentMoveSpeed * Mathf.Lerp(1.02f, 1.1f, speedSteer01);
+        float carryTargetSpeed = startingSpeed < CurrentMoveSpeed
+            ? Mathf.Max(baseAirTargetSpeed, startingSpeed + CurrentMoveSpeed * airControlImpulseScale * 0.16f)
+            : startingSpeed + CurrentMoveSpeed * airControlImpulseScale * 0.05f;
         float targetWishSpeed = Mathf.Min(
             airCarryLimit,
-            Mathf.Max(
-                CurrentMoveSpeed * Mathf.Lerp(1.22f, 1.38f, speedSteer01),
-                currentSpeed + CurrentMoveSpeed * Mathf.Lerp(airControlImpulseScale * 0.45f, airControlImpulseScale * 0.78f, speedSteer01)));
+            Mathf.Max(baseAirTargetSpeed, carryTargetSpeed));
         float addSpeed = Mathf.Max(0f, targetWishSpeed - speedAlongWish);
         if (addSpeed > 0f)
         {
-            float accel = airAcceleration * CurrentMoveSpeed * airControlImpulseScale * steerBoost * deltaTime;
+            float accelScale = startingSpeed < CurrentMoveSpeed ? 1f : 0.42f;
+            float accel = airAcceleration * CurrentMoveSpeed * airControlImpulseScale * steerBoost * accelScale * deltaTime;
             alignedVelocity += wishDir * Mathf.Min(accel, addSpeed);
         }
 
         horizontalMomentum = alignedVelocity + lateralVelocity + oppositeVelocity;
-        momentum = Vector3.ClampMagnitude(horizontalMomentum, airCarryLimit);
+        float finalSpeedCap = startingSpeed < CurrentMoveSpeed
+            ? Mathf.Min(airCarryLimit, Mathf.Max(baseAirTargetSpeed, startingSpeed + CurrentMoveSpeed * airControlImpulseScale * 0.22f))
+            : Mathf.Min(airCarryLimit, startingSpeed + CurrentMoveSpeed * airControlImpulseScale * 0.08f);
+        momentum = Vector3.ClampMagnitude(horizontalMomentum, finalSpeedCap);
     }
 
     private void ClipHorizontalMomentumAgainstWall()
@@ -2586,6 +2924,7 @@ public class PlayerController : MonoBehaviour, IDamageable
         Transform anchorTransform = targetCollider.attachedRigidbody != null
             ? targetCollider.attachedRigidbody.transform
             : targetCollider.transform;
+        IGrappleMassTarget massTarget = targetCollider.GetComponentInParent<IGrappleMassTarget>();
         activeGrappleTarget = new GrappleTarget
         {
             isValid = true,
@@ -2593,7 +2932,9 @@ public class PlayerController : MonoBehaviour, IDamageable
             normal = anchorNormal,
             collider = targetCollider,
             anchorTransform = anchorTransform,
-            localPoint = anchorTransform != null ? anchorTransform.InverseTransformPoint(anchorPoint) : anchorPoint
+            localPoint = anchorTransform != null ? anchorTransform.InverseTransformPoint(anchorPoint) : anchorPoint,
+            massTarget = massTarget,
+            pullsPlayer = massTarget == null || massTarget.GrappleMassClass == GrappleMassClass.Heavy
         };
         activeGrappleRopeLength = Mathf.Clamp(
             Vector3.Distance(transform.position + Vector3.up * 0.9f, anchorPoint),
@@ -3370,12 +3711,14 @@ public class PlayerController : MonoBehaviour, IDamageable
         grappleReticleRect.anchorMin = new Vector2(0.5f, 0.5f);
         grappleReticleRect.anchorMax = new Vector2(0.5f, 0.5f);
         grappleReticleRect.pivot = new Vector2(0.5f, 0.5f);
-        grappleReticleRect.sizeDelta = new Vector2(26f, 26f);
+        grappleReticleRect.sizeDelta = new Vector2(32f, 32f);
         grappleReticleImage = ringObject.AddComponent<Image>();
         grappleReticleImage.sprite = GetGrappleReticleSprite();
-        grappleReticleImage.color = grappleReticleColor;
+        Color hiddenColor = grappleReticleColor;
+        hiddenColor.a = 0f;
+        grappleReticleImage.color = hiddenColor;
         grappleReticleImage.raycastTarget = false;
-        grappleReticleImage.enabled = false;
+        grappleReticleImage.enabled = true;
     }
 
     private void UpdateCrosshairVisual()
@@ -3430,15 +3773,18 @@ public class PlayerController : MonoBehaviour, IDamageable
         bool grappling = grappleState == GrappleState.Latched;
         bool hookTravelling = grappleState == GrappleState.Firing;
         bool retracting = grappleState == GrappleState.Retracting;
-        grappleReticleImage.enabled = grappleReady;
-        if (!grappleReady)
+        float targetFade = grappleReady ? 1f : 0f;
+        grappleReticleFade = Mathf.MoveTowards(grappleReticleFade, targetFade, Time.unscaledDeltaTime * (grappleReady ? 9f : 6f));
+        grappleReticleImage.enabled = grappleReticleFade > 0.001f;
+        if (!grappleReticleImage.enabled)
             return;
 
-        float size = grappling ? 29f : hookTravelling ? 27f : aimedGrappleTarget.isAssisted ? 28f : 26f;
-        float alpha = grappling ? 1f : retracting ? 0.72f : aimedGrappleTarget.isAssisted ? 0.9f : 0.74f;
-        float pulse = grappling ? 0.97f : 1f + Mathf.Sin(Time.unscaledTime * 9f) * 0.025f;
-        grappleReticleRect.sizeDelta = Vector2.one * (size + fire01 * 1.6f) * pulse;
-        float rotation = hookTravelling ? Time.unscaledTime * 180f : retracting ? -22.5f : grappling ? 0f : 22.5f;
+        float size = grappling ? 44f : hookTravelling ? 42f : aimedGrappleTarget.isAssisted ? 43f : 41f;
+        float alpha = grappling ? 1f : retracting ? 0.68f : aimedGrappleTarget.isAssisted ? 0.9f : 0.76f;
+        float pulse = grappling ? 0.98f : 1f + Mathf.Sin(Time.unscaledTime * 9f) * 0.028f;
+        float fadeOutExpand = (1f - grappleReticleFade) * 10f;
+        grappleReticleRect.sizeDelta = Vector2.one * ((size + fadeOutExpand) + fire01 * 1.6f) * pulse;
+        float rotation = hookTravelling ? 45f + Time.unscaledTime * 120f : retracting ? 22f : 45f;
         grappleReticleRect.localRotation = Quaternion.Euler(0f, 0f, rotation);
         Color ringColor = grappleReticleColor;
         if (aimedGrappleTarget.isAssisted && !grappling)
@@ -3447,7 +3793,7 @@ public class PlayerController : MonoBehaviour, IDamageable
             ringColor = Color.Lerp(grappleReticleColor, grappleAnchorColor, 0.3f);
         else if (retracting)
             ringColor = new Color(1f, 0.62f, 0.28f, ringColor.a);
-        ringColor.a *= alpha;
+        ringColor.a *= alpha * grappleReticleFade;
         grappleReticleImage.color = ringColor;
     }
 
@@ -3463,27 +3809,20 @@ public class PlayerController : MonoBehaviour, IDamageable
         texture.wrapMode = TextureWrapMode.Clamp;
 
         Vector2 center = new Vector2((size - 1) * 0.5f, (size - 1) * 0.5f);
-        float outerRadius = size * 0.34f;
-        float innerRadius = size * 0.28f;
-        float innerDiamond = size * 0.11f;
-        float bracketMin = size * 0.17f;
-        float bracketMax = size * 0.3f;
-        float armThickness = size * 0.03f;
+        float markerCenter = size * 0.34f;
+        float markerLength = size * 0.11f;
+        float stroke = size * 0.022f;
 
         for (int y = 0; y < size; y++)
         {
             for (int x = 0; x < size; x++)
             {
                 Vector2 delta = new Vector2(x, y) - center;
-                float radius = delta.magnitude;
-                float manhattan = Mathf.Abs(delta.x) + Mathf.Abs(delta.y);
-                bool ring = radius <= outerRadius && radius >= innerRadius;
-                bool topArm = Mathf.Abs(delta.x) <= armThickness && delta.y >= bracketMin && delta.y <= bracketMax;
-                bool bottomArm = Mathf.Abs(delta.x) <= armThickness && delta.y <= -bracketMin && delta.y >= -bracketMax;
-                bool leftArm = Mathf.Abs(delta.y) <= armThickness && delta.x <= -bracketMin && delta.x >= -bracketMax;
-                bool rightArm = Mathf.Abs(delta.y) <= armThickness && delta.x >= bracketMin && delta.x <= bracketMax;
-                bool centerDiamond = manhattan <= innerDiamond && manhattan >= innerDiamond * 0.58f;
-                bool keepPixel = ring || topArm || bottomArm || leftArm || rightArm || centerDiamond;
+                bool keepPixel =
+                    InwardV(delta, new Vector2(0f, markerCenter), new Vector2(0f, -1f), markerLength, stroke) ||
+                    InwardV(delta, new Vector2(markerCenter, 0f), new Vector2(-1f, 0f), markerLength, stroke) ||
+                    InwardV(delta, new Vector2(0f, -markerCenter), new Vector2(0f, 1f), markerLength, stroke) ||
+                    InwardV(delta, new Vector2(-markerCenter, 0f), new Vector2(1f, 0f), markerLength, stroke);
                 texture.SetPixel(x, y, keepPixel ? Color.white : Color.clear);
             }
         }
@@ -3492,6 +3831,27 @@ public class PlayerController : MonoBehaviour, IDamageable
         cachedGrappleReticleSprite = Sprite.Create(texture, new Rect(0f, 0f, size, size), new Vector2(0.5f, 0.5f), size);
         cachedGrappleReticleSprite.name = "RuntimeGrappleReticleSprite";
         return cachedGrappleReticleSprite;
+    }
+
+    private static bool InwardV(Vector2 point, Vector2 center, Vector2 inwardDir, float length, float stroke)
+    {
+        inwardDir = inwardDir.normalized;
+        Vector2 perpendicular = new Vector2(-inwardDir.y, inwardDir.x);
+        Vector2 armA = (inwardDir + perpendicular * 0.8f).normalized;
+        Vector2 armB = (inwardDir - perpendicular * 0.8f).normalized;
+        return DistanceToSegment(point, center, center + armA * length) <= stroke ||
+               DistanceToSegment(point, center, center + armB * length) <= stroke;
+    }
+
+    private static float DistanceToSegment(Vector2 point, Vector2 a, Vector2 b)
+    {
+        Vector2 ab = b - a;
+        float denom = ab.sqrMagnitude;
+        if (denom <= 0.0001f)
+            return Vector2.Distance(point, a);
+        float t = Mathf.Clamp01(Vector2.Dot(point - a, ab) / denom);
+        Vector2 projected = a + ab * t;
+        return Vector2.Distance(point, projected);
     }
 
     private bool IsAimingAtHostile()
@@ -3562,8 +3922,6 @@ public class PlayerController : MonoBehaviour, IDamageable
 
         Vector2 mouseDelta = UnityEngine.InputSystem.Mouse.current.delta.ReadValue();
 
-        // Removed the "SmoothDamp" because it often adds "Input Lag", making it feel floaty/slippery.
-        // We divide sensitivity by 100 here so that 100 in the inspector = 1.0 multiplier.
         float multiplier = mouseSensitivity / 100f;
         float mouseX = mouseDelta.x * multiplier;
         float mouseY = mouseDelta.y * multiplier;
@@ -3574,11 +3932,73 @@ public class PlayerController : MonoBehaviour, IDamageable
         if (wallMovementBlend > 0f && activeWallNormal.sqrMagnitude > 0.0001f)
         {
             float wallSide = Mathf.Sign(Vector3.Dot(transform.right, activeWallNormal));
-            sideTilt += wallSide * wallRunCameraTilt * wallMovementBlend;
+            sideTilt -= wallSide * wallRunCameraTilt * wallMovementBlend;
         }
-        cameraTransform.localRotation = Quaternion.Euler(xRotation, 0f, sideTilt);
+        currentCameraTilt = Mathf.Lerp(currentCameraTilt, sideTilt, GetExponentialBlend(cameraTiltSmoothSpeed, Time.unscaledDeltaTime));
+        cameraTransform.localRotation = Quaternion.Euler(xRotation, 0f, currentCameraTilt);
 
         transform.Rotate(Vector3.up * mouseX);
+    }
+
+    private void UpdateCameraPresentation(float deltaTime)
+    {
+        if (playerCamera != null)
+        {
+            float overdrive = GetOverdriveAmount();
+            float targetFov = baseFOV + overdrive * overdriveFovBonus;
+            playerCamera.fieldOfView = Mathf.Lerp(playerCamera.fieldOfView, targetFov, GetExponentialBlend(cameraFovSmoothSpeed, deltaTime));
+        }
+
+        if (cameraTransform == null)
+            return;
+
+        Vector3 cameraTarget = isSliding
+            ? baseCameraLocalPos + Vector3.down * slideCameraDrop
+            : baseCameraLocalPos;
+
+        Vector3 shakeTarget = Vector3.zero;
+        float overdriveShake = GetOverdriveAmount() * overdriveShakeAmount;
+        if (overdriveShake > 0.001f)
+        {
+            float time = Time.unscaledTime;
+            shakeTarget += new Vector3(
+                Mathf.PerlinNoise(time * 28f, 0.41f) - 0.5f,
+                Mathf.PerlinNoise(0.73f, time * 31f) - 0.5f,
+                0f) * overdriveShake * 2f;
+        }
+
+        if (weaponImpactShakeTimer > 0f)
+        {
+            weaponImpactShakeTimer = Mathf.Max(0f, weaponImpactShakeTimer - Time.unscaledDeltaTime);
+            float impact = weaponImpactShakeAmount * Mathf.Clamp01(weaponImpactShakeTimer / 0.18f);
+            float time = Time.unscaledTime * Mathf.Max(1f, impactShakeFrequency);
+            shakeTarget += new Vector3(
+                Mathf.PerlinNoise(11.17f, time) - 0.5f,
+                Mathf.PerlinNoise(time * 1.13f, 23.91f) - 0.5f,
+                0f) * impact * 2f;
+        }
+
+        currentCameraShakeOffset = Vector3.Lerp(
+            currentCameraShakeOffset,
+            shakeTarget,
+            GetExponentialBlend(cameraShakeSmoothSpeed, Time.unscaledDeltaTime));
+        cameraTarget += currentCameraShakeOffset;
+
+        cameraTransform.localPosition = Vector3.SmoothDamp(
+            cameraTransform.localPosition,
+            cameraTarget,
+            ref cameraLocalPositionVelocity,
+            cameraPositionSmoothTime,
+            Mathf.Infinity,
+            Time.unscaledDeltaTime);
+    }
+
+    private static float GetExponentialBlend(float speed, float deltaTime)
+    {
+        if (speed <= 0f)
+            return 1f;
+
+        return 1f - Mathf.Exp(-speed * deltaTime);
     }
 
     private void EnsureCameraReferences()

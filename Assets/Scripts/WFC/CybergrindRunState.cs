@@ -3,7 +3,8 @@ using UnityEngine;
 public class CybergrindRunState : MonoBehaviour
 {
     public const int StartingWeaponPreset = 0;
-    public const int WeaponFamilySize = 3;
+    public const int WeaponFamilySize = 2;
+    public const int AvailableWeaponPresetCount = 4;
     public static CybergrindRunState Instance { get; private set; }
 
     [Header("Run")]
@@ -21,7 +22,7 @@ public class CybergrindRunState : MonoBehaviour
 
     [Header("Persistence")]
     public bool persistBossUnlocks = false;
-    public int maxTrackedWeaponPresets = 9;
+    public int maxTrackedWeaponPresets = AvailableWeaponPresetCount;
     [SerializeField] private bool[] unlockedWeaponPresetsThisRun;
 
     private void Awake()
@@ -63,7 +64,7 @@ public class CybergrindRunState : MonoBehaviour
     public int RegisterBossDefeated(int themeIndex)
     {
         bossesClearedThisRun++;
-        Debug.Log($"[ArenaRunState] Boss cleared. Core progress {bossesClearedThisRun}.");
+        Debug.Log($"[ArenaRunState] Boss cleared. Total bosses {bossesClearedThisRun}.");
         return -1;
     }
 
@@ -122,9 +123,7 @@ public class CybergrindRunState : MonoBehaviour
             return;
 
         unlockedWeaponPresetsThisRun[presetIndex] = true;
-        if (presetIndex >= WeaponFamilySize * 2)
-            heavyUnlockedThisRun = true;
-        else if (presetIndex >= WeaponFamilySize)
+        if (presetIndex >= WeaponFamilySize)
             shotgunUnlockedThisRun = true;
     }
 
@@ -152,7 +151,7 @@ public class CybergrindRunState : MonoBehaviour
         {
             Gun.WeaponFamily.Pistol => true,
             Gun.WeaponFamily.Shotgun => shotgunUnlockedThisRun,
-            Gun.WeaponFamily.Heavy => heavyUnlockedThisRun,
+            Gun.WeaponFamily.Heavy => false,
             _ => false
         };
     }
@@ -172,7 +171,8 @@ public class CybergrindRunState : MonoBehaviour
 
     private void EnsureWeaponPresetTracking()
     {
-        int size = Mathf.Max(1, maxTrackedWeaponPresets);
+        maxTrackedWeaponPresets = AvailableWeaponPresetCount;
+        int size = AvailableWeaponPresetCount;
         if (unlockedWeaponPresetsThisRun != null && unlockedWeaponPresetsThisRun.Length == size)
             return;
 

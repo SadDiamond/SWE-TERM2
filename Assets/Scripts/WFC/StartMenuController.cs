@@ -11,8 +11,6 @@ public class StartMenuController : MonoBehaviour
     private const string VolumeKey = "project_structure.master_volume";
 
     public static bool LaunchingArena { get; private set; }
-    public static bool LaunchingSandbox { get; private set; }
-    public static bool LaunchingHeroArena { get; private set; }
 
     private GameObject menuRoot;
     private GameObject settingsPanel;
@@ -42,13 +40,9 @@ public class StartMenuController : MonoBehaviour
         if (isLaunching)
             return;
 
-        if (UnityEngine.InputSystem.Keyboard.current.sKey.wasPressedThisFrame)
-            Launch(true);
-        else if (UnityEngine.InputSystem.Keyboard.current.hKey.wasPressedThisFrame)
-            LaunchHeroArena();
-        else if (UnityEngine.InputSystem.Keyboard.current.enterKey.wasPressedThisFrame ||
+        if (UnityEngine.InputSystem.Keyboard.current.enterKey.wasPressedThisFrame ||
             UnityEngine.InputSystem.Keyboard.current.spaceKey.wasPressedThisFrame)
-            Launch(false);
+            Launch();
     }
 
     public static bool ConsumeArenaLaunch()
@@ -58,43 +52,18 @@ public class StartMenuController : MonoBehaviour
         return value;
     }
 
-    public static bool ConsumeSandboxLaunch()
-    {
-        bool value = LaunchingSandbox;
-        LaunchingSandbox = false;
-        return value;
-    }
-
-    public static bool ConsumeHeroArenaLaunch()
-    {
-        bool value = LaunchingHeroArena;
-        LaunchingHeroArena = false;
-        return value;
-    }
-
-    public static void SetLaunchFlags(bool arena, bool sandbox, bool heroArena = false)
+    public static void SetLaunchFlag(bool arena)
     {
         LaunchingArena = arena;
-        LaunchingSandbox = sandbox;
-        LaunchingHeroArena = heroArena;
     }
 
-    private void Launch(bool sandbox)
+    private void Launch()
     {
         if (isLaunching)
             return;
 
         isLaunching = true;
-        PersistentLoadingScreen.LoadArenaFromMenu(sandbox, false);
-    }
-
-    private void LaunchHeroArena()
-    {
-        if (isLaunching)
-            return;
-
-        isLaunching = true;
-        PersistentLoadingScreen.LoadArenaFromMenu(false, true);
+        PersistentLoadingScreen.LoadArenaFromMenu();
     }
 
     private void BuildCamera()
@@ -120,24 +89,33 @@ public class StartMenuController : MonoBehaviour
     {
         Canvas canvas = CreateMenuCanvas();
         menuRoot = CreateFullScreenRoot(canvas.transform, "StartMenu", new Color(0.006f, 0.011f, 0.016f, 1f));
+        menuRoot.AddComponent<StartMenuAmbientFx>();
 
         CreateBlock(menuRoot.transform, "TopRule", new Vector2(0.5f, 0.91f), new Vector2(0f, 0f), new Vector2(0.86f, 0.003f), new Color(0.16f, 0.78f, 0.9f, 0.65f));
         CreateBlock(menuRoot.transform, "LeftRail", new Vector2(0.08f, 0.5f), new Vector2(0f, 0f), new Vector2(0.004f, 0.72f), new Color(0.16f, 0.78f, 0.9f, 1f));
         CreateBlock(menuRoot.transform, "SectorA", new Vector2(0.78f, 0.69f), new Vector2(0f, 0f), new Vector2(0.22f, 0.16f), new Color(0.025f, 0.065f, 0.078f, 0.8f));
         CreateBlock(menuRoot.transform, "SectorB", new Vector2(0.84f, 0.48f), new Vector2(0f, 0f), new Vector2(0.12f, 0.12f), new Color(0.055f, 0.035f, 0.025f, 0.9f));
         CreateBlock(menuRoot.transform, "SectorC", new Vector2(0.73f, 0.31f), new Vector2(0f, 0f), new Vector2(0.29f, 0.05f), new Color(0.025f, 0.065f, 0.078f, 0.7f));
+        CreateBlock(menuRoot.transform, "MachineBandA", new Vector2(0.82f, 0.18f), new Vector2(0f, 0f), new Vector2(0.18f, 0.018f), new Color(0.12f, 0.38f, 0.44f, 0.72f));
+        CreateBlock(menuRoot.transform, "MachineBandB", new Vector2(0.74f, 0.84f), new Vector2(0f, 0f), new Vector2(0.1f, 0.01f), new Color(0.18f, 0.66f, 0.76f, 0.58f));
+        CreateBlock(menuRoot.transform, "MachineMassA", new Vector2(0.86f, 0.78f), new Vector2(0f, 0f), new Vector2(0.08f, 0.26f), new Color(0.018f, 0.036f, 0.048f, 0.92f));
+        CreateBlock(menuRoot.transform, "MachineMassB", new Vector2(0.92f, 0.32f), new Vector2(0f, 0f), new Vector2(0.05f, 0.18f), new Color(0.028f, 0.022f, 0.018f, 0.94f));
+        CreateBlock(menuRoot.transform, "TowerColumnA", new Vector2(0.965f, 0.57f), new Vector2(0f, 0f), new Vector2(0.022f, 0.74f), new Color(0.02f, 0.03f, 0.038f, 0.96f));
+        CreateBlock(menuRoot.transform, "TowerColumnB", new Vector2(0.905f, 0.63f), new Vector2(0f, 0f), new Vector2(0.034f, 0.52f), new Color(0.025f, 0.032f, 0.042f, 0.95f));
+        CreateBlock(menuRoot.transform, "BridgeDeckA", new Vector2(0.82f, 0.63f), new Vector2(0f, 0f), new Vector2(0.22f, 0.016f), new Color(0.16f, 0.48f, 0.56f, 0.46f));
+        CreateBlock(menuRoot.transform, "BridgeDeckB", new Vector2(0.79f, 0.43f), new Vector2(0f, 0f), new Vector2(0.18f, 0.012f), new Color(0.18f, 0.52f, 0.6f, 0.4f));
+        CreateBlock(menuRoot.transform, "VentStripA", new Vector2(0.885f, 0.12f), new Vector2(0f, 0f), new Vector2(0.11f, 0.008f), new Color(0.5f, 0.84f, 0.92f, 0.42f));
+        CreateBlock(menuRoot.transform, "VentStripB", new Vector2(0.94f, 0.15f), new Vector2(0f, 0f), new Vector2(0.06f, 0.008f), new Color(0.5f, 0.84f, 0.92f, 0.32f));
 
-        CreateText(menuRoot.transform, "PROJECT\nSTRUCTURE", 68f, new Vector2(0.13f, 0.72f), new Vector2(720f, 180f), TextAlignmentOptions.Left, Color.white);
-        CreateText(menuRoot.transform, "FAST ARENA SHOOTER", 15f, new Vector2(0.13f, 0.59f), new Vector2(420f, 30f), TextAlignmentOptions.Left, new Color(0.35f, 0.86f, 0.95f));
-        CreateText(menuRoot.transform, "Reach the core. Everything else is in the way.", 18f, new Vector2(0.13f, 0.51f), new Vector2(620f, 42f), TextAlignmentOptions.Left, new Color(0.78f, 0.84f, 0.87f));
+        CreateText(menuRoot.transform, "Term 2 SWE project", 58f, new Vector2(0.13f, 0.72f), new Vector2(760f, 100f), TextAlignmentOptions.Left, Color.white);
+        CreateText(menuRoot.transform, "ARENA FPS", 15f, new Vector2(0.13f, 0.59f), new Vector2(420f, 30f), TextAlignmentOptions.Left, new Color(0.35f, 0.86f, 0.95f));
+        CreateText(menuRoot.transform, "Fight, upgrade, go deeper.", 18f, new Vector2(0.13f, 0.51f), new Vector2(620f, 42f), TextAlignmentOptions.Left, new Color(0.78f, 0.84f, 0.87f));
 
-        startButton = CreateButton(menuRoot.transform, "START RUN", new Vector2(0.13f, 0.38f), new Vector2(310f, 52f), () => Launch(false), true);
-        CreateButton(menuRoot.transform, "HERO ARENA", new Vector2(0.13f, 0.30f), new Vector2(310f, 48f), LaunchHeroArena, false);
-        CreateButton(menuRoot.transform, "SANDBOX", new Vector2(0.13f, 0.22f), new Vector2(310f, 48f), () => Launch(true), false);
-        CreateButton(menuRoot.transform, "SETTINGS", new Vector2(0.13f, 0.14f), new Vector2(310f, 48f), () => ShowSettings(true), false);
-        CreateButton(menuRoot.transform, "QUIT", new Vector2(0.13f, 0.06f), new Vector2(310f, 48f), Quit, false);
+        startButton = CreateButton(menuRoot.transform, "START RUN", new Vector2(0.13f, 0.36f), new Vector2(310f, 52f), Launch, true);
+        CreateButton(menuRoot.transform, "SETTINGS", new Vector2(0.13f, 0.27f), new Vector2(310f, 48f), () => ShowSettings(true), false);
+        CreateButton(menuRoot.transform, "QUIT", new Vector2(0.13f, 0.18f), new Vector2(310f, 48f), Quit, false);
 
-        CreateText(menuRoot.transform, "ENTER  START     H  HERO ARENA     S  SANDBOX", 11f, new Vector2(0.13f, 0.01f), new Vector2(640f, 26f), TextAlignmentOptions.Left, new Color(0.48f, 0.56f, 0.6f));
+        CreateText(menuRoot.transform, "ENTER  START", 11f, new Vector2(0.13f, 0.09f), new Vector2(300f, 26f), TextAlignmentOptions.Left, new Color(0.48f, 0.56f, 0.6f));
         BuildSettingsPanel(canvas.transform);
     }
 
@@ -312,6 +290,109 @@ public class StartMenuController : MonoBehaviour
         Application.Quit();
 #endif
     }
+}
+
+public class StartMenuAmbientFx : MonoBehaviour
+{
+    private Image root;
+    private Image topRule;
+    private Image leftRail;
+    private Image sectorA;
+    private Image sectorB;
+    private Image sectorC;
+    private Image bandA;
+    private Image bandB;
+    private Image massA;
+    private Image massB;
+    private Image towerA;
+    private Image towerB;
+    private Image bridgeA;
+    private Image bridgeB;
+    private Image ventA;
+    private Image ventB;
+    private const float ThemeCycleDuration = 6f;
+
+    private void Update()
+    {
+        if (root == null) root = GetComponent<Image>();
+        if (topRule == null) topRule = transform.Find("TopRule")?.GetComponent<Image>();
+        if (leftRail == null) leftRail = transform.Find("LeftRail")?.GetComponent<Image>();
+        if (sectorA == null) sectorA = transform.Find("SectorA")?.GetComponent<Image>();
+        if (sectorB == null) sectorB = transform.Find("SectorB")?.GetComponent<Image>();
+        if (sectorC == null) sectorC = transform.Find("SectorC")?.GetComponent<Image>();
+        if (bandA == null) bandA = transform.Find("MachineBandA")?.GetComponent<Image>();
+        if (bandB == null) bandB = transform.Find("MachineBandB")?.GetComponent<Image>();
+        if (massA == null) massA = transform.Find("MachineMassA")?.GetComponent<Image>();
+        if (massB == null) massB = transform.Find("MachineMassB")?.GetComponent<Image>();
+        if (towerA == null) towerA = transform.Find("TowerColumnA")?.GetComponent<Image>();
+        if (towerB == null) towerB = transform.Find("TowerColumnB")?.GetComponent<Image>();
+        if (bridgeA == null) bridgeA = transform.Find("BridgeDeckA")?.GetComponent<Image>();
+        if (bridgeB == null) bridgeB = transform.Find("BridgeDeckB")?.GetComponent<Image>();
+        if (ventA == null) ventA = transform.Find("VentStripA")?.GetComponent<Image>();
+        if (ventB == null) ventB = transform.Find("VentStripB")?.GetComponent<Image>();
+
+        float cycle = Mathf.Repeat(Time.unscaledTime / ThemeCycleDuration, 4f);
+        int themeA = Mathf.FloorToInt(cycle) % 4;
+        int themeB = (themeA + 1) % 4;
+        float blend = cycle - Mathf.Floor(cycle);
+        ProjectStructureThemePalette.MenuPalette paletteA = ProjectStructureThemePalette.ResolveMenuPalette(themeA);
+        ProjectStructureThemePalette.MenuPalette paletteB = ProjectStructureThemePalette.ResolveMenuPalette(themeB);
+        Color bg = Color.Lerp(paletteA.background, paletteB.background, blend);
+        Color accent = Color.Lerp(paletteA.accent, paletteB.accent, blend);
+        Color panel = Color.Lerp(paletteA.panel, paletteB.panel, blend);
+        Color mass = Color.Lerp(paletteA.mass, paletteB.mass, blend);
+
+        float pulse = 0.5f + 0.5f * Mathf.Sin(Time.unscaledTime * 1.2f);
+        float pulseB = 0.5f + 0.5f * Mathf.Sin(Time.unscaledTime * 0.8f + 1.2f);
+        float drift = Mathf.Sin(Time.unscaledTime * 0.22f + 0.7f) * 14f;
+        float driftB = Mathf.Sin(Time.unscaledTime * 0.16f + 1.9f) * 10f;
+
+        if (root != null)
+            root.color = bg;
+        if (topRule != null)
+            topRule.color = new Color(accent.r, accent.g, accent.b, 0.46f + pulse * 0.22f);
+        if (leftRail != null)
+            leftRail.color = new Color(accent.r, accent.g, accent.b, 0.82f + pulseB * 0.16f);
+        if (sectorA != null)
+            sectorA.color = new Color(panel.r, panel.g, panel.b, 0.72f + pulse * 0.12f);
+        if (sectorB != null)
+            sectorB.color = new Color(mass.r, mass.g, mass.b, 0.78f + pulseB * 0.12f);
+        if (sectorC != null)
+            sectorC.color = new Color(panel.r, panel.g, panel.b, 0.62f + pulseB * 0.1f);
+        if (bandA != null)
+            bandA.color = new Color(accent.r, accent.g, accent.b, 0.26f + pulse * 0.18f);
+        if (bandB != null)
+            bandB.color = new Color(accent.r, accent.g, accent.b, 0.22f + pulseB * 0.16f);
+        if (massA != null)
+            massA.color = new Color(mass.r, mass.g, mass.b, 0.86f + pulse * 0.08f);
+        if (massB != null)
+            massB.color = new Color(mass.r, mass.g, mass.b, 0.88f + pulseB * 0.06f);
+        if (towerA != null)
+        {
+            towerA.color = new Color(mass.r, mass.g, mass.b, 0.95f);
+            towerA.rectTransform.anchoredPosition = new Vector2(0f, drift * 0.35f);
+        }
+        if (towerB != null)
+        {
+            towerB.color = new Color(panel.r, panel.g, panel.b, 0.92f);
+            towerB.rectTransform.anchoredPosition = new Vector2(0f, driftB * 0.4f);
+        }
+        if (bridgeA != null)
+        {
+            bridgeA.color = new Color(accent.r, accent.g, accent.b, 0.28f + pulse * 0.16f);
+            bridgeA.rectTransform.anchoredPosition = new Vector2(drift * 0.25f, 0f);
+        }
+        if (bridgeB != null)
+        {
+            bridgeB.color = new Color(accent.r, accent.g, accent.b, 0.2f + pulseB * 0.16f);
+            bridgeB.rectTransform.anchoredPosition = new Vector2(driftB * -0.2f, 0f);
+        }
+        if (ventA != null)
+            ventA.color = new Color(accent.r, accent.g, accent.b, 0.26f + pulse * 0.22f);
+        if (ventB != null)
+            ventB.color = new Color(accent.r, accent.g, accent.b, 0.18f + pulseB * 0.18f);
+    }
+
 }
 
 public class StartMenuButtonFx : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler, ISelectHandler, IDeselectHandler, IPointerDownHandler, IPointerUpHandler

@@ -17,6 +17,7 @@ public class ShopPreviewHUD : MonoBehaviour
     private TMP_Text balanceText;
     private Image affordabilityMarker;
     private float refreshTimer;
+    private float referenceRefreshTimer;
 
     private void Start()
     {
@@ -40,6 +41,7 @@ public class ShopPreviewHUD : MonoBehaviour
 
     private void Update()
     {
+        UpdateCachedReferences();
         refreshTimer -= Time.deltaTime;
         if (refreshTimer > 0f) return;
 
@@ -49,8 +51,6 @@ public class ShopPreviewHUD : MonoBehaviour
 
     private void RefreshState()
     {
-        if (player == null)
-            player = FindAnyObjectByType<PlayerController>();
         if (player == null || root == null) return;
 
         if (player.isUIActive || player.isDead)
@@ -75,10 +75,24 @@ public class ShopPreviewHUD : MonoBehaviour
         titleText.color = accent;
         detailText.text = station.GetPreviewDetail(player);
         bool affordable = player.currency >= station.cost;
-        actionText.text = affordable ? "Press E to confirm" : $"Requires {station.cost - player.currency} more coins";
-        actionText.color = affordable ? new Color(0.9f, 0.94f, 0.97f) : new Color(1f, 0.48f, 0.4f);
+        bool floorLocked = station.IsFloorPurchaseLocked();
+        actionText.text = floorLocked
+            ? "Purchase already used this floor"
+            : affordable ? "Press E to confirm" : $"Requires {station.cost - player.currency} more coins";
+        actionText.color = !floorLocked && affordable ? new Color(0.9f, 0.94f, 0.97f) : new Color(1f, 0.48f, 0.4f);
         balanceText.text = $"Balance  {player.currency}";
-        affordabilityMarker.color = affordable ? accent : new Color(0.95f, 0.28f, 0.22f, 1f);
+        affordabilityMarker.color = !floorLocked && affordable ? accent : new Color(0.95f, 0.28f, 0.22f, 1f);
+    }
+
+    private void UpdateCachedReferences(bool force = false)
+    {
+        referenceRefreshTimer -= Time.deltaTime;
+        if (!force && referenceRefreshTimer > 0f)
+            return;
+
+        referenceRefreshTimer = 1f;
+        if (player == null)
+            player = FindAnyObjectByType<PlayerController>();
     }
 
     private void BuildUI()
