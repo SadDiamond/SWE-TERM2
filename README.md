@@ -25,7 +25,7 @@ The project uses Unity components as objects with separate responsibilities. `Pl
 - `IDamageable` lets guns damage players, enemies and targets through one method.
 - `IGrappleMassTarget` lets the grapple treat light and heavy targets differently.
 
-## Reconstructed development history
+## Development history
 
 This history is based on dated Git commits and the files changed in each commit.
 
