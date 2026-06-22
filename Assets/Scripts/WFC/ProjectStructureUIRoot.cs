@@ -8,8 +8,9 @@ public static class ProjectStructureUIRoot
 {
     public const string CanvasName = "ProjectStructureCanvas";
     public const string UIScalePrefKey = "ProjectStructure_UIScale";
-    public const float MinUIScale = 0.75f;
-    public const float MaxUIScale = 1.35f;
+    public const float MinUIScale = 0.5f;
+    public const float MaxUIScale = 4f;
+    public const float UIScaleStep = 0.5f;
     private static float cachedUIScale = -1f;
     private static TMP_FontAsset cachedDefaultFont;
 
@@ -39,13 +40,13 @@ public static class ProjectStructureUIRoot
     public static float GetUIScale()
     {
         if (cachedUIScale < 0f)
-            cachedUIScale = Mathf.Clamp(PlayerPrefs.GetFloat(UIScalePrefKey, 1f), MinUIScale, MaxUIScale);
+            cachedUIScale = NormalizeUIScale(PlayerPrefs.GetFloat(UIScalePrefKey, 1f));
         return cachedUIScale;
     }
 
     public static void SetUIScale(float scale, bool persist = true)
     {
-        cachedUIScale = Mathf.Clamp(scale, MinUIScale, MaxUIScale);
+        cachedUIScale = NormalizeUIScale(scale);
         if (persist)
         {
             PlayerPrefs.SetFloat(UIScalePrefKey, cachedUIScale);
@@ -53,6 +54,13 @@ public static class ProjectStructureUIRoot
         }
 
         ApplyUIScaleToAllCanvases();
+    }
+
+    public static float NormalizeUIScale(float scale)
+    {
+        float clamped = Mathf.Clamp(scale, MinUIScale, MaxUIScale);
+        float steps = Mathf.Round((clamped - MinUIScale) / UIScaleStep);
+        return Mathf.Clamp(MinUIScale + steps * UIScaleStep, MinUIScale, MaxUIScale);
     }
 
     public static void ApplyUIScaleToAllCanvases()

@@ -291,7 +291,10 @@ public class ProjectStructurePresentation : MonoBehaviour
         float duration = runState.GetRunDurationSeconds();
         RunSummary summary = BuildRunSummary(runState, duration);
         if (rankText != null)
+        {
             rankText.text = $"{summary.rankLabel} / {summary.signature}";
+            rankText.color = ResolveRankColor(summary.rankLabel);
+        }
         subtitleText.text =
             summary.epitaph;
         if (detailText != null)
@@ -349,15 +352,16 @@ public class ProjectStructurePresentation : MonoBehaviour
         overlayText.text = "YOU DIED";
         overlayText.color = new Color(1f, 0.5f, 0.44f);
         CybergrindRunState runState = CybergrindRunState.GetOrCreate();
+        float duration = runState != null ? runState.GetRunDurationSeconds() : 0f;
+        RunSummary summary = BuildRunSummary(runState, duration);
         if (rankText != null)
         {
-            rankText.text = "RUN FAILED";
-            rankText.color = new Color(1f, 0.76f, 0.72f, 0.96f);
+            rankText.text = $"{summary.rankLabel}  /  {summary.score:0000} PTS";
+            rankText.color = ResolveRankColor(summary.rankLabel);
         }
-        subtitleText.text = "Try again.";
+        subtitleText.text = $"{summary.signature}. Run ended on floor {Mathf.Max(1, arenaDirector != null ? arenaDirector.floor : 1):00}.";
         if (detailText != null && runState != null)
         {
-            float duration = runState.GetRunDurationSeconds();
             detailText.text =
                 $"FLOOR  {Mathf.Max(1, arenaDirector != null ? arenaDirector.floor : 1):00}    TIME  {FormatTime(duration)}\n" +
                 $"KILLS  {runState.enemiesDefeatedThisRun:00}    TERMINALS  {runState.terminalsSolvedThisRun:00}\n" +
@@ -381,7 +385,7 @@ public class ProjectStructurePresentation : MonoBehaviour
         if (overlayText != null)
             overlayText.fontSize = failureStyle ? 82f : 56f;
         if (rankText != null)
-            rankText.fontSize = 12f;
+            rankText.fontSize = failureStyle || endingStyle ? 18f : 12f;
         if (subtitleText != null)
             subtitleText.fontSize = failureStyle ? 22f : 17f;
         if (detailText != null)
@@ -677,7 +681,14 @@ public class ProjectStructurePresentation : MonoBehaviour
         }
 
         int timeSeconds = Mathf.Max(1, Mathf.RoundToInt(duration));
-        int speedScore = Mathf.Clamp(360 - timeSeconds * 3, 0, 360);
+        int clearedFloors = Mathf.Max(0, runState.floorsClearedThisRun);
+        int speedScore = 0;
+        if (clearedFloors > 0)
+        {
+            float expectedDuration = clearedFloors * 75f;
+            float pace = Mathf.InverseLerp(expectedDuration * 1.6f, expectedDuration * 0.75f, timeSeconds);
+            speedScore = Mathf.RoundToInt(Mathf.Clamp01(pace) * 360f);
+        }
         int combatScore = runState.enemiesDefeatedThisRun * 9;
         int puzzleScore = runState.terminalsSolvedThisRun * 30;
         int bossScore = runState.bossesClearedThisRun * 180;
@@ -695,11 +706,24 @@ public class ProjectStructurePresentation : MonoBehaviour
 
     private string ResolveRankLabel(int score)
     {
-        if (score >= 1000) return "S RANK";
-        if (score >= 820) return "A RANK";
-        if (score >= 650) return "B RANK";
-        if (score >= 480) return "C RANK";
-        return "D RANK";
+        if (score >= 1500) return "S+ RANK";
+        if (score >= 1250) return "S RANK";
+        if (score >= 1000) return "A RANK";
+        if (score >= 750) return "B RANK";
+        if (score >= 500) return "C RANK";
+        if (score >= 250) return "D RANK";
+        return "E RANK";
+    }
+
+    private Color ResolveRankColor(string rankLabel)
+    {
+        if (rankLabel.StartsWith("S+")) return new Color(1f, 0.88f, 0.32f, 1f);
+        if (rankLabel.StartsWith("S")) return new Color(0.48f, 1f, 0.9f, 1f);
+        if (rankLabel.StartsWith("A")) return new Color(0.38f, 0.88f, 1f, 1f);
+        if (rankLabel.StartsWith("B")) return new Color(0.48f, 1f, 0.5f, 1f);
+        if (rankLabel.StartsWith("C")) return new Color(0.9f, 0.92f, 0.5f, 1f);
+        if (rankLabel.StartsWith("D")) return new Color(1f, 0.62f, 0.3f, 1f);
+        return new Color(1f, 0.4f, 0.36f, 1f);
     }
 
     private string BuildRunSignature(CybergrindRunState runState, float duration)
@@ -756,6 +780,7 @@ public class ProjectStructurePresentation : MonoBehaviour
         EnsureSingletonComponent<BossEncounterHUD>("BossEncounterHUD");
         EnsureSingletonComponent<EnemyPriorityHUD>("EnemyPriorityHUD");
         EnsureSingletonComponent<ProjectStructureHintOverlay>("ProjectStructureHintOverlay");
+        EnsureSingletonComponent<ProjectStructureGuideBook>("ProjectStructureGuideBook");
         EnsureSingletonComponent<ProjectStructureSettingsMenu>("ProjectStructureSettingsMenu");
         EnsureSingletonComponent<ShopPreviewHUD>("ShopPreviewHUD");
         EnsureSingletonComponent<WeaponStatusHUD>("WeaponStatusHUD");

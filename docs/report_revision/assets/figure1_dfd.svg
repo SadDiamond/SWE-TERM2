@@ -1,0 +1,74 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1500" height="843" viewBox="0 0 1500 843">
+  <rect width="1500" height="843" fill="#f7f9fc"/>
+  <defs><marker id="a" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M0 0 L10 5 L0 10 Z" fill="#5f748b"/></marker></defs>
+  <style>
+    .entity{fill:#fff3d8;stroke:#c9932e;stroke-width:3}
+    .process{fill:#e8f1f8;stroke:#2e74b5;stroke-width:3}
+    .store{fill:#fff;stroke:#4c8b6b;stroke-width:3}
+    .flow{fill:none;stroke:#5f748b;stroke-width:3;marker-end:url(#a)}
+    .title{font:700 24px Calibri,Arial,sans-serif;fill:#1f2933}
+    .body{font:18px Calibri,Arial,sans-serif;fill:#405364}
+    .label{font:16px Calibri,Arial,sans-serif;fill:#405364}
+  </style>
+
+  <rect x="35" y="105" width="205" height="100" class="entity"/>
+  <text x="137" y="148" text-anchor="middle" class="title">Player</text><text x="137" y="177" text-anchor="middle" class="body">keyboard and mouse</text>
+
+  <ellipse cx="405" cy="155" rx="125" ry="70" class="process"/>
+  <text x="405" y="147" text-anchor="middle" class="title">1.0 Read Input</text><text x="405" y="177" text-anchor="middle" class="body">move, fire, interact</text>
+
+  <ellipse cx="700" cy="105" rx="135" ry="70" class="process"/>
+  <text x="700" y="97" text-anchor="middle" class="title">2.0 Move Player</text><text x="700" y="127" text-anchor="middle" class="body">physics and grapple</text>
+  <ellipse cx="700" cy="290" rx="135" ry="70" class="process"/>
+  <text x="700" y="282" text-anchor="middle" class="title">3.0 Resolve Combat</text><text x="700" y="312" text-anchor="middle" class="body">weapon and damage</text>
+  <ellipse cx="700" cy="480" rx="135" ry="70" class="process"/>
+  <text x="700" y="472" text-anchor="middle" class="title">4.0 Interact</text><text x="700" y="502" text-anchor="middle" class="body">terminal, shop, reward</text>
+  <ellipse cx="1010" cy="390" rx="145" ry="78" class="process"/>
+  <text x="1010" y="382" text-anchor="middle" class="title">5.0 Control Floor</text><text x="1010" y="412" text-anchor="middle" class="body">objectives and progress</text>
+
+  <rect x="1190" y="45" width="270" height="88" class="store"/>
+  <line x1="1190" y1="45" x2="1190" y2="133" stroke="#4c8b6b" stroke-width="7"/>
+  <text x="1325" y="80" text-anchor="middle" class="title">D1 Player State</text><text x="1325" y="108" text-anchor="middle" class="body">health, momentum, dash</text>
+  <rect x="1190" y="175" width="270" height="88" class="store"/>
+  <line x1="1190" y1="175" x2="1190" y2="263" stroke="#4c8b6b" stroke-width="7"/>
+  <text x="1325" y="210" text-anchor="middle" class="title">D2 Weapon State</text><text x="1325" y="238" text-anchor="middle" class="body">preset and cooldowns</text>
+  <rect x="1190" y="315" width="270" height="88" class="store"/>
+  <line x1="1190" y1="315" x2="1190" y2="403" stroke="#4c8b6b" stroke-width="7"/>
+  <text x="1325" y="350" text-anchor="middle" class="title">D3 Floor State</text><text x="1325" y="378" text-anchor="middle" class="body">floor, mode, timer</text>
+  <rect x="1190" y="455" width="270" height="88" class="store"/>
+  <line x1="1190" y1="455" x2="1190" y2="543" stroke="#4c8b6b" stroke-width="7"/>
+  <text x="1325" y="490" text-anchor="middle" class="title">D4 Objective State</text><text x="1325" y="518" text-anchor="middle" class="body">solved, spent, claimed</text>
+
+  <rect x="35" y="585" width="235" height="105" class="entity"/>
+  <text x="152" y="628" text-anchor="middle" class="title">Arena Objects</text><text x="152" y="657" text-anchor="middle" class="body">enemies and interactables</text>
+  <rect x="1190" y="650" width="270" height="105" class="entity"/>
+  <text x="1325" y="693" text-anchor="middle" class="title">HUD</text><text x="1325" y="722" text-anchor="middle" class="body">health, speed, objective</text>
+
+  <path d="M240 155 H280" class="flow"/><text x="250" y="140" class="label">input</text>
+  <path d="M525 130 L565 115" class="flow"/><text x="525" y="100" class="label">move request</text>
+  <path d="M515 180 L575 250" class="flow"/><text x="500" y="225" class="label">fire request</text>
+  <path d="M490 200 L585 440" class="flow"/><text x="490" y="352" class="label">interact request</text>
+  <path d="M835 105 H1190" class="flow"/><text x="940" y="88" class="label">movement state</text>
+  <path d="M835 270 L1190 220" class="flow"/><text x="935" y="238" class="label">weapon state</text>
+  <path d="M835 480 H1190" class="flow"/><text x="920" y="463" class="label">interaction result</text>
+  <path d="M855 315 L885 345" class="flow"/><text x="820" y="355" class="label">enemy result</text>
+  <path d="M845 470 L885 430" class="flow"/><text x="835" y="445" class="label">objective event</text>
+  <path d="M1155 370 L1190 360" class="flow"/><text x="1118" y="345" class="label">run data</text>
+  <path d="M270 620 L575 505" class="flow"/><text x="365" y="545" class="label">focus / collision</text>
+  <path d="M270 615 L575 325" class="flow"/><text x="335" y="430" class="label">target hit</text>
+  <path d="M270 640 L865 420" class="flow"/><text x="500" y="610" class="label">enemy and terminal status</text>
+  <path d="M1010 468 L1190 685" class="flow"/><text x="1045" y="595" class="label">objective text</text>
+  <path d="M1325 543 V650" class="flow"/><text x="1340" y="603" class="label">prompt state</text>
+  <path d="M1325 403 V630 H1290 V650" class="flow"/><text x="1150" y="610" class="label">floor and timer</text>
+  <!-- Explicit arrowheads retained by Word-compatible SVG conversion. -->
+  <g fill="#5f748b">
+    <polygon points="280,155 264,146 264,164"/><polygon points="565,115 549,108 553,126"/>
+    <polygon points="575,250 558,245 570,232"/><polygon points="585,440 573,425 591,420"/>
+    <polygon points="1190,105 1173,96 1173,114"/><polygon points="1190,220 1173,213 1175,231"/>
+    <polygon points="1190,480 1173,471 1173,489"/><polygon points="885,345 869,340 880,328"/>
+    <polygon points="885,430 879,446 868,433"/><polygon points="1190,360 1173,353 1175,371"/>
+    <polygon points="575,505 559,503 568,489"/><polygon points="575,325 558,324 570,309"/>
+    <polygon points="865,420 848,419 860,404"/><polygon points="1190,685 1173,680 1184,667"/>
+    <polygon points="1325,650 1316,633 1334,633"/><polygon points="1290,650 1281,633 1299,633"/>
+  </g>
+</svg>

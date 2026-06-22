@@ -1,0 +1,99 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1500" height="962" viewBox="0 0 1500 962">
+  <rect width="1500" height="962" fill="#f7f9fc"/>
+  <defs>
+    <marker id="loopArrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+      <path d="M0 0 L10 5 L0 10 Z" fill="#5f748b"/>
+    </marker>
+  </defs>
+  <style>
+    .module{fill:#fff;stroke:#2e74b5;stroke-width:3;rx:8;ry:8}
+    .major{fill:#e8f1f8;stroke:#2e74b5;stroke-width:3;rx:8;ry:8}
+    .line{fill:none;stroke:#5f748b;stroke-width:3}
+    .title{font:700 25px Calibri,Arial,sans-serif;fill:#1f2933}
+    .body{font:18px Calibri,Arial,sans-serif;fill:#405364}
+    .label{font:16px Calibri,Arial,sans-serif;fill:#405364}
+    .legend{font:16px Calibri,Arial,sans-serif;fill:#1f2933}
+  </style>
+
+  <rect x="570" y="40" width="360" height="90" class="major"/>
+  <text x="750" y="79" text-anchor="middle" class="title">Run Arena Floor</text>
+  <text x="750" y="107" text-anchor="middle" class="body">controls one playable floor</text>
+
+  <path d="M750 130 V175 M165 175 H1335 M165 175 V225 M455 175 V225 M750 175 V225 M1045 175 V225 M1335 175 V225" class="line"/>
+  <path d="M885 150 C970 125 990 185 920 200" class="line" marker-end="url(#loopArrow)"/>
+  <text x="1000" y="142" class="label">repeat each frame</text>
+
+  <circle cx="315" cy="175" r="9" fill="#fff" stroke="#5f748b" stroke-width="3"/>
+  <text x="272" y="164" class="label">input</text>
+  <circle cx="602" cy="175" r="8" fill="#5f748b"/>
+  <text x="545" y="164" class="label">move</text>
+  <circle cx="897" cy="175" r="8" fill="#5f748b"/>
+  <text x="855" y="164" class="label">fire</text>
+  <circle cx="1190" cy="175" r="9" fill="#fff" stroke="#5f748b" stroke-width="3"/>
+  <text x="1128" y="164" class="label">floor state</text>
+
+  <rect x="45" y="225" width="240" height="90" class="module"/>
+  <text x="165" y="264" text-anchor="middle" class="title">Read Input</text>
+  <text x="165" y="292" text-anchor="middle" class="body">keyboard and mouse</text>
+
+  <rect x="330" y="225" width="250" height="90" class="major"/>
+  <text x="455" y="264" text-anchor="middle" class="title">Update Player</text>
+  <text x="455" y="292" text-anchor="middle" class="body">movement and grapple</text>
+
+  <rect x="625" y="225" width="250" height="90" class="major"/>
+  <text x="750" y="264" text-anchor="middle" class="title">Resolve Combat</text>
+  <text x="750" y="292" text-anchor="middle" class="body">weapons and damage</text>
+
+  <rect x="920" y="225" width="250" height="90" class="major"/>
+  <text x="1045" y="264" text-anchor="middle" class="title">Update Floor</text>
+  <text x="1045" y="292" text-anchor="middle" class="body">objectives and progress</text>
+
+  <rect x="1215" y="225" width="240" height="90" class="module"/>
+  <text x="1335" y="264" text-anchor="middle" class="title">Update HUD</text>
+  <text x="1335" y="292" text-anchor="middle" class="body">health and prompts</text>
+
+  <path d="M165 315 V425 M455 315 V425 M750 315 V425 M1045 315 V425 M1335 315 V425" class="line"/>
+
+  <circle cx="455" cy="350" r="9" fill="#fff" stroke="#5f748b" stroke-width="3"/>
+  <text x="470" y="356" class="label">momentum</text>
+  <circle cx="750" cy="350" r="9" fill="#fff" stroke="#5f748b" stroke-width="3"/>
+  <text x="765" y="356" class="label">shot data</text>
+  <circle cx="1045" cy="350" r="8" fill="#5f748b"/>
+  <text x="1060" y="356" class="label">floor clear</text>
+  <circle cx="1335" cy="350" r="9" fill="#fff" stroke="#5f748b" stroke-width="3"/>
+  <text x="1350" y="356" class="label">HUD values</text>
+
+  <rect x="45" y="425" width="240" height="88" class="module"/>
+  <text x="165" y="462" text-anchor="middle" class="title">Read Controls</text>
+  <text x="165" y="489" text-anchor="middle" class="body">WASD, fire, dash, grapple</text>
+  <rect x="330" y="425" width="250" height="88" class="module"/>
+  <text x="455" y="462" text-anchor="middle" class="title">Solve Movement</text>
+  <text x="455" y="489" text-anchor="middle" class="body">ground, air, wall and rope</text>
+  <rect x="625" y="425" width="250" height="88" class="module"/>
+  <text x="750" y="462" text-anchor="middle" class="title">Fire / Apply Damage</text>
+  <text x="750" y="489" text-anchor="middle" class="body">cooldown, hit, IDamageable</text>
+  <rect x="920" y="425" width="250" height="88" class="module"/>
+  <text x="1045" y="462" text-anchor="middle" class="title">Check Objectives</text>
+  <text x="1045" y="489" text-anchor="middle" class="body">terminals and enemies</text>
+  <rect x="1215" y="425" width="240" height="88" class="module"/>
+  <text x="1335" y="462" text-anchor="middle" class="title">Draw HUD</text>
+  <text x="1335" y="489" text-anchor="middle" class="body">bars, text and prompts</text>
+
+  <path d="M1045 513 V625" class="line"/>
+  <circle cx="1045" cy="555" r="9" fill="#fff" stroke="#5f748b" stroke-width="3"/>
+  <text x="1060" y="561" class="label">terminal / enemy state</text>
+  <circle cx="1045" cy="598" r="8" fill="#5f748b"/>
+  <text x="1060" y="604" class="label">advance</text>
+  <rect x="920" y="625" width="250" height="92" class="module"/>
+  <text x="1045" y="664" text-anchor="middle" class="title">Advance Floor</text>
+  <text x="1045" y="692" text-anchor="middle" class="body">reward, transition, generation</text>
+
+  <rect x="80" y="795" width="1340" height="105" fill="#eef3f7" stroke="#c8d3de" stroke-width="2" rx="8"/>
+  <text x="110" y="830" class="title">Notation</text>
+  <line x1="270" y1="832" x2="365" y2="832" class="line"/><circle cx="317" cy="832" r="9" fill="#fff" stroke="#5f748b" stroke-width="3"/>
+  <text x="385" y="839" class="legend">open circle = data passed between modules</text>
+  <line x1="800" y1="832" x2="895" y2="832" class="line"/><circle cx="847" cy="832" r="8" fill="#5f748b"/>
+  <text x="915" y="839" class="legend">filled circle = control signal</text>
+  <path d="M270 868 C330 842 360 900 300 908" class="line" marker-end="url(#loopArrow)"/>
+  <text x="385" y="891" class="legend">loop arrow = repeated frame update</text>
+</svg>

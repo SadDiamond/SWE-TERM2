@@ -522,6 +522,32 @@ public class CybergrindPuzzleTerminal : Terminal
         return challengeMode == ChallengeMode.Calibration || challengeMode == ChallengeMode.Delay;
     }
 
+    public bool UsesSecondaryAction()
+    {
+        return challengeMode == ChallengeMode.Alternating || challengeMode == ChallengeMode.Lockstep;
+    }
+
+    public bool UsesAdjustmentButtons()
+    {
+        return challengeMode == ChallengeMode.Calibration;
+    }
+
+    public bool UsesPrimaryAction()
+    {
+        return challengeMode != ChallengeMode.Calibration && challengeMode != ChallengeMode.Delay;
+    }
+
+    public bool IsTimingWindowOpen()
+    {
+        return challengeMode switch
+        {
+            ChallengeMode.Rhythm => IsBeatWindow(),
+            ChallengeMode.Pulse => IsPulseWindow(),
+            ChallengeMode.Delay => puzzleTimer >= requiredDelay,
+            _ => false
+        };
+    }
+
     private void ConfigureChallengeState()
     {
         var rng = new System.Random(unchecked(terminalSeed ^ (sequenceIndex * 97) ^ (int)challengeMode * 53));

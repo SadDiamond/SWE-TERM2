@@ -36,6 +36,10 @@ public class BasicEnemyAI : MonoBehaviour, IDamageable, IGrappleMassTarget
     [Min(0.1f)] public float pathRefreshInterval = 0.45f;
     [Min(0.15f)] public float pathNodeReachDistance = 0.65f;
     [Min(0.2f)] public float floorSnapTolerance = 1.1f;
+    [Header("Perception")]
+    [Min(10f)] public float detectionRadius = 140f;
+    [Min(0f)] public float closeAwarenessRadius = 18f;
+    public bool requireInitialLineOfSight;
     private NavMeshAgent agent;
     private Transform player;
     private PlayerController playerController;
@@ -52,6 +56,7 @@ public class BasicEnemyAI : MonoBehaviour, IDamageable, IGrappleMassTarget
     private bool cachedThreatLineOfSight;
     private float aggroVisibilityRefreshTimer;
     private float threatLineOfSightRefreshTimer;
+    private readonly RaycastHit[] sightHitBuffer = new RaycastHit[24];
     private readonly Collider[] nearbyEnemyBuffer = new Collider[16];
     private float laneBiasSign = 1f;
     private float laneBiasSeed;
@@ -157,6 +162,7 @@ public class BasicEnemyAI : MonoBehaviour, IDamageable, IGrappleMassTarget
     private Transform priorityOutlineRoot;
     private bool isPriorityTarget;
     public bool IsPriorityTarget => isPriorityTarget && !IsCombatResolved;
+    public bool HasAggro => hasAggro;
     private static readonly float[] roleNextCommitTime = new float[5];
     private static readonly float[] roleLastCommitTime = new float[5];
     private static float globalPressureBurstUntil;
@@ -339,6 +345,18 @@ public class BasicEnemyAI : MonoBehaviour, IDamageable, IGrappleMassTarget
                     ApplyTransientFxRenderer(markerRenderer, c, 1.45f);
                 }
             }
+        }
+        if (priorityOutlineRoot != null && priorityOutlineRoot.gameObject.activeSelf && sharedPriorityOutlineMaterial != null)
+        {
+            float outlinePulse = 0.026f + (Mathf.Sin(Time.time * 5.5f) * 0.5f + 0.5f) * 0.012f;
+            Color outlineColor = Color.Lerp(
+                new Color(0.12f, 0.78f, 1f, 0.82f),
+                new Color(0.92f, 1f, 1f, 0.96f),
+                Mathf.Sin(Time.time * 5.5f) * 0.5f + 0.5f);
+            if (sharedPriorityOutlineMaterial.HasProperty("_OutlineThickness"))
+                sharedPriorityOutlineMaterial.SetFloat("_OutlineThickness", outlinePulse);
+            if (sharedPriorityOutlineMaterial.HasProperty("_OutlineColor"))
+                sharedPriorityOutlineMaterial.SetColor("_OutlineColor", outlineColor);
         }
 
         if (hurtPulseTimer > 0f) hurtPulseTimer -= Time.deltaTime;
@@ -1388,13 +1406,20 @@ public class BasicEnemyAI : MonoBehaviour, IDamageable, IGrappleMassTarget
         if (player == null)
             return false;
 
-        float acquireDistance = enemyType == EnemyType.Flying
-            ? Mathf.Max(dronePreferredDistance * 1.95f, stoppingDistance + 12f)
-            : isBoss
-                ? Mathf.Max(stoppingDistance + 18f, 28f)
-                : Mathf.Max(stoppingDistance + 10f, 22f);
+        float acquireDistance = Mathf.Max(10f, detectionRadius);
+        if (arenaGenerator != null)
+        {
+            float arenaDiagonal = new Vector2(
+                arenaGenerator.width * arenaGenerator.tileSize,
+                arenaGenerator.length * arenaGenerator.tileSize).magnitude;
+            acquireDistance = Mathf.Max(acquireDistance, arenaDiagonal * 1.05f);
+        }
+
         if (distanceToPlayer > acquireDistance)
             return false;
+
+        if (!requireInitialLineOfSight || distanceToPlayer <= closeAwarenessRadius)
+            return true;
 
         if (aggroVisibilityRefreshTimer > 0f)
             return cachedAggroVisibility;
@@ -1418,15 +1443,7 @@ public class BasicEnemyAI : MonoBehaviour, IDamageable, IGrappleMassTarget
 
     private bool HasUnobstructedSightToPlayer(Vector3 origin, Vector3 target)
     {
-        Vector3 offset = target - origin;
-        float distance = offset.magnitude;
-        if (distance <= 0.001f)
-            return true;
-
-        if (!Physics.Raycast(origin, offset / distance, out RaycastHit hit, distance, movementObstacleMask, QueryTriggerInteraction.Ignore))
-            return true;
-
-        return hit.collider != null && hit.collider.GetComponentInParent<PlayerController>() == playerController;
+        return HasFilteredLineOfSight(origin, target);
     }
 
     private bool HasThreatLineOfSight()
@@ -1875,19 +1892,41 @@ public class BasicEnemyAI : MonoBehaviour, IDamageable, IGrappleMassTarget
 
     private bool HasLineOfSightTo(Vector3 origin, Vector3 targetPos)
     {
-        Vector3 dir = targetPos - origin;
-        float dist = dir.magnitude;
-        if (dist <= 0.001f) return true;
-        dir /= dist;
+        return HasFilteredLineOfSight(origin, targetPos);
+    }
 
-        if (Physics.Raycast(origin, dir, out RaycastHit hit, dist, movementObstacleMask, QueryTriggerInteraction.Ignore))
+    private bool HasFilteredLineOfSight(Vector3 origin, Vector3 targetPos)
+    {
+        Vector3 offset = targetPos - origin;
+        float distance = offset.magnitude;
+        if (distance <= 0.001f)
+            return true;
+
+        int hitCount = Physics.RaycastNonAlloc(
+            origin,
+            offset / distance,
+            sightHitBuffer,
+            distance,
+            movementObstacleMask,
+            QueryTriggerInteraction.Ignore);
+
+        float nearestBlockingDistance = float.PositiveInfinity;
+        for (int i = 0; i < hitCount; i++)
         {
-            if (hit.collider != null && (hit.collider.transform.IsChildOf(transform) || hit.collider.gameObject == gameObject))
+            Collider collider = sightHitBuffer[i].collider;
+            if (collider == null)
+                continue;
+            if (collider.transform.IsChildOf(transform) || collider.gameObject == gameObject)
+                continue;
+            if (collider.GetComponentInParent<BasicEnemyAI>() != null)
+                continue;
+            if (collider.GetComponentInParent<PlayerController>() == playerController)
                 return true;
-            return false;
+
+            nearestBlockingDistance = Mathf.Min(nearestBlockingDistance, sightHitBuffer[i].distance);
         }
 
-        return true;
+        return float.IsPositiveInfinity(nearestBlockingDistance);
     }
 
     private bool IsBlockedAhead(Vector3 desiredPos)
@@ -3476,7 +3515,7 @@ public class BasicEnemyAI : MonoBehaviour, IDamageable, IGrappleMassTarget
             if (outlineShader == null)
                 outlineShader = FindVisualShader(true);
             sharedPriorityOutlineMaterial = new Material(outlineShader) { name = "Enemy Priority Outline Shared" };
-            Color outlineColor = new Color(1f, 0.82f, 0.22f, 0.92f);
+            Color outlineColor = new Color(0.12f, 0.86f, 1f, 0.9f);
             if (sharedPriorityOutlineMaterial.HasProperty("_BaseColor"))
                 sharedPriorityOutlineMaterial.SetColor("_BaseColor", outlineColor);
             if (sharedPriorityOutlineMaterial.HasProperty("_Color"))
@@ -3489,7 +3528,7 @@ public class BasicEnemyAI : MonoBehaviour, IDamageable, IGrappleMassTarget
             if (sharedPriorityOutlineMaterial.HasProperty("_OutlineColor"))
                 sharedPriorityOutlineMaterial.SetColor("_OutlineColor", outlineColor);
             if (sharedPriorityOutlineMaterial.HasProperty("_OutlineThickness"))
-                sharedPriorityOutlineMaterial.SetFloat("_OutlineThickness", 0.018f);
+                sharedPriorityOutlineMaterial.SetFloat("_OutlineThickness", 0.03f);
             sharedPriorityOutlineMaterial.renderQueue = 5000;
         }
 
@@ -3513,7 +3552,7 @@ public class BasicEnemyAI : MonoBehaviour, IDamageable, IGrappleMassTarget
             shell.transform.SetParent(outlineRoot.transform, false);
             shell.transform.localPosition = source.transform.localPosition;
             shell.transform.localRotation = source.transform.localRotation;
-            shell.transform.localScale = source.transform.localScale * 1.08f;
+            shell.transform.localScale = source.transform.localScale;
 
             MeshFilter filter = shell.AddComponent<MeshFilter>();
             filter.sharedMesh = sourceFilter.sharedMesh;

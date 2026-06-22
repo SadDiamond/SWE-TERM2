@@ -200,7 +200,7 @@ public class ProjectStructureSettingsMenu : MonoBehaviour
                 masterVolume = Mathf.Clamp01(masterVolume + direction * 0.05f);
                 break;
             case 3:
-                uiScale = Mathf.Clamp(uiScale + direction * 0.05f, ProjectStructureUIRoot.MinUIScale, ProjectStructureUIRoot.MaxUIScale);
+                uiScale = ProjectStructureUIRoot.NormalizeUIScale(uiScale + direction * ProjectStructureUIRoot.UIScaleStep);
                 ProjectStructureUIRoot.SetUIScale(uiScale, false);
                 break;
         }

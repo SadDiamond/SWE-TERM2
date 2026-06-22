@@ -132,14 +132,14 @@ public class RunStatusHUD : MonoBehaviour
         if (isShop)
         {
             objectiveText.text = arenaDirector != null && arenaDirector.HasShopInteractionThisFloor()
-                ? "Exit open"
-                : "Choose one station";
+                ? "Purchase complete - go to the marked exit"
+                : "Choose one shop station";
             return;
         }
 
         if (unsolvedTerminals > 0)
         {
-            objectiveText.text = $"Terminals left: {unsolvedTerminals}";
+            objectiveText.text = $"Find and use terminals - {unsolvedTerminals} left";
             return;
         }
 
@@ -179,15 +179,11 @@ public class RunStatusHUD : MonoBehaviour
 
         if (pendingReward)
         {
-            objectiveText.text = isBoss
-                ? (arenaDirector != null && arenaDirector.IsFinalBossFloor()
-                    ? "Take the drop"
-                    : "Take the drop")
-                : "Take the weapon";
+            objectiveText.text = isBoss ? "Collect the marked boss drop" : "Collect the weapon at the marked exit";
             return;
         }
 
-        objectiveText.text = "Exit open";
+        objectiveText.text = "Go to the marked exit";
     }
 
     private void RefreshCycleText()
@@ -447,8 +443,8 @@ public class RunStatusHUD : MonoBehaviour
             ApplyTextLayout(directiveText, new Vector2(22f, -110f), new Vector2(320f, 28f), 9.5f);
             ApplyTextStyle(directiveText, new Color(0.72f, 0.78f, 0.82f, 0.92f), FontStyles.Normal);
         }
-        objectiveText = objectiveText != null ? objectiveText : CreateHudText("ObjectiveText", new Vector2(22f, -150f), 14f);
-        ApplyTextLayout(objectiveText, new Vector2(22f, -150f), new Vector2(330f, 21f), 14f);
+        objectiveText = objectiveText != null ? objectiveText : CreateHudText("ObjectiveText", new Vector2(22f, -150f), 17f);
+        ApplyTextLayout(objectiveText, new Vector2(22f, -150f), new Vector2(520f, 28f), 17f);
         ApplyTextStyle(objectiveText, new Color(1f, 0.92f, 0.62f, 1f), FontStyles.Bold);
         floorTimerText = floorTimerText != null ? floorTimerText : CreateHudText("FloorTimerText", new Vector2(22f, -126f), 18f);
         ApplyTextLayout(floorTimerText, new Vector2(22f, -126f), new Vector2(180f, 28f), 18f);
@@ -494,7 +490,7 @@ public class RunStatusHUD : MonoBehaviour
         ApplyViewportLayout(cycleText.rectTransform, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(32f, -58f), new Vector2(280f, 20f));
         ApplyViewportLayout(floorTimerText.rectTransform, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -34f), new Vector2(160f, 28f));
         floorTimerText.alignment = TextAlignmentOptions.Center;
-        ApplyViewportLayout(objectiveText.rectTransform, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -90f), new Vector2(420f, 28f));
+        ApplyViewportLayout(objectiveText.rectTransform, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -92f), new Vector2(560f, 34f));
         objectiveText.alignment = TextAlignmentOptions.Center;
         ApplyViewportLayout(coreProgressText.rectTransform, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(190f, -31f), new Vector2(125f, 20f));
         ApplyViewportLayout(fpsText.rectTransform, Vector2.zero, Vector2.zero, new Vector2(28f, 28f), new Vector2(68f, 16f));
@@ -504,10 +500,10 @@ public class RunStatusHUD : MonoBehaviour
         ApplyViewportLayout(hpText.rectTransform, Vector2.zero, Vector2.zero, new Vector2(28f, 72f), new Vector2(78f, 26f));
         hpText.fontSize = 21f;
         ApplyViewportLayout(coinText.rectTransform, Vector2.zero, Vector2.zero, new Vector2(174f, 49f), new Vector2(112f, 18f));
-        coinText.fontSize = 10f;
+        coinText.fontSize = 12f;
         coinText.alignment = TextAlignmentOptions.Right;
         ApplyViewportLayout(speedText.rectTransform, Vector2.zero, Vector2.zero, new Vector2(28f, 49f), new Vector2(142f, 18f));
-        speedText.fontSize = 10f;
+        speedText.fontSize = 12f;
         ApplyViewportLayout(hpFill.transform.parent as RectTransform, Vector2.zero, Vector2.zero, new Vector2(112f, 79f), new Vector2(174f, 9f));
     }
 
@@ -668,7 +664,7 @@ public class RunStatusHUD : MonoBehaviour
 
         ApplyViewportLayout(headerPanel.rectTransform, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(20f, -20f), new Vector2(310f, 66f));
         ApplyViewportLayout(floorTimerPanel.rectTransform, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -18f), new Vector2(176f, 30f));
-        ApplyViewportLayout(objectivePanel.rectTransform, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -78f), new Vector2(460f, 48f));
+        ApplyViewportLayout(objectivePanel.rectTransform, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -78f), new Vector2(600f, 54f));
         ApplyViewportLayout(vitalsPanel.rectTransform, Vector2.zero, Vector2.zero, new Vector2(20f, 20f), new Vector2(276f, 84f));
         headerPanel.color = new Color(0.015f, 0.025f, 0.032f, 0.84f);
         floorTimerPanel.color = new Color(0.012f, 0.02f, 0.028f, 0.9f);

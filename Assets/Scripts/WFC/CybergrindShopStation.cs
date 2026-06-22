@@ -128,15 +128,25 @@ public class CybergrindShopStation : Interactable
         switch (service)
         {
             case ShopService.Repair:
+                if (player.currentHealth >= player.EffectiveMaxHealth - 0.01f)
+                {
+                    promptMessage = "Health already full";
+                    player.ShowTransientStatus(promptMessage, 1.25f);
+                    if (presentation != null)
+                        presentation.FlashDenied();
+                    return;
+                }
                 if (!player.TrySpendCurrency(cost))
                 {
                     RejectPurchase(player);
                     return;
                 }
+                float healthBefore = player.currentHealth;
                 player.Heal(healAmount);
-                promptMessage = $"Healed +{healAmount}";
+                int healthRestored = Mathf.RoundToInt(player.currentHealth - healthBefore);
+                promptMessage = $"Healed +{healthRestored}";
                 bannerTitle = "HEALED";
-                bannerDetail = $"+{healAmount} HP";
+                bannerDetail = $"+{healthRestored} HP";
                 success = true;
                 break;
 

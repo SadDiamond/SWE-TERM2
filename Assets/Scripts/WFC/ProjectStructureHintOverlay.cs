@@ -12,6 +12,7 @@ public class ProjectStructureHintOverlay : MonoBehaviour
     [Header("Display")]
     [Min(0.05f)] public float refreshInterval = 0.15f;
     public float hintFadeSpeed = 5f;
+    [Min(2f)] public float minimumHintDuration = 6f;
 
     private float refreshTimer;
     private CanvasGroup hintGroup;
@@ -21,6 +22,7 @@ public class ProjectStructureHintOverlay : MonoBehaviour
     private string currentHintKey = string.Empty;
     private string currentTitle = string.Empty;
     private string currentBody = string.Empty;
+    private float currentHintTimer;
     private Transform cachedArenaRoot;
     private Terminal[] cachedTerminals = System.Array.Empty<Terminal>();
 
@@ -77,6 +79,16 @@ public class ProjectStructureHintOverlay : MonoBehaviour
         if (arenaDirector == null)
             arenaDirector = FindAnyObjectByType<CybergrindArenaDirector>();
 
+        if (!string.IsNullOrEmpty(currentHintKey))
+        {
+            currentHintTimer -= refreshInterval;
+            if (currentHintTimer > 0f)
+                return;
+
+            MarkHintSeen(currentHintKey);
+            currentHintKey = string.Empty;
+        }
+
         string nextKey = string.Empty;
         string title = string.Empty;
         string body = string.Empty;
@@ -88,20 +100,20 @@ public class ProjectStructureHintOverlay : MonoBehaviour
         if (!sawMovementHint && speed < 2f)
         {
             nextKey = "movement";
-            title = "MOVEMENT";
-            body = "Shift: dash. Ctrl/C: slide. Jump after sliding to keep your speed.";
+            title = "GUIDE";
+            body = $"Press {ProjectStructureBindings.GetDisplayString(ProjectStructureAction.Guide)} at any time for controls and the run overview.";
         }
         else if (!sawWeaponHint && arenaDirector != null && arenaDirector.floor <= 2)
         {
             nextKey = "weapons";
             title = "WEAPONS";
-            body = "1/2: switch weapon. Q/E: switch variant. RMB: ability.";
+            body = "Shoot with LMB. RMB uses the weapon ability; the pistol throws coins.";
         }
         else if (!sawTerminalHint && CountUnsolvedTerminals() > 0)
         {
             nextKey = "terminal";
             title = $"{sectorLabel} / TERMINALS";
-            body = "Complete the terminals, then clear the enemies.";
+            body = "Find a marked terminal, face it and press Interact. Complete it before leaving.";
         }
         else if (!sawRewardHint && arenaDirector != null && arenaDirector.HasPendingReward())
         {
@@ -127,14 +139,19 @@ public class ProjectStructureHintOverlay : MonoBehaviour
         if (nextKey == currentHintKey) return;
 
         currentHintKey = nextKey;
+        currentHintTimer = string.IsNullOrEmpty(nextKey) ? 0f : minimumHintDuration;
         currentTitle = title;
         currentBody = body;
         if (hintTitleText != null) hintTitleText.text = currentTitle;
         if (hintBodyText != null) hintBodyText.text = currentBody;
 
-        if (string.IsNullOrEmpty(nextKey)) return;
-        ApplyHintVisual(nextKey);
-        switch (nextKey)
+        if (!string.IsNullOrEmpty(nextKey))
+            ApplyHintVisual(nextKey);
+    }
+
+    private void MarkHintSeen(string hintKey)
+    {
+        switch (hintKey)
         {
             case "movement": sawMovementHint = true; break;
             case "weapons": sawWeaponHint = true; break;
@@ -180,7 +197,7 @@ public class ProjectStructureHintOverlay : MonoBehaviour
         rootRect.anchorMax = new Vector2(0f, 0f);
         rootRect.pivot = new Vector2(0f, 0f);
         rootRect.anchoredPosition = new Vector2(18f, 18f);
-        rootRect.sizeDelta = new Vector2(320f, 92f);
+        rootRect.sizeDelta = new Vector2(390f, 108f);
 
         Image panel = root.AddComponent<Image>();
         panel.color = new Color(0.018f, 0.03f, 0.038f, 0.92f);
@@ -198,8 +215,8 @@ public class ProjectStructureHintOverlay : MonoBehaviour
         Image accentImage = accent.AddComponent<Image>();
         accentImage.color = new Color(0.36f, 0.88f, 1f, 0.95f);
 
-        hintTitleText = CreateText(root.transform, "HintTitle", 12.5f, new Vector2(0f, 1f), new Vector2(278f, 20f), new Vector2(22f, -14f), TextAlignmentOptions.TopLeft, Color.white);
-        hintBodyText = CreateText(root.transform, "HintBody", 10.5f, new Vector2(0f, 1f), new Vector2(278f, 44f), new Vector2(22f, -38f), TextAlignmentOptions.TopLeft, new Color(0.82f, 0.9f, 0.96f));
+        hintTitleText = CreateText(root.transform, "HintTitle", 15f, new Vector2(0f, 1f), new Vector2(342f, 24f), new Vector2(22f, -14f), TextAlignmentOptions.TopLeft, Color.white);
+        hintBodyText = CreateText(root.transform, "HintBody", 12.5f, new Vector2(0f, 1f), new Vector2(342f, 58f), new Vector2(22f, -42f), TextAlignmentOptions.TopLeft, new Color(0.82f, 0.9f, 0.96f));
     }
 
     private TMP_Text CreateText(Transform parent, string name, float fontSize, Vector2 anchor, Vector2 boxSize, Vector2 position, TextAlignmentOptions alignment, Color color)

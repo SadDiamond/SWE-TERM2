@@ -182,7 +182,8 @@ public class CybergrindTerminalUI : MonoBehaviour
         if (footerText != null)
             footerText.text = BuildFooterText(terminal);
         progressFill.fillAmount = terminal.GetProgress01();
-        progressFill.color = ResolveProgressColor(terminal);
+        bool timingWindowOpen = terminal.IsTimingWindowOpen();
+        progressFill.color = timingWindowOpen ? Color.white : ResolveProgressColor(terminal);
         ApplyChallengeVisuals(terminal);
 
         primaryButton.GetComponentInChildren<TextMeshProUGUI>().text = terminal.GetPrimaryActionLabel();
@@ -192,9 +193,11 @@ public class CybergrindTerminalUI : MonoBehaviour
         submitButton.GetComponentInChildren<TextMeshProUGUI>().text = terminal.GetSubmitLabel();
         closeButton.GetComponentInChildren<TextMeshProUGUI>().text = "CLOSE";
 
-        increaseButton.gameObject.SetActive(terminal.challengeMode == CybergrindPuzzleTerminal.ChallengeMode.Calibration);
-        decreaseButton.gameObject.SetActive(terminal.challengeMode == CybergrindPuzzleTerminal.ChallengeMode.Calibration);
-        submitButton.gameObject.SetActive(terminal.CanSubmitNow() || terminal.challengeMode == CybergrindPuzzleTerminal.ChallengeMode.Delay);
+        primaryButton.gameObject.SetActive(terminal.UsesPrimaryAction());
+        secondaryButton.gameObject.SetActive(terminal.UsesSecondaryAction());
+        increaseButton.gameObject.SetActive(terminal.UsesAdjustmentButtons());
+        decreaseButton.gameObject.SetActive(terminal.UsesAdjustmentButtons());
+        submitButton.gameObject.SetActive(terminal.CanSubmitNow());
     }
 
     private void BuildUI()
@@ -232,8 +235,8 @@ public class CybergrindTerminalUI : MonoBehaviour
         windowImage = window.AddComponent<Image>();
         windowImage.color = new Color(0.04f, 0.07f, 0.09f, 0.96f);
         RectTransform windowRect = window.GetComponent<RectTransform>();
-        windowRect.anchorMin = new Vector2(0.25f, 0.18f);
-        windowRect.anchorMax = new Vector2(0.75f, 0.78f);
+        windowRect.anchorMin = new Vector2(0.28f, 0.22f);
+        windowRect.anchorMax = new Vector2(0.72f, 0.76f);
         windowRect.offsetMin = Vector2.zero;
         windowRect.offsetMax = Vector2.zero;
 
@@ -395,9 +398,13 @@ public class CybergrindTerminalUI : MonoBehaviour
         if (terminal == null) return string.Empty;
 
         if (terminal.challengeMode == CybergrindPuzzleTerminal.ChallengeMode.Calibration)
-            return "UP / DOWN or +/- adjust    ENTER confirm    ESC close";
+            return "UP / DOWN adjust    ENTER confirm    ESC close";
 
-        return "E / SPACE primary    Q / LEFT secondary    ENTER confirm    ESC close";
+        if (terminal.UsesSecondaryAction())
+            return "E primary    Q secondary    ESC close";
+        if (terminal.CanSubmitNow())
+            return "ENTER confirm    ESC close";
+        return "E / SPACE action    ESC close";
     }
 
     private Color ResolveProgressColor(CybergrindPuzzleTerminal terminal)

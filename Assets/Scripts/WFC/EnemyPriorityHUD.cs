@@ -21,6 +21,10 @@ public class EnemyPriorityHUD : MonoBehaviour
         public GameObject root;
         public RectTransform rect;
         public Image diamond;
+        public Image topBracket;
+        public Image bottomBracket;
+        public Image leftBracket;
+        public Image rightBracket;
         public TMP_Text label;
     }
 
@@ -126,9 +130,25 @@ public class EnemyPriorityHUD : MonoBehaviour
             Mathf.Lerp(edgePadding, size.y - edgePadding, viewport.y));
 
         widget.rect.anchoredPosition = pos;
-        widget.diamond.color = behind ? new Color(1f, 0.78f, 0.28f, 0.98f) : new Color(1f, 0.9f, 0.44f, 0.98f);
-        widget.label.text = enemy.PriorityLabel;
+        float distance = Vector3.Distance(targetCamera.transform.position, enemy.transform.position);
+        bool atScreenEdge = viewport.x <= 0.01f || viewport.x >= 0.99f || viewport.y <= 0.01f || viewport.y >= 0.99f || behind;
+        float pulse = 0.82f + (Mathf.Sin(Time.unscaledTime * 6f) * 0.5f + 0.5f) * 0.18f;
+        Color accent = atScreenEdge
+            ? new Color(1f, 0.56f, 0.18f, 0.98f)
+            : new Color(0.2f, 0.9f, 1f, 0.98f);
+        widget.diamond.color = accent;
+        widget.diamond.rectTransform.localScale = Vector3.one * pulse;
+        SetBracketColor(widget, accent);
+        widget.label.text = $"{enemy.PriorityLabel}  {Mathf.RoundToInt(distance)}m";
         widget.root.SetActive(true);
+    }
+
+    private void SetBracketColor(MarkerWidget widget, Color color)
+    {
+        if (widget.topBracket != null) widget.topBracket.color = color;
+        if (widget.bottomBracket != null) widget.bottomBracket.color = color;
+        if (widget.leftBracket != null) widget.leftBracket.color = color;
+        if (widget.rightBracket != null) widget.rightBracket.color = color;
     }
 
     private void BuildWidgets(int count)
@@ -143,39 +163,61 @@ public class EnemyPriorityHUD : MonoBehaviour
             RectTransform rect = root.AddComponent<RectTransform>();
             rect.anchorMin = new Vector2(0f, 0f);
             rect.anchorMax = new Vector2(0f, 0f);
-            rect.sizeDelta = new Vector2(88f, 36f);
+            rect.sizeDelta = new Vector2(132f, 76f);
 
             GameObject diamondGo = new GameObject("Diamond");
             diamondGo.transform.SetParent(root.transform, false);
             RectTransform diamondRect = diamondGo.AddComponent<RectTransform>();
             diamondRect.anchorMin = new Vector2(0.5f, 0.5f);
             diamondRect.anchorMax = new Vector2(0.5f, 0.5f);
-            diamondRect.sizeDelta = new Vector2(22f, 22f);
+            diamondRect.sizeDelta = new Vector2(12f, 12f);
             diamondRect.localRotation = Quaternion.Euler(0f, 0f, 45f);
             Image diamond = diamondGo.AddComponent<Image>();
-            diamond.color = new Color(1f, 0.9f, 0.44f, 0.98f);
+            diamond.color = new Color(0.2f, 0.9f, 1f, 0.98f);
+
+            Image topBracket = CreateBracket(root.transform, "Top", new Vector2(0f, 27f), new Vector2(42f, 3f));
+            Image bottomBracket = CreateBracket(root.transform, "Bottom", new Vector2(0f, -27f), new Vector2(42f, 3f));
+            Image leftBracket = CreateBracket(root.transform, "Left", new Vector2(-38f, 0f), new Vector2(3f, 30f));
+            Image rightBracket = CreateBracket(root.transform, "Right", new Vector2(38f, 0f), new Vector2(3f, 30f));
 
             GameObject labelGo = new GameObject("Label");
             labelGo.transform.SetParent(root.transform, false);
             RectTransform labelRect = labelGo.AddComponent<RectTransform>();
             labelRect.anchorMin = new Vector2(0.5f, 0.5f);
             labelRect.anchorMax = new Vector2(0.5f, 0.5f);
-            labelRect.anchoredPosition = new Vector2(0f, 18f);
-            labelRect.sizeDelta = new Vector2(72f, 24f);
+            labelRect.anchoredPosition = new Vector2(0f, 43f);
+            labelRect.sizeDelta = new Vector2(150f, 24f);
             TMP_Text label = labelGo.AddComponent<TextMeshProUGUI>();
             ProjectStructureUIRoot.ApplyDefaultFont(label);
             label.alignment = TextAlignmentOptions.Center;
-            label.fontSize = 16f;
-            label.color = new Color(1f, 0.95f, 0.76f, 0.98f);
+            label.fontSize = 14f;
+            label.color = new Color(0.78f, 0.96f, 1f, 0.98f);
 
             widgets.Add(new MarkerWidget
             {
                 root = root,
                 rect = rect,
                 diamond = diamond,
+                topBracket = topBracket,
+                bottomBracket = bottomBracket,
+                leftBracket = leftBracket,
+                rightBracket = rightBracket,
                 label = label
             });
         }
+    }
+
+    private Image CreateBracket(Transform parent, string name, Vector2 position, Vector2 size)
+    {
+        GameObject go = new GameObject(name + "Bracket");
+        go.transform.SetParent(parent, false);
+        RectTransform rect = go.AddComponent<RectTransform>();
+        rect.anchorMin = rect.anchorMax = new Vector2(0.5f, 0.5f);
+        rect.anchoredPosition = position;
+        rect.sizeDelta = size;
+        Image image = go.AddComponent<Image>();
+        image.color = new Color(0.2f, 0.9f, 1f, 0.98f);
+        return image;
     }
 
     private void SetVisible(bool visible)

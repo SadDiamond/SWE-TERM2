@@ -21,7 +21,8 @@ public enum ProjectStructureAction
     WeaponSlot2,
     WeaponSlot3,
     VariantPrev,
-    VariantNext
+    VariantNext,
+    Guide
 }
 
 public enum ProjectStructureBindingDevice
@@ -96,6 +97,7 @@ public static class ProjectStructureBindings
         new BindingDefinition(ProjectStructureAction.WeaponSlot3, "Weapon 3", new ProjectStructureBindingValue(Key.Digit3)),
         new BindingDefinition(ProjectStructureAction.VariantPrev, "Variant Prev", new ProjectStructureBindingValue(Key.Q)),
         new BindingDefinition(ProjectStructureAction.VariantNext, "Variant Next", new ProjectStructureBindingValue(Key.E)),
+        new BindingDefinition(ProjectStructureAction.Guide, "Guide", new ProjectStructureBindingValue(Key.Tab)),
     };
 
     private static readonly Dictionary<ProjectStructureAction, ProjectStructureBindingValue> CurrentBindings = new Dictionary<ProjectStructureAction, ProjectStructureBindingValue>();
@@ -120,7 +122,8 @@ public static class ProjectStructureBindings
         ProjectStructureAction.WeaponSlot2,
         ProjectStructureAction.WeaponSlot3,
         ProjectStructureAction.VariantPrev,
-        ProjectStructureAction.VariantNext
+        ProjectStructureAction.VariantNext,
+        ProjectStructureAction.Guide
     };
 
     public static void EnsureLoaded()

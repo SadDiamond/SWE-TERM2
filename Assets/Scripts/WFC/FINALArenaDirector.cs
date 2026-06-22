@@ -34,6 +34,10 @@ public class CybergrindArenaDirector : MonoBehaviour
     private ArenaCoreBeacon currentCoreBeacon;
     private float encounterStartTime;
     private const float PriorityHighlightDelay = 30f;
+    private const float PriorityRevealDuration = 2f;
+    private int lastPriorityAliveCount = -1;
+    private float lastEnemyProgressTime;
+    private float revealAllEnemiesUntil;
     private Coroutine floorTimerArmRoutine;
     private float floorTimerDuration;
     private float floorTimerRemaining;
@@ -208,20 +212,46 @@ public class CybergrindArenaDirector : MonoBehaviour
             enemy.SetPriorityTarget(false);
         }
 
-        if (aliveEnemies.Count == 1)
+        float now = Time.time;
+        if (lastPriorityAliveCount < 0 || aliveEnemies.Count != lastPriorityAliveCount)
         {
-            aliveEnemies[0].SetPriorityTarget(true);
-            return;
+            lastPriorityAliveCount = aliveEnemies.Count;
+            lastEnemyProgressTime = now;
+            revealAllEnemiesUntil = 0f;
         }
 
-        if (Time.time - encounterStartTime < PriorityHighlightDelay)
-            return;
-
-        for (int i = 0; i < aliveEnemies.Count; i++)
+        if (aliveEnemies.Count <= 2)
         {
-            if (aliveEnemies[i] != null)
+            for (int i = 0; i < aliveEnemies.Count; i++)
                 aliveEnemies[i].SetPriorityTarget(true);
+            return;
         }
+
+        float inactivityStart = Mathf.Max(encounterStartTime, lastEnemyProgressTime);
+        if (now >= revealAllEnemiesUntil && now - inactivityStart >= PriorityHighlightDelay)
+        {
+            revealAllEnemiesUntil = now + PriorityRevealDuration;
+            lastEnemyProgressTime = now;
+        }
+
+        if (now < revealAllEnemiesUntil)
+        {
+            for (int i = 0; i < aliveEnemies.Count; i++)
+                aliveEnemies[i].SetPriorityTarget(true);
+            return;
+        }
+
+        BasicEnemyAI priorityEnemy = SelectPriorityEnemy(aliveEnemies);
+        if (priorityEnemy != null)
+            priorityEnemy.SetPriorityTarget(true);
+    }
+
+    private void ResetEnemyPriorityTracking()
+    {
+        encounterStartTime = Time.time;
+        lastPriorityAliveCount = -1;
+        lastEnemyProgressTime = Time.time;
+        revealAllEnemiesUntil = 0f;
     }
 
     private BasicEnemyAI SelectPriorityEnemy(List<BasicEnemyAI> aliveEnemies)
@@ -397,7 +427,7 @@ public class CybergrindArenaDirector : MonoBehaviour
         currentCoreBeacon = null;
         ApplyFloorMode();
         PrepareFloorSeed();
-        encounterStartTime = Time.time;
+        ResetEnemyPriorityTracking();
         ResetFloorTimerState();
         bool previousClearSetting = generator.clearBeforeGenerate;
         generator.clearBeforeGenerate = transitionController == null;
@@ -434,7 +464,7 @@ public class CybergrindArenaDirector : MonoBehaviour
 
         ApplyFloorMode();
         PrepareFloorSeed();
-        encounterStartTime = Time.time;
+        ResetEnemyPriorityTracking();
         ResetFloorTimerState();
 
         if (generator == null) return;
@@ -460,7 +490,7 @@ public class CybergrindArenaDirector : MonoBehaviour
         generator.themeIndex = CurrentThemeIndex;
         generator.enemyHealthMultiplier = CybergrindRules.GetEnemyHealthMultiplier(floor);
         generator.enemyCountBonus = CybergrindRules.GetEnemyCountBonus(floor);
-        encounterStartTime = Time.time;
+        ResetEnemyPriorityTracking();
     }
 
     private void TickFloorTimer()
